@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN" data-phase="ready">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#B7BB5A">
+  <meta name="demo-version" content="0.1.1">
+  <meta name="description" content="しらつめ的小小庭院。把可爱，藏进每一个日常。">
+  <title>しらつめ · little clover garden</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
+  <link rel="preload" as="image" href="./assets/poster.jpg">
+  <link rel="stylesheet" href="./src/styles.css">
+  <script type="module" src="./src/main.js"></script>
+</head>
+<body class="on-home">
+  <a class="skip-link" href="#hello" data-i18n="skip">跳过开场，开始探索</a>
+  <svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="icon-down" viewBox="0 0 24 24"><path d="M12 4v15m-6-6 6 6 6-6"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
+  </defs></svg>
+
+  <header class="topbar" aria-label="主导航">
+    <div class="topbar-surface"></div>
+    <a class="brand" href="#home" data-go="0" aria-label="首页"><span class="brand-clover" data-clover></span><span>little clover</span></a>
+    <nav class="top-links" aria-label="章节">
+      <a href="#home" data-go="0" style="--entry-x:.24"><span data-i18n="navHome">庭院入口</span><small>HOME</small></a>
+      <a href="#hello" data-go="1" style="--entry-x:.43"><span data-i18n="navHello">认识一下</span><small>HELLO</small></a>
+      <a href="#moments" data-go="2" style="--entry-x:.62"><span data-i18n="navMoments">可爱瞬间</span><small>MOMENTS</small></a>
+      <a href="#collection" data-go="3" style="--entry-x:.81"><span data-i18n="navCollection">日常收藏</span><small>COLLECTION</small></a>
+    </nav>
+  </header>
+
+  <div class="language-control"><button id="language-toggle" aria-label="切换至日本語"><svg class="icon"><use href="#icon-globe"/></svg><span id="language-label">中文</span><span class="language-other">JP</span></button></div>
+
+  <aside class="side-nav" aria-label="章节导航">
+    <button class="mobile-menu-toggle" aria-expanded="false" aria-controls="side-links"><span data-clover></span><span id="mobile-current">认识一下</span><span>＋</span></button>
+    <nav id="side-links" class="side-links">
+      <div class="side-highlight" aria-hidden="true"><span class="side-highlight-spin" data-clover></span></div>
+      <a href="#home" data-go="0"><i></i><span data-i18n="navHome">庭院入口</span></a>
+      <a href="#hello" data-go="1"><i></i><span data-i18n="navHello">认识一下</span></a>
+      <a href="#moments" data-go="2"><i></i><span data-i18n="navMoments">可爱瞬间</span></a>
+      <a href="#collection" data-go="3"><i></i><span data-i18n="navCollection">日常收藏</span></a>
+      <div class="nav-bubbles" aria-hidden="true"></div>
+    </nav>
+  </aside>
+
+  <main>
+    <section id="home" class="page-section hero is-current" aria-labelledby="hero-heading">
+      <div class="hero-media"><video class="hero-video hero-native" data-hero-primary src="./assets/clip-01.mp4" poster="./assets/poster.jpg" muted loop playsinline controls preload="metadata" aria-label="首页测试视频"></video><img class="poster" src="./assets/poster.jpg" alt="" fetchpriority="high"></div>
+      <div class="hero-wash" aria-hidden="true"></div>
+      <div class="halftone-vignette" aria-hidden="true"></div>
+      <div class="clover-scene hero-clovers" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <p class="eyebrow intro-line" style="--line:0">A LITTLE LUCK, A LITTLE EVERYDAY.</p>
+        <h1 id="hero-heading" class="hero-title intro-line" style="--line:1"><span class="sr-only" id="model-heading">しらつめ</span><span id="contrast-title" aria-hidden="true"></span></h1>
+        <p class="hero-description intro-line" data-i18n="heroDescription" style="--line:2">把可爱，藏进每一个日常。</p>
+        <div class="explore-wrap intro-line" style="--line:3">
+          <span class="explore-flower flower-one" data-clover aria-hidden="true"></span><span class="explore-flower flower-two" data-clover aria-hidden="true"></span>
+          <button class="explore-button" id="explore"><span data-i18n="explore">开始探索</span><svg class="icon"><use href="#icon-arrow"/></svg></button>
+        </div>
+      </div>
+      <button class="scroll-cue" data-go="1" aria-label="向下探索"><span>SCROLL TO EXPLORE</span><svg class="icon"><use href="#icon-down"/></svg></button>
+      <div class="hero-coordinate" aria-hidden="true">SHIRATSUME'S LITTLE GARDEN <span>01 — 04</span></div>
+      <div id="video-fallback" class="video-fallback" role="status" hidden><p id="video-message"></p><div><button id="video-retry" type="button" data-i18n="play">播放视频</button><a id="video-open" href="./assets/clip-01.mp4" target="_blank" rel="noopener" data-i18n="openVideo">单独打开视频</a></div></div>
+    </section>
+
+    <section id="hello" class="page-section hello-section" aria-labelledby="hello-heading">
+      <div class="section-clover clover-a" data-clover aria-hidden="true"></div>
+      <div class="section-inner hello-inner">
+        <div class="hello-image-wrap"><figure class="hello-photo"><img src="./assets/frame-01.jpg" alt="" loading="lazy" data-model-image><figcaption><span data-i18n="frameLabel">影像摘帧</span><span>01 / LITTLE MOMENTS</span></figcaption></figure><span class="photo-stamp" data-clover aria-hidden="true"></span><span class="hand-note" data-i18n="handNote">今天也，要开心呀。</span></div>
+        <div class="hello-text"><p class="section-number">01 <span>HELLO, LITTLE ONE.</span></p><h2 id="hello-heading" data-i18n="helloHeading">你好呀，<br>又见面了。</h2><div class="mini-rule"></div><p class="section-lead" data-i18n="helloLead">一蹦一跳的日常，<br>都想好好留下。</p><p class="section-description" data-i18n="helloDescription">这里是一座小小的庭院。收集微笑、目光，还有那些不经意间，让人心软的瞬间。</p><button class="text-link" data-go="2"><span data-i18n="seeMoments">去看看那些瞬间</span><svg class="icon"><use href="#icon-arrow"/></svg></button></div>
+      </div>
+      <div class="section-footer"><span>THE LITTLE THINGS MATTER.</span><span>01 / 03</span></div>
+    </section>
+
+    <section id="moments" class="page-section moments-section" aria-labelledby="moments-heading">
+      <div class="section-clover clover-b" data-clover aria-hidden="true"></div>
+      <div class="section-inner moments-inner">
+        <div class="section-heading-row"><div><p class="section-number">02 <span>JUST A LITTLE CLOSER.</span></p><h2 id="moments-heading" data-i18n="momentsHeading">心动，<br>有迹可循。</h2></div><p class="small-side-note" data-i18n="momentsNote">一个眼神，一次回眸。<br>都是想收藏的理由。</p></div>
+        <div class="moments-gallery">
+          <button class="moment-card moment-large" data-lightbox="./assets/frame-02.jpg"><img src="./assets/frame-02.jpg" alt="视频片段画面 02" data-i18n-alt="frame2Alt" loading="lazy" data-model-image><span class="moment-caption"><span data-i18n="momentOne">视线交会的那一秒</span><small>STILL NO. 02 <span>↗</span></small></span></button>
+          <button class="moment-card moment-small" data-lightbox="./assets/frame-03.jpg"><img src="./assets/frame-03.jpg" alt="视频片段画面 03" data-i18n-alt="frame3Alt" loading="lazy" data-model-image><span class="moment-caption"><span data-i18n="momentTwo">把笑容留在这里</span><small>STILL NO. 03 <span>↗</span></small></span></button>
+        </div>
+      </div>
+      <div class="section-footer"><span>PAUSE. LOOK. SMILE.</span><span>02 / 03</span></div>
+    </section>
+
+    <section id="collection" class="page-section collection-section" aria-labelledby="collection-heading">
+      <div class="section-inner collection-inner"><p class="section-number">03 <span>KEEP THE GOOD DAYS.</span></p><div class="collection-heading"><h2 id="collection-heading" data-i18n="collectionHeading">慢慢收集，<br>小小的喜欢。</h2><p class="section-description" data-i18n="collectionDescription">让每一个平常的日子，<br>都有值得回看的理由。</p></div>
+        <div class="collection-meta"><span><i class="live-dot"></i><span data-i18n="collectionLabel">影像手记</span></span><span data-i18n="sampleNotice">视频摘帧 · 相册预览</span></div>
+        <div class="collection-grid">
+          <button class="collection-card" data-lightbox="./assets/frame-01.jpg"><img src="./assets/frame-01.jpg" alt="视频片段画面 01" data-i18n-alt="frame1Alt" loading="lazy" data-model-image><span><small>01</small><span data-i18n="collectionOne">小小的问候</span><span>↗</span></span></button>
+          <button class="collection-card" data-lightbox="./assets/frame-04.jpg"><img src="./assets/frame-04.jpg" alt="视频片段画面 04" data-i18n-alt="frame4Alt" loading="lazy" data-model-image><span><small>02</small><span data-i18n="collectionTwo">留住这一刻</span><span>↗</span></span></button>
+          <button class="collection-card collection-wide" data-lightbox="./assets/frame-02.jpg"><img src="./assets/frame-02.jpg" alt="视频片段画面 02" data-i18n-alt="frame2Alt" loading="lazy" data-model-image><span><small>03</small><span data-i18n="collectionThree">下一次，也一起吧</span><span>↗</span></span></button>
+        </div>
+        <footer class="garden-footer"><span data-clover aria-hidden="true"></span><p data-i18n="footerLine">一片幸运，一点日常。</p><button class="text-link" data-go="0"><span data-i18n="backTop">回到庭院入口</span><svg class="icon"><use href="#icon-arrow"/></svg></button><small>SHIRATSUME · LITTLE CLOVER GARDEN</small></footer>
+      </div>
+    </section>
+  </main>
+
+  <div class="video-controls"><button id="watch-toggle" style="--entry-x:.04" aria-pressed="false"><span class="round-icon"><svg class="icon"><use href="#icon-play"/></svg></span><span id="watch-label" data-i18n="watch">看一会儿视频</span></button><button id="pause-toggle" aria-label="暂停视频" title="暂停视频"><svg class="icon"><use href="#icon-pause"/></svg></button></div>
+  <div class="model-control"><div id="model-menu" class="model-menu" hidden><p data-i18n="chooseModel">选择一座小庭院</p><button data-model="shiratsume" aria-pressed="true"><span class="model-swatch swatch-green" data-clover></span><span>しらつめ<small data-i18n="originalTheme">四叶草庭院</small></span><span class="model-check">✓</span></button><button data-model="preview" aria-pressed="false"><span class="model-swatch swatch-purple" data-clover></span><span data-i18n="previewThemeName">紫藤色小庭院<small>第二主题预览</small></span><span class="model-check">✓</span></button></div><button id="model-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="model-menu" style="--entry-x:.96"><span class="model-switch-art" data-clover></span><span><small data-i18n="anotherGarden">ANOTHER LITTLE GARDEN</small><span data-i18n="switchModel">切换主题</span></span><span class="switch-arrow">↗</span></button></div>
+  <div id="theme-status" class="theme-status" hidden data-i18n="previewNotice">第二主题预览 · 等待新的模型素材</div>
+
+  <div class="transition-wipe" aria-hidden="true"><div class="wipe-flower" data-clover></div></div>
+  <div class="theme-curtain" aria-hidden="true"></div>
+  <dialog id="lightbox" class="lightbox"><button id="lightbox-close" aria-label="关闭大图"><svg class="icon"><use href="#icon-close"/></svg></button><img alt=""><p data-i18n="frameLabel">影像摘帧</p></dialog>
+  <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
+  <noscript><p class="noscript-note">请启用 JavaScript 体验视频、模型切换与动画。页面内容仍可向下浏览。</p></noscript>
+</body>
+</html>

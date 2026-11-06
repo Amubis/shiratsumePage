@@ -1,0 +1,15 @@
+{
+  "name": "shiratsume-garden",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "description": "A little clover garden — static avatar showcase prototype",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
