@@ -1,5 +1,15 @@
-// One continuous, rounded four-heart silhouette, shared by visible art and masks.
-export const CLOVER_PATH = 'M50 18 C43 2 21 6 24 23 C25 31 36 40 43 46 C34 41 26 27 18 26 C2 22 -1 43 15 50 C-1 57 2 78 18 74 C26 73 34 59 43 54 C36 60 25 69 24 77 C21 94 43 98 50 82 C57 98 79 94 76 77 C75 69 64 60 57 54 C66 59 74 73 82 74 C98 78 101 57 85 50 C101 43 98 22 82 26 C74 27 66 41 57 46 C64 40 75 31 76 23 C79 6 57 2 50 18 Z';
+// Small artwork is a simple, rounded four-petal cross. The larger version adds
+// shallow heart notches without narrowing the petals or disconnecting the core.
+export const SMALL_CLOVER_PATH = 'M50 6 C64 6 70 17 65 33 C81 28 94 36 94 50 C94 64 81 72 65 67 C70 83 64 94 50 94 C36 94 30 83 35 67 C19 72 6 64 6 50 C6 36 19 28 35 33 C30 17 36 6 50 6 Z';
+export const CLOVER_PATH = 'M50 10 C43 1 30 5 29 17 C28 24 34 33 39 39 C33 34 24 28 17 29 C5 30 1 43 10 50 C1 57 5 70 17 71 C24 72 33 66 39 61 C34 67 28 76 29 83 C30 95 43 99 50 90 C57 99 70 95 71 83 C72 76 66 67 61 61 C67 66 76 72 83 71 C95 70 99 57 90 50 C99 43 95 30 83 29 C76 28 67 34 61 39 C66 33 72 24 71 17 C70 5 57 1 50 10 Z';
+
+// Percent positions and vmin sizes are shared with the screen-space text mask.
+// A single overlapping cluster leaves the center and upper half quiet.
+export const SCENE_LAYOUT = Object.freeze([
+  Object.freeze({ id: 'cluster-main', x: 11, y: 76, size: 54, rotation: -16, variant: 'large', colorVariant: 'theme' }),
+  Object.freeze({ id: 'cluster-companion', x: 25, y: 84, size: 41, rotation: 18, variant: 'large', colorVariant: 'random' }),
+  Object.freeze({ id: 'cluster-small', x: 3, y: 56, size: 22, rotation: 9, variant: 'small', colorVariant: 'theme' }),
+]);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const escapeAttribute = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
@@ -62,29 +72,29 @@ export function randomThemeColor(theme, random = Math.random) {
   };
 }
 
-export function cloverSVG({ className = '', color = 'currentColor', title = '', ...attributes } = {}) {
+export function cloverSVG({ className = '', color = 'currentColor', title = '', variant = 'small', ...attributes } = {}) {
   const extra = Object.entries(attributes).filter(([key]) => /^(width|height|role|aria-[\w-]+|data-[\w-]+)$/.test(key))
     .map(([key, value]) => ` ${key}="${escapeAttribute(value)}"`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="${escapeAttribute(className)}" fill="${escapeAttribute(color)}" stroke="none"${title ? ' role="img"' : ' aria-hidden="true"'}${extra}>${title ? `<title>${escapeAttribute(title)}</title>` : ''}<path d="${CLOVER_PATH}"/></svg>`;
+  const path = variant === 'large' ? CLOVER_PATH : SMALL_CLOVER_PATH;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="${escapeAttribute(className)}" fill="${escapeAttribute(color)}" stroke="none"${title ? ' role="img"' : ' aria-hidden="true"'}${extra}>${title ? `<title>${escapeAttribute(title)}</title>` : ''}<path d="${path}"/></svg>`;
 }
 
 export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7BB5A', reducedMotion = () => false }) {
   const elements = [];
   let destroyed = false;
-  const positions = [
-    [11, 26, 24, -18], [88, 23, 32, 14], [19, 78, 23, 27],
-    [82, 79, 29, -12], [54, 94, 15, 5],
-  ];
 
   function render() {
     elements.splice(0).forEach((element) => element.remove());
     const random = seededRandom(seed);
     const fragment = container.ownerDocument.createDocumentFragment();
-    positions.forEach(([x, y, size, rotation], index) => {
-      const color = index % 2 === 0 ? theme : hslToHex(randomThemeColor(theme, random));
+    SCENE_LAYOUT.forEach(({ id, x, y, size, rotation, variant, colorVariant }) => {
+      const color = colorVariant === 'theme' ? theme : hslToHex(randomThemeColor(theme, random));
       const element = container.ownerDocument.createElement('div');
       element.className = 'scene-clover';
       element.setAttribute('aria-hidden', 'true');
+      element.setAttribute('data-contrast-shape', '');
+      element.setAttribute('data-shape-variant', variant);
+      element.setAttribute('data-scene-id', id);
       element.style.pointerEvents = 'none';
       const variables = {
         '--x': `${x}%`, '--y': `${y}%`, '--size': `${size}vmin`,
@@ -93,7 +103,7 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
       };
       Object.entries(variables).forEach(([name, value]) => element.style.setProperty(name, value));
       if (reducedMotion()) element.style.animation = 'none';
-      element.innerHTML = cloverSVG({ className: 'clover-svg', color });
+      element.innerHTML = cloverSVG({ className: 'clover-svg', color, variant });
       elements.push(element);
       fragment.append(element);
     });
@@ -115,16 +125,34 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
-/** Sparse at the center, gradually larger/darker near the frame. No filters. */
-export function createHalftoneSVG() {
+/** Edge density comes from dot size, not a color/opacity gradient. */
+export function createHalftoneSVG({ width = 1440, height = 900, spacing = 34, maxRadius = 17 } = {}) {
+  width = Math.max(1, Number(width) || 1440);
+  height = Math.max(1, Number(height) || 900);
+  spacing = clamp(Number(spacing) || 34, 32, 36);
+  maxRadius = clamp(Number(maxRadius) || 17, 14, 18);
   const dots = [];
-  for (let y = 10; y <= 910; y += 40) {
-    for (let x = 0; x <= 1440; x += 40) {
-      const distance = Math.hypot((x - 720) / 720, (y - 450) / 450) / Math.SQRT2;
-      const amount = clamp((distance - 0.31) / 0.69, 0, 1);
-      if (amount < 0.04) continue;
-      dots.push(`<circle cx="${x}" cy="${y}" r="${(0.6 + amount * 4.5).toFixed(2)}" opacity="${(0.05 + amount * 0.47).toFixed(3)}"/>`);
+  for (let y = 0; y <= height + spacing; y += spacing) {
+    for (let x = 0; x <= width + spacing; x += spacing) {
+      const distance = Math.hypot((x - width / 2) / (width / 2), (y - height / 2) / (height / 2));
+      const amount = clamp((distance - 0.24) / 0.76, 0, 1);
+      const radius = maxRadius * amount ** 2;
+      if (radius < 0.18) continue;
+      dots.push(`<circle cx="${x}" cy="${y}" r="${radius.toFixed(2)}"/>`);
     }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor">${dots.join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity=".58">${dots.join('')}</svg>`;
+}
+
+let shadowSequence = 0;
+/** A solid large clover over a crisp, right/down offset dot-pattern silhouette. */
+export function halftoneShadowSVG({ id, className = 'clover-svg', color = 'currentColor', shadowColor = 'currentColor', offsetX = 6, offsetY = 7, dotRadius = 2.3, spacing = 7, opacity = 0.5 } = {}) {
+  const key = `clover-shadow-${String(id ?? ++shadowSequence).replace(/[^\w-]/g, '-')}`;
+  offsetX = clamp(Number(offsetX) || 0, 0, 20);
+  offsetY = clamp(Number(offsetY) || 0, 0, 20);
+  spacing = clamp(Number(spacing) || 7, 5, 12);
+  dotRadius = clamp(Number(dotRadius) || 2.3, 1, spacing / 2 - 0.2);
+  opacity = clamp(Number(opacity), 0, 1);
+  const extent = 100 + Math.max(offsetX, offsetY);
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="${escapeAttribute(className)}" viewBox="0 0 100 100" overflow="visible" aria-hidden="true" stroke="none"><defs><pattern id="${key}-dots" patternUnits="userSpaceOnUse" width="${spacing}" height="${spacing}"><circle cx="${spacing / 2}" cy="${spacing / 2}" r="${dotRadius}" fill="${escapeAttribute(shadowColor)}"/></pattern><clipPath id="${key}-clip" clipPathUnits="userSpaceOnUse"><path d="${CLOVER_PATH}" transform="translate(${offsetX} ${offsetY})"/></clipPath></defs><g clip-path="url(#${key}-clip)" opacity="${opacity}"><rect width="${extent}" height="${extent}" fill="url(#${key}-dots)"/></g><path d="${CLOVER_PATH}" fill="${escapeAttribute(color)}"/></svg>`;
 }

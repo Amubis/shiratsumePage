@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seededRandom, hexToHsl, hslToHex, randomThemeColor, CLOVER_PATH, cloverSVG, createHalftoneSVG } from '../src/scene.js';
+import { seededRandom, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -39,9 +39,13 @@ test('near-theme colors stay inside the specified HSL deviations', () => {
 test('clover is one joined path with reusable exact geometry and escaped attributes', () => {
   const svg = cloverSVG({ className: 'clover-svg', color: '#B7BB5A' });
   assert.equal((svg.match(/<path /g) || []).length, 1);
-  assert.equal((CLOVER_PATH.match(/M/g) || []).length, 1);
-  assert.ok(CLOVER_PATH.endsWith('Z'));
-  assert.ok(svg.includes(`d="${CLOVER_PATH}"`));
+  for (const path of [SMALL_CLOVER_PATH, CLOVER_PATH]) {
+    assert.equal((path.match(/M/g) || []).length, 1);
+    assert.ok(path.endsWith('Z'));
+  }
+  assert.ok(svg.includes(`d="${SMALL_CLOVER_PATH}"`));
+  assert.ok(cloverSVG({ variant: 'large' }).includes(`d="${CLOVER_PATH}"`));
+  assert.ok((SMALL_CLOVER_PATH.match(/C/g) || []).length < (CLOVER_PATH.match(/C/g) || []).length);
   assert.ok(svg.includes('aria-hidden="true"'));
   assert.ok(!svg.includes('<circle'));
   assert.ok(!cloverSVG({ color: '" onload="alert(1)' }).includes('fill="" onload='));
@@ -52,9 +56,65 @@ test('halftone remains filter-free with a clear center and larger edge dots', ()
   assert.ok(!svg.includes('<filter'));
   const dots = [...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)]
     .map((match) => ({ x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]) }));
-  assert.ok(dots.length > 100 && dots.length < 900);
+  assert.ok(dots.length > 100 && dots.length < 1400);
   assert.ok(!dots.some(({ x, y }) => Math.abs(x - 720) < 150 && Math.abs(y - 450) < 90));
-  assert.ok(Math.max(...dots.map(({ radius }) => radius)) > 4);
+  assert.ok(Math.max(...dots.map(({ radius }) => radius)) >= 14);
+  assert.ok(Math.max(...dots.map(({ radius }) => radius)) <= 18);
+  assert.ok(dots.some(({ radius }) => radius < 1));
+  assert.equal((svg.match(/opacity=/g) || []).length, 1);
+  assert.equal(dots[1].x - dots[0].x, 34);
+  assert.ok(createHalftoneSVG({ width: 390, height: 844 }).includes('viewBox="0 0 390 844"'));
+});
+
+test('three clovers form an overlapping side cluster while leaving the upper center open', () => {
+  assert.equal(SCENE_LAYOUT.length, 3);
+  assert.ok(SCENE_LAYOUT.every(({ x, y }) => x <= 30 && y >= 55));
+  const [first, second] = SCENE_LAYOUT;
+  const distance = Math.hypot((first.x - second.x) * 10, (first.y - second.y) * 8);
+  assert.ok(distance < (first.size + second.size) * 8 / 2);
+  assert.ok(Object.isFrozen(SCENE_LAYOUT));
+  assert.ok(SCENE_LAYOUT.some(({ variant }) => variant === 'small'));
+  assert.ok(SCENE_LAYOUT.some(({ variant }) => variant === 'large'));
+});
+
+test('scene instances expose their actual shape variants and rebuild without extra decorations', () => {
+  const children = [];
+  const doc = {
+    createDocumentFragment: () => ({ children: [], append(element) { this.children.push(element); } }),
+    createElement: () => ({
+      attributes: {}, variables: {}, style: { setProperty(name, value) { this[name] = value; } },
+      setAttribute(name, value) { this.attributes[name] = value; },
+      remove() { const index = children.indexOf(this); if (index >= 0) children.splice(index, 1); },
+    }),
+  };
+  const container = { ownerDocument: doc, append(fragment) { children.push(...fragment.children); } };
+  const scene = createCloverScene({ container });
+  assert.equal(children.length, 3);
+  children.forEach((element, index) => {
+    assert.equal(element.attributes['data-contrast-shape'], '');
+    assert.equal(element.attributes['data-shape-variant'], SCENE_LAYOUT[index].variant);
+    assert.equal(element.attributes['data-scene-id'], SCENE_LAYOUT[index].id);
+    const duration = parseFloat(element.style['--duration']);
+    assert.ok(duration >= 4 && duration <= 7);
+    assert.ok(element.innerHTML.includes(SCENE_LAYOUT[index].variant === 'large' ? CLOVER_PATH : SMALL_CLOVER_PATH));
+  });
+  scene.setTheme('#B8A0C2', 'preview');
+  assert.equal(children.length, 3);
+  assert.ok(children[0].innerHTML.includes('#B8A0C2'));
+  scene.destroy();
+  assert.equal(children.length, 0);
+});
+
+test('clover projection uses a right/down clipped dot pattern with no blur filter', () => {
+  const svg = halftoneShadowSVG({ id: 'explore-one', color: '#B7BB5A', shadowColor: '#272923' });
+  assert.ok(svg.includes('<pattern'));
+  assert.ok(svg.includes('clipPathUnits="userSpaceOnUse"'));
+  assert.ok(svg.includes('transform="translate(6 7)"'));
+  assert.ok(svg.includes('r="2.3"'));
+  assert.ok(svg.includes(`d="${CLOVER_PATH}"`));
+  assert.ok(svg.includes('fill="#B7BB5A"'));
+  assert.ok(!svg.includes('<filter'));
+  assert.notEqual(halftoneShadowSVG(), halftoneShadowSVG());
 });
 
 function mediaFixture(play = () => Promise.resolve(), { nativePrimary = false } = {}) {

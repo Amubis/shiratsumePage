@@ -1,7 +1,10 @@
-import { CLOVER_PATH, cloverSVG, createCloverScene, createHalftoneSVG } from './scene.js';
+import { cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from './scene.js';
+import { createSidebar } from './sidebar.js';
+import { createContrastLayer } from './contrast.js';
+import { coverScale, exploreGrowthFrames } from './motion.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
-import { MODELS, COPY, SECTION_IDS, getSelection, escapeXML } from './content.js';
+import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -13,8 +16,8 @@ const requestedSection = SECTION_IDS.indexOf(location.hash.slice(1));
 let currentIndex = 0;
 let userPaused = reducedMotion();
 let watching = false;
-let hoverIndex = null;
-let bubbleTimer;
+let sidebar;
+let contrastLayer;
 let introTimers = [];
 let introWaiting = false;
 let introFallbackTimer;
@@ -24,12 +27,18 @@ let modelGeneration = 0;
 let wipeAnimation;
 let wipeFade;
 let wipeSerial = 0;
-let spinAnimation;
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
 
-$$('[data-clover]').forEach((element) => { element.innerHTML = cloverSVG({ className: 'clover-svg' }); });
-$('.halftone-vignette').innerHTML = createHalftoneSVG();
+$$('[data-clover]').forEach((element) => {
+  element.innerHTML = element.dataset.cloverShadow
+    ? halftoneShadowSVG({id:element.dataset.cloverShadow})
+    : cloverSVG({className:'clover-svg',variant:element.dataset.cloverVariant || 'small'});
+});
+function renderHalftone(){
+  $('.halftone-vignette').innerHTML=createHalftoneSVG({width:innerWidth,height:innerHeight});
+}
+renderHalftone();
 const scene = createCloverScene({ container: $('.hero-clovers'), theme: MODELS[modelId].theme, seed: modelId, reducedMotion });
 
 function translate(key) { return COPY[language][key] ?? COPY.zh[key] ?? ''; }
@@ -46,14 +55,10 @@ function applyURL() {
 }
 
 function renderTitle() {
-  const model = MODELS[modelId];
-  const name = typeof model.name === 'object' ? model.name[language] : model.name;
-  $('#model-heading').textContent = name;
-  const text = escapeXML(name);
-  // The same geometrical group is used for visible clovers and the mask.
-  // Both instances share the same CSS animation time, not video pixel samples.
-  $('#contrast-title').innerHTML = `<svg class="contrast-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 220" focusable="false"><defs><path id="title-leaf" d="${CLOVER_PATH}"/><g id="title-shapes"><g transform="translate(163 12) scale(1.65)"><g class="title-shape"><use href="#title-leaf"/></g></g><g transform="translate(589 37) scale(1.6)"><g class="title-shape title-shape-alt"><use href="#title-leaf"/></g></g></g><mask id="title-contrast-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="900" height="220" style="mask-type:luminance"><rect width="900" height="220" fill="black"/><use href="#title-shapes" fill="white"/></mask></defs><use href="#title-shapes" fill="var(--theme)" opacity=".94"/><text class="title-base" x="450" y="165" text-anchor="middle" font-size="146" fill="var(--paper)">${text}</text><text class="title-clipped" x="450" y="165" text-anchor="middle" font-size="146" fill="var(--ink)" mask="url(#title-contrast-mask)">${text}</text></svg>`;
-  document.title = `${name} · little clover garden`;
+  const model=MODELS[modelId];
+  const name=typeof model.name==='object'?model.name[language]:model.name;
+  $('#model-heading').textContent=name;
+  document.title=`${name} · little clover garden`;
 }
 
 function applyLanguage() {
@@ -78,7 +83,8 @@ function applyLanguage() {
   $('.top-links').setAttribute('aria-label', translate('menu'));
   updatePlaybackLabel();
   renderTitle();
-  updateSideNav();
+  sidebar?.refresh();
+  contrastLayer?.refresh();
 }
 
 function updatePlaybackLabel(status) {
@@ -90,6 +96,7 @@ function updatePlaybackLabel(status) {
   $('#pause-toggle').title = label;
   $('#pause-toggle use').setAttribute('href', paused ? '#icon-play' : '#icon-pause');
   renderVideoNotice();
+  contrastLayer?.refresh();
 }
 
 function renderVideoNotice() {
@@ -118,14 +125,14 @@ const player = createVideoPlayer({
 });
 
 function clearIntro() { introTimers.forEach(clearTimeout); introTimers = []; }
-function finishIntro() { introWaiting=false;clearTimeout(introFallbackTimer);clearIntro();root.dataset.phase='ready'; }
+function finishIntro() { const changed=root.dataset.phase!=='ready';introWaiting=false;clearTimeout(introFallbackTimer);clearIntro();root.dataset.phase='ready';if(changed)contrastLayer?.refresh(); }
 function startIntro() {
   introWaiting=false;clearTimeout(introFallbackTimer);
   clearIntro();
   if (reducedMotion() || currentIndex > 0) { finishIntro(); return; }
   root.dataset.phase = 'video';
   [[1500,'veil'],[1950,'text'],[2700,'controls'],[3350,'ready']].forEach(([time, phase]) => {
-    introTimers.push(setTimeout(() => { root.dataset.phase = phase; }, time));
+    introTimers.push(setTimeout(() => { root.dataset.phase=phase;contrastLayer?.refresh(); },time));
   });
 }
 
@@ -137,6 +144,7 @@ function setWatching(next) {
   [$('.hero-copy'),$('.scroll-cue'),$('.model-control'),$('.language-control')].forEach((node) => { node.inert = next; });
   $('.topbar').inert = next || currentIndex !== 0;
   updatePlaybackLabel();
+  contrastLayer?.refresh();
   if (next && !MODELS[modelId].preview) { userPaused = false; void player.resume(); }
 }
 
@@ -160,36 +168,66 @@ async function runExploreWipe(signal) {
   if (reducedMotion()) return;
   const serial=++wipeSerial;
   wipeFade?.cancel();
+  wipeAnimation?.cancel();
   const wipe = $('.transition-wipe');
+  wipe.classList.remove('is-active');
   const shape = $('.wipe-flower');
+  // Both paints share the same path and transform: the incoming page's color
+  // cannot appear outside the expanding clover, even during a slow reveal.
+  const outline=shape.querySelector('path');
+  shape.querySelector('.wipe-next-background')?.remove();
+  const nextBackground=outline.cloneNode(false);
+  nextBackground.classList.add('wipe-next-background');
+  nextBackground.setAttribute('fill',getComputedStyle($('#hello')).backgroundColor);
+  nextBackground.style.opacity='0';
+  outline.parentElement.append(nextBackground);
   const button = $('#explore');
   const bounds = button.getBoundingClientRect();
   const point = explorePoint || { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
   explorePoint = null;
   wipe.style.setProperty('--wipe-x', `${point.x}px`);
   wipe.style.setProperty('--wipe-y', `${point.y}px`);
-  const flowerAnimations = $$('.explore-flower').map((flower) => {
+  const poses = $$('.explore-flower').map((flower) => {
     const rect = flower.getBoundingClientRect();
-    return flower.animate([
-      { transform: getComputedStyle(flower).transform, opacity: .9 },
-      { transform: `translate(${point.x - rect.left - rect.width/2}px,${point.y - rect.top - rect.height/2}px) scale(0)`, opacity: 0 },
-    ], { duration:180, easing:'cubic-bezier(.4,0,.2,1)', fill:'forwards' });
+    return {flower,base:getComputedStyle(flower).transform,dx:point.x-rect.left-rect.width/2,dy:point.y-rect.top-rect.height/2};
   });
+  const animations=[];
   const clean = () => {
     if(serial===wipeSerial){wipeAnimation?.cancel();wipe.classList.remove('is-active');}
-    flowerAnimations.forEach((animation) => animation.cancel());
+    animations.forEach((animation)=>animation.cancel());
   };
   signal?.addEventListener('abort', clean, { once:true });
-  if (!await wait(180, signal)) { clean(); return; }
+
+  // Let the two leaves gather energy before the visibly slower contraction.
+  for(const {flower,base} of poses)animations.push(flower.animate([
+    {transform:base},
+    {transform:`${base} scale(1.14)`,offset:.65},
+    {transform:`${base} scale(1.08)`},
+  ],{duration:240,easing:'cubic-bezier(.3,0,.3,1)',fill:'forwards'}));
+  if(!await wait(240,signal)){clean();return;}
+  animations.push(button.animate([{opacity:1},{opacity:0}],{duration:220,fill:'forwards'}));
+  for(const {flower,base,dx,dy} of poses)animations.push(flower.animate([
+    {transform:`${base} scale(1.08)`,opacity:1},
+    {transform:`translate(${dx}px,${dy}px) ${base} scale(.018)`,opacity:1},
+  ],{duration:460,easing:'cubic-bezier(.55,0,.65,1)',fill:'forwards'}));
+  if(!await wait(460,signal)){clean();return;}
+
+  // Keep the tiny meeting point on screen before a single clover grows out.
   wipe.classList.add('is-active');
-  const farthest = Math.hypot(Math.max(point.x, innerWidth-point.x),Math.max(point.y,innerHeight-point.y));
-  const scale = farthest / 5 + 3;
-  wipeAnimation = shape.animate([
-    { transform:'translate(-50%,-50%) scale(0) rotate(-20deg)' },
-    { transform:`translate(-50%,-50%) scale(${scale}) rotate(0)` },
-  ], { duration:520, easing:'cubic-bezier(.4,0,.2,1)', fill:'forwards' });
-  await wait(520, signal);
-  flowerAnimations.forEach((animation) => animation.cancel());
+  wipeAnimation=shape.animate([{transform:'translate(-50%,-50%) scale(.035)'}],{duration:1,fill:'forwards'});
+  if(!await wait(170,signal)){clean();return;}
+  const scale=coverScale(point,{width:innerWidth,height:innerHeight});
+  wipeAnimation.cancel();
+  wipeAnimation=shape.animate(exploreGrowthFrames(scale),{duration:1200,easing:'linear',fill:'forwards'});
+  animations.push(nextBackground.animate([
+    {opacity:0,offset:0},
+    {opacity:0,offset:.18},
+    {opacity:.65,offset:.65},
+    {opacity:1,offset:1},
+  ],{duration:1200,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}));
+  await wait(1200,signal);
+  if(!signal?.aborted)nextBackground.style.opacity='1';
+  animations.forEach((animation)=>animation.cancel());
   signal?.removeEventListener('abort', clean);
   if (signal?.aborted) clean();
 }
@@ -199,64 +237,10 @@ function finishWipe() {
   if (!wipe.classList.contains('is-active')) return;
   if (reducedMotion()) { wipe.classList.remove('is-active'); wipeAnimation?.cancel(); return; }
   const serial=wipeSerial;
-  wipeFade = wipe.animate([{opacity:1},{opacity:0}], {duration:380,easing:'ease-out'});
+  wipeFade = wipe.animate([{opacity:1},{opacity:0}], {duration:500,easing:'cubic-bezier(.4,0,.2,1)'});
   wipeFade.finished.then(() => {if(serial===wipeSerial){wipe.classList.remove('is-active');wipeAnimation?.cancel();}}).catch(() => {});
 }
 
-function updateSideNav() {
-  const selected = hoverIndex ?? currentIndex;
-  const links = $$('.side-links>a');
-  links.forEach((link, index) => {
-    const distance = index-currentIndex;
-    const magnitude = Math.abs(distance);
-    let offset = 0;
-    for (let step=0;step<magnitude;step++) offset += Math.max(29, (distance > 0 ? 48 : 42)-step*6);
-    link.style.setProperty('--nav-y', `${Math.sign(distance)*offset}px`);
-    link.style.setProperty('--nav-scale', String(Math.max(.64,1-Math.abs(index-selected)*.14)));
-    link.classList.toggle('is-highlighted', index === selected);
-    if (index === currentIndex) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
-  });
-  const highlighted = links[selected];
-  if (highlighted) $('.side-highlight').style.setProperty('--highlight-y', highlighted.style.getPropertyValue('--nav-y'));
-  $('#mobile-current').textContent = links[currentIndex]?.textContent.trim() || '';
-}
-
-function spinHighlight(entering) {
-  if (reducedMotion()) return;
-  const shape = $('.side-highlight-spin');
-  const current = getComputedStyle(shape).transform;
-  spinAnimation?.cancel();
-  spinAnimation = shape.animate([
-    { transform:current },
-    { transform:`rotate(${entering ? -190 : 170}deg) scale(1.06)`, offset:.5 },
-    { transform:`rotate(${entering ? -372 : 348}deg) scale(1)` },
-  ], {duration:450,easing:'cubic-bezier(.4,0,.2,1)'});
-}
-
-function stopBubbles() {
-  clearTimeout(bubbleTimer);
-  bubbleTimer = null;
-  $$('.nav-bubble').forEach((bubble) => bubble.remove());
-}
-function startBubbles(index) {
-  stopBubbles();
-  if (reducedMotion() || !matchMedia('(hover: hover)').matches) return;
-  const spawn = () => {
-    if (hoverIndex !== index || document.hidden) return;
-    const layer = $('.nav-bubbles');
-    const row = $$('.side-links>a')[index];
-    if (layer.childElementCount < 2) {
-      const bubble = document.createElement('span');
-      bubble.className = 'nav-bubble';
-      bubble.style.setProperty('--bubble-y', `${parseFloat(row.style.getPropertyValue('--nav-y'))+(Math.random()*8-4)}px`);
-      bubble.innerHTML = cloverSVG({className:'clover-svg'});
-      layer.append(bubble);
-      bubble.addEventListener('animationend', () => bubble.remove(), {once:true});
-    }
-    bubbleTimer = setTimeout(spawn, 590);
-  };
-  bubbleTimer = setTimeout(spawn, 350);
-}
 
 let navigator;
 navigator = createSectionNavigator({
@@ -271,7 +255,7 @@ navigator = createSectionNavigator({
     $('.side-nav').inert = index === 0;
     $('.video-controls').inert = index !== 0;
     if (index !== 0) { finishIntro(); player.pause(); } else if (!userPaused) void player.resume();
-    hoverIndex = null; stopBubbles(); updateSideNav(); applyURL();
+    sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
   },
   onProgress(progress) { finishIntro(); root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress)); },
   async onBeforeNavigate(index,{source,signal}) {
@@ -279,13 +263,7 @@ navigator = createSectionNavigator({
     finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
     if(source === 'explore') await runExploreWipe(signal);
   },
-  onSettled(index,{source}) {
-    finishWipe();
-    if (!reducedMotion() && (source==='wheel' || source==='touch')) {
-      const content = index === 0 ? $('.hero-copy') : $$('.section-inner')[index-1];
-      content?.animate([{translate:'0 5px'},{translate:'0 -2px',offset:.6},{translate:'0 0'}],{duration:260,easing:'ease-out'});
-    }
-  },
+  onSettled() { finishWipe(); },
 });
 let explorePoint = null;
 
@@ -302,14 +280,6 @@ $('.skip-link').addEventListener('click', (event) => {
   void navigator.goTo(1,{animate:false,source:'keyboard'}).then(() => { $('#hello-heading').tabIndex=-1; $('#hello-heading').focus({preventScroll:true}); });
 });
 
-$$('.side-links>a').forEach((link,index) => {
-  const enter = () => { hoverIndex = index; updateSideNav(); spinHighlight(true); startBubbles(index); };
-  link.addEventListener('pointerenter', (event) => { if(event.pointerType !== 'touch') enter(); });
-  link.addEventListener('focus', enter);
-});
-const leaveSide = () => { hoverIndex=null;stopBubbles();updateSideNav();spinHighlight(false); };
-$('.side-links').addEventListener('pointerleave', leaveSide);
-$('.side-links').addEventListener('focusout', (event) => { if(!$('.side-links').contains(event.relatedTarget))leaveSide(); });
 $('.mobile-menu-toggle').addEventListener('click', () => {
   const open = $('.side-nav').classList.toggle('is-open');
   $('.mobile-menu-toggle').setAttribute('aria-expanded',String(open));
@@ -334,7 +304,7 @@ document.addEventListener('click', (event) => {
 async function switchModel(nextId) {
   if (nextId === modelId || !Object.hasOwn(MODELS,nextId)) {setModelMenu(false);return;}
   const token = ++modelGeneration;
-  finishIntro();setWatching(false);setModelMenu(false);stopBubbles();
+  finishIntro();setWatching(false);setModelMenu(false);sidebar?.setCurrent(currentIndex);
   $('.theme-curtain').classList.add('is-visible');
   await wait(reducedMotion()?0:240);
   if(token !== modelGeneration)return;
@@ -388,13 +358,16 @@ document.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
   if(event.key==='Escape') {if(watching)setWatching(false);setModelMenu(false);finishWipe();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
-document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden)stopBubbles();else if(hoverIndex!==null)startBubbles(hoverIndex);});
-const onMotionPreferenceChange=() => {finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);if(reducedMotion()){stopBubbles();player.pause();userPaused=true;}updatePlaybackLabel();};
+document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);contrastLayer?.refresh();});
+const onMotionPreferenceChange=() => {finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
-window.addEventListener('resize', () => {navigator.refresh();});
+window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();});
+window.addEventListener('scroll',()=>{if(root.dataset.phase!=='ready')finishIntro();},{passive:true});
 window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(location.hash.slice(1));if(index>=0)void navigator.goTo(index,{source:'history'});});
 
+sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
+contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
 applyTheme();
 if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {
   if(reducedMotion())finishIntro();
@@ -405,4 +378,4 @@ if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{anim
   void player.start();
 }
 window.addEventListener('load', () => navigator.refresh(), {once:true});
-document.fonts?.ready.then(() => navigator.refresh());
+document.fonts?.ready.then(()=>{navigator.refresh();sidebar?.refresh();contrastLayer?.refresh();});
