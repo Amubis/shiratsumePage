@@ -6,13 +6,13 @@ import { createHash } from 'node:crypto';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(project, 'dist');
-const moduleNames = ['scene', 'media', 'navigation', 'content', 'motion', 'sidebar', 'contrast'];
+const moduleNames = ['scene', 'media', 'navigation', 'content', 'motion', 'sidebar', 'contrast', 'transition-preview'];
 const bundled = [];
 const emitted=new Set();
 function rewriteImports(source,available){
-  const rewritten=source.replace(/^import\s+\{([^}]+)\}\s+from\s+['"]\.\/(\w+)\.js['"];?\s*$/gm,(_,names,name)=>{
+  const rewritten=source.replace(/^import\s+\{([^}]+)\}\s+from\s+['"]\.\/([\w-]+)\.js['"];?\s*$/gm,(_,names,name)=>{
     if(!available.has(name))throw new Error(`Unknown or unordered module ${name}`);
-    return `const {${names.replace(/\b(\w+)\s+as\s+(\w+)\b/g,'$1: $2')}}=${name}Module;`;
+    return `const {${names.replace(/\b(\w+)\s+as\s+(\w+)\b/g,'$1: $2')}}=${name.replace(/-/g,'_')}Module;`;
   });
   if(/^import\s/m.test(rewritten))throw new Error('Unsupported module import.');
   return rewritten;
@@ -22,7 +22,7 @@ for (const name of moduleNames) {
   const exports = [...source.matchAll(/^export\s+(?:(?:async\s+)?function|const|class)\s+([\w$]+)/gm)].map((match) => match[1]);
   if (!exports.length) throw new Error(`Unsupported module form: ${name}`);
   const body=rewriteImports(source.replace(/^export\s+/gm,''),emitted);
-  bundled.push(`const ${name}Module = (() => {\n${body}\nreturn { ${exports.join(', ')} };\n})();`);
+  bundled.push(`const ${name.replace(/-/g,'_')}Module = (() => {\n${body}\nreturn { ${exports.join(', ')} };\n})();`);
   emitted.add(name);
 }
 let main = await readFile(resolve(project, 'src/main.js'), 'utf8');

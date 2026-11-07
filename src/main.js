@@ -1,7 +1,8 @@
 import { cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from './scene.js';
 import { createSidebar } from './sidebar.js';
 import { createContrastLayer } from './contrast.js';
-import { coverScale, exploreGrowthFrames } from './motion.js';
+import { coverScale, exploreGrowthFrames, EXPLORE_TIMING } from './motion.js';
+import { createPageReveal } from './transition-preview.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
@@ -27,6 +28,7 @@ let modelGeneration = 0;
 let wipeAnimation;
 let wipeFade;
 let wipeSerial = 0;
+let pageReveal;
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
 
@@ -36,7 +38,7 @@ $$('[data-clover]').forEach((element) => {
     : cloverSVG({className:'clover-svg',variant:element.dataset.cloverVariant || 'small'});
 });
 function renderHalftone(){
-  $('.halftone-vignette').innerHTML=createHalftoneSVG({width:innerWidth,height:innerHeight});
+  $('.halftone-vignette').innerHTML=createHalftoneSVG({width:innerWidth,height:innerHeight,profile:MODELS[modelId].preview?'soft':'connected'});
 }
 renderHalftone();
 const scene = createCloverScene({ container: $('.hero-clovers'), theme: MODELS[modelId].theme, seed: modelId, reducedMotion });
@@ -169,6 +171,7 @@ async function runExploreWipe(signal) {
   const serial=++wipeSerial;
   wipeFade?.cancel();
   wipeAnimation?.cancel();
+  pageReveal?.destroy();
   const wipe = $('.transition-wipe');
   wipe.classList.remove('is-active');
   const shape = $('.wipe-flower');
@@ -192,8 +195,10 @@ async function runExploreWipe(signal) {
     return {flower,base:getComputedStyle(flower).transform,dx:point.x-rect.left-rect.width/2,dy:point.y-rect.top-rect.height/2};
   });
   const animations=[];
+  let reveal;
   const clean = () => {
     if(serial===wipeSerial){wipeAnimation?.cancel();wipe.classList.remove('is-active');}
+    reveal?.destroy();
     animations.forEach((animation)=>animation.cancel());
   };
   signal?.addEventListener('abort', clean, { once:true });
@@ -203,30 +208,36 @@ async function runExploreWipe(signal) {
     {transform:base},
     {transform:`${base} scale(1.14)`,offset:.65},
     {transform:`${base} scale(1.08)`},
-  ],{duration:240,easing:'cubic-bezier(.3,0,.3,1)',fill:'forwards'}));
-  if(!await wait(240,signal)){clean();return;}
-  animations.push(button.animate([{opacity:1},{opacity:0}],{duration:220,fill:'forwards'}));
+  ],{duration:EXPLORE_TIMING.bump,easing:'cubic-bezier(.3,0,.3,1)',fill:'forwards'}));
+  if(!await wait(EXPLORE_TIMING.bump,signal)){clean();return;}
+  animations.push(button.animate([{opacity:1},{opacity:0}],{duration:160,fill:'forwards'}));
   for(const {flower,base,dx,dy} of poses)animations.push(flower.animate([
     {transform:`${base} scale(1.08)`,opacity:1},
     {transform:`translate(${dx}px,${dy}px) ${base} scale(.018)`,opacity:1},
-  ],{duration:460,easing:'cubic-bezier(.55,0,.65,1)',fill:'forwards'}));
-  if(!await wait(460,signal)){clean();return;}
+  ],{duration:EXPLORE_TIMING.collapse,easing:'cubic-bezier(.55,0,.65,1)',fill:'forwards'}));
+  if(!await wait(EXPLORE_TIMING.collapse,signal)){clean();return;}
 
   // Keep the tiny meeting point on screen before a single clover grows out.
   wipe.classList.add('is-active');
   wipeAnimation=shape.animate([{transform:'translate(-50%,-50%) scale(.035)'}],{duration:1,fill:'forwards'});
-  if(!await wait(170,signal)){clean();return;}
+  if(!await wait(EXPLORE_TIMING.hold,signal)){clean();return;}
   const scale=coverScale(point,{width:innerWidth,height:innerHeight});
   wipeAnimation.cancel();
-  wipeAnimation=shape.animate(exploreGrowthFrames(scale),{duration:1200,easing:'linear',fill:'forwards'});
+  wipeAnimation=shape.animate(exploreGrowthFrames(scale),{duration:EXPLORE_TIMING.grow,easing:'linear',fill:'forwards'});
+  reveal=createPageReveal({container:wipe,shape,section:$('#hello')});
+  pageReveal=reveal;
+  reveal.start();
+  animations.push(reveal.element.animate([
+    {opacity:0,offset:0},{opacity:.8,offset:.5},{opacity:1,offset:.78},{opacity:1,offset:1},
+  ],{duration:EXPLORE_TIMING.grow,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}));
   animations.push(nextBackground.animate([
     {opacity:0,offset:0},
-    {opacity:0,offset:.18},
-    {opacity:.65,offset:.65},
+    {opacity:.8,offset:.5},
+    {opacity:1,offset:.78},
     {opacity:1,offset:1},
-  ],{duration:1200,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}));
-  await wait(1200,signal);
-  if(!signal?.aborted)nextBackground.style.opacity='1';
+  ],{duration:EXPLORE_TIMING.grow,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}));
+  await wait(EXPLORE_TIMING.grow,signal);
+  if(!signal?.aborted){nextBackground.style.opacity='1';reveal.element.style.opacity='1';reveal.seal();}
   animations.forEach((animation)=>animation.cancel());
   signal?.removeEventListener('abort', clean);
   if (signal?.aborted) clean();
@@ -235,10 +246,10 @@ async function runExploreWipe(signal) {
 function finishWipe() {
   const wipe = $('.transition-wipe');
   if (!wipe.classList.contains('is-active')) return;
-  if (reducedMotion()) { wipe.classList.remove('is-active'); wipeAnimation?.cancel(); return; }
+  if (reducedMotion()) { wipe.classList.remove('is-active'); wipeAnimation?.cancel();pageReveal?.destroy();return; }
   const serial=wipeSerial;
-  wipeFade = wipe.animate([{opacity:1},{opacity:0}], {duration:500,easing:'cubic-bezier(.4,0,.2,1)'});
-  wipeFade.finished.then(() => {if(serial===wipeSerial){wipe.classList.remove('is-active');wipeAnimation?.cancel();}}).catch(() => {});
+  wipeFade = wipe.animate([{opacity:1},{opacity:0}], {duration:EXPLORE_TIMING.reveal,easing:'cubic-bezier(.4,0,.2,1)'});
+  wipeFade.finished.then(() => {if(serial===wipeSerial){wipe.classList.remove('is-active');wipeAnimation?.cancel();pageReveal?.destroy();}}).catch(() => {});
 }
 
 
@@ -339,6 +350,10 @@ function applyTheme() {
   lightboxSources.forEach((original,button) => {button.dataset.lightbox=model.preview?model.poster:original;});
   $$('[data-model]').forEach((button) => button.setAttribute('aria-pressed',String(button.dataset.model===modelId)));
   scene.setTheme(model.theme,modelId);
+  renderHalftone();
+  $$('[data-clover-shadow]').forEach(element=>{
+    element.innerHTML=halftoneShadowSVG({id:element.dataset.cloverShadow,profile:model.preview?'soft':'connected'});
+  });
   applyLanguage();applyURL();
 }
 

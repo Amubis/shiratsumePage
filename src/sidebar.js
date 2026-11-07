@@ -10,7 +10,7 @@ export function getSidebarLayout(count, currentIndex, selectedIndex = currentInd
     const y = steps ? Math.sign(currentDistance) * (gap + (steps - 1) * distantGap) : 0;
     const distance = Math.abs(index - selectedIndex);
     const fontSize = distance === 0 ? 27 : distance === 1 ? 15.5 : distance === 2 ? 10.5 : 9.5;
-    const opacity = distance === 0 ? 1 : distance === 1 ? 0.57 : distance === 2 ? 0.32 : 0.23;
+    const opacity = distance === 0 ? 1 : distance === 1 ? 0.85 : distance === 2 ? 0.68 : 0.55;
     return { index, y, fontSize, scale: fontSize / 27, opacity, hitHeight: 24 };
   });
 }
@@ -172,14 +172,14 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
         clearTimer(fallback);
         node.remove();
         slotNodes[slot] = null;
-        if (valid()) schedule(() => spawn(slot), 160);
+        if (valid()) schedule(() => spawn(slot), 1200);
       };
       node.addEventListener('animationend', finish, { once: true });
       // A hidden tab or missing animation event must not leave a permanent node.
-      fallback = schedule(finish, 1500);
+      fallback = schedule(finish, 3400);
     };
-    schedule(() => spawn(0), 350);
-    schedule(() => spawn(1), 900);
+    schedule(() => spawn(0), 500);
+    schedule(() => spawn(1), 1400);
   }
 
   const enterPointer = (index, event) => {

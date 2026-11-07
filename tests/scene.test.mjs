@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seededRandom, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
+import { seededRandom, generateSceneLayout, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -51,22 +51,51 @@ test('clover is one joined path with reusable exact geometry and escaped attribu
   assert.ok(!cloverSVG({ color: '" onload="alert(1)' }).includes('fill="" onload='));
 });
 
-test('halftone remains filter-free with a clear center and larger edge dots', () => {
+function svgDots(svg) {
+  return [...svg.matchAll(/<circle cx="(-?[\d.]+)" cy="(-?[\d.]+)" r="([\d.]+)"/g)]
+    .map((match) => ({ x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]) }));
+}
+
+test('halftone uses fewer grid points and circles large enough to join the outer frame', () => {
   const svg = createHalftoneSVG();
   assert.ok(!svg.includes('<filter'));
-  const dots = [...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)]
-    .map((match) => ({ x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]) }));
-  assert.ok(dots.length > 100 && dots.length < 1400);
+  const dots = svgDots(svg);
+  assert.ok(dots.length > 100 && dots.length < 800);
   assert.ok(!dots.some(({ x, y }) => Math.abs(x - 720) < 150 && Math.abs(y - 450) < 90));
-  assert.ok(Math.max(...dots.map(({ radius }) => radius)) >= 14);
-  assert.ok(Math.max(...dots.map(({ radius }) => radius)) <= 18);
+  assert.ok(Math.max(...dots.map(({ radius }) => radius)) >= 46 / Math.SQRT2);
   assert.ok(dots.some(({ radius }) => radius < 1));
   assert.equal((svg.match(/opacity=/g) || []).length, 1);
-  assert.equal(dots[1].x - dots[0].x, 34);
+  assert.ok(svg.includes('opacity="1"'));
+  assert.equal(dots[1].x - dots[0].x, 46);
   assert.ok(createHalftoneSVG({ width: 390, height: 844 }).includes('viewBox="0 0 390 844"'));
 });
 
-test('three clovers form an overlapping side cluster while leaving the upper center open', () => {
+test('all four edges, including their midpoints, have a continuous filled outer band', () => {
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const dots = svgDots(createHalftoneSVG({ width, height }));
+    const covered = (x, y) => dots.some((dot) => (dot.x - x) ** 2 + (dot.y - y) ** 2 <= dot.radius ** 2);
+    for (const depth of [0, 10, 20]) {
+      for (let x = 0; x <= width; x += 4) {
+        assert.ok(covered(x, depth));
+        assert.ok(covered(x, height - depth));
+      }
+      for (let y = 0; y <= height; y += 4) {
+        assert.ok(covered(depth, y));
+        assert.ok(covered(width - depth, y));
+      }
+    }
+  }
+});
+
+test('preview retains the original smaller, separated dot profile', () => {
+  const svg = createHalftoneSVG({ profile: 'soft' });
+  const dots = svgDots(svg);
+  assert.equal(dots[1].x - dots[0].x, 34);
+  assert.equal(Math.max(...dots.map(({ radius }) => radius)), 17);
+  assert.ok(svg.includes('opacity=".58"'));
+});
+
+test('preview clovers keep their original overlapping side cluster', () => {
   assert.equal(SCENE_LAYOUT.length, 3);
   assert.ok(SCENE_LAYOUT.every(({ x, y }) => x <= 30 && y >= 55));
   const [first, second] = SCENE_LAYOUT;
@@ -75,6 +104,25 @@ test('three clovers form an overlapping side cluster while leaving the upper cen
   assert.ok(Object.isFrozen(SCENE_LAYOUT));
   assert.ok(SCENE_LAYOUT.some(({ variant }) => variant === 'small'));
   assert.ok(SCENE_LAYOUT.some(({ variant }) => variant === 'large'));
+});
+
+test('generated layouts are reproducible, dispersed across sides, and clear the title', () => {
+  assert.deepEqual(generateSceneLayout('visit-a'), generateSceneLayout('visit-a'));
+  assert.notDeepEqual(generateSceneLayout('visit-a'), generateSceneLayout('visit-b'));
+  for (let seed = 0; seed < 500; seed += 1) {
+    const layout = generateSceneLayout(`visit-${seed}`);
+    assert.equal(layout.length, 3);
+    assert.ok(layout.some(({ x }) => x < 32));
+    assert.ok(layout.some(({ x }) => x > 68));
+    layout.forEach((shape, index) => {
+      assert.ok(shape.size >= 28 && shape.size <= 46);
+      const half = shape.size / 2;
+      const overlapsTitle = shape.x + half > 32 && shape.x - half < 68 && shape.y + half > 25 && shape.y - half < 65;
+      assert.equal(overlapsTitle, false);
+      layout.slice(index + 1).forEach((other) => assert.ok(Math.hypot(shape.x - other.x, shape.y - other.y) >= 38));
+    });
+    assert.ok(Math.abs(layout[0].y - layout[1].y) >= 18);
+  }
 });
 
 test('scene instances expose their actual shape variants and rebuild without extra decorations', () => {
@@ -89,11 +137,13 @@ test('scene instances expose their actual shape variants and rebuild without ext
   };
   const container = { ownerDocument: doc, append(fragment) { children.push(...fragment.children); } };
   const scene = createCloverScene({ container });
+  const pose = () => children.map((element) => ['--x', '--y', '--size', '--rotation'].map((name) => element.style[name]));
+  const originalPose = pose();
   assert.equal(children.length, 3);
   children.forEach((element, index) => {
     assert.equal(element.attributes['data-contrast-shape'], '');
     assert.equal(element.attributes['data-shape-variant'], SCENE_LAYOUT[index].variant);
-    assert.equal(element.attributes['data-scene-id'], SCENE_LAYOUT[index].id);
+    assert.ok(element.attributes['data-scene-id'].startsWith('scatter-'));
     const duration = parseFloat(element.style['--duration']);
     assert.ok(duration >= 4 && duration <= 7);
     assert.ok(element.innerHTML.includes(SCENE_LAYOUT[index].variant === 'large' ? CLOVER_PATH : SMALL_CLOVER_PATH));
@@ -101,20 +151,39 @@ test('scene instances expose their actual shape variants and rebuild without ext
   scene.setTheme('#B8A0C2', 'preview');
   assert.equal(children.length, 3);
   assert.ok(children[0].innerHTML.includes('#B8A0C2'));
+  children.forEach((element, index) => {
+    assert.equal(element.attributes['data-scene-id'], SCENE_LAYOUT[index].id);
+    assert.equal(element.style['--x'], `${SCENE_LAYOUT[index].x}%`);
+  });
+  scene.setTheme('#B7BB5A', 'shiratsume');
+  assert.deepEqual(pose(), originalPose);
+  scene.setTheme('#B7BB5A', 'shiratsume');
+  assert.deepEqual(pose(), originalPose);
   scene.destroy();
   assert.equal(children.length, 0);
 });
 
-test('clover projection uses a right/down clipped dot pattern with no blur filter', () => {
+test('clover projection grows near-solid dots at the outer contour without a blur filter', () => {
   const svg = halftoneShadowSVG({ id: 'explore-one', color: '#B7BB5A', shadowColor: '#272923' });
-  assert.ok(svg.includes('<pattern'));
+  const dots = svgDots(svg);
   assert.ok(svg.includes('clipPathUnits="userSpaceOnUse"'));
   assert.ok(svg.includes('transform="translate(6 7)"'));
-  assert.ok(svg.includes('r="2.3"'));
+  assert.ok(dots.some(({ radius }) => radius === 2.3));
+  assert.ok(Math.max(...dots.map(({ radius }) => radius)) >= 7 / Math.SQRT2);
+  assert.equal(dots.find(({ x, y }) => x === 49 && y === 49).radius, 2.3);
+  assert.ok(dots.find(({ x, y }) => x === 105 && y === 105).radius >= 7 / Math.SQRT2);
   assert.ok(svg.includes(`d="${CLOVER_PATH}"`));
   assert.ok(svg.includes('fill="#B7BB5A"'));
   assert.ok(!svg.includes('<filter'));
   assert.notEqual(halftoneShadowSVG(), halftoneShadowSVG());
+});
+
+test('preview clover projection retains the original uniform, separated pattern', () => {
+  const svg = halftoneShadowSVG({ id: 'preview-shadow', profile: 'soft' });
+  assert.ok(svg.includes('<pattern'));
+  assert.ok(svg.includes('r="2.3"'));
+  assert.ok(svg.includes('width="7" height="7"'));
+  assert.ok(!svg.includes('<filter'));
 });
 
 function mediaFixture(play = () => Promise.resolve(), { nativePrimary = false } = {}) {

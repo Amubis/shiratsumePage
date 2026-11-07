@@ -153,6 +153,7 @@ test('sidebar hierarchy has a pronounced size falloff and tighter distant spacin
   assert.equal(items[6].y - items[5].y, 26);
   assert.ok(items.every((item) => item.hitHeight >= 24));
   assert.ok(items[0].opacity < items[1].opacity && items[1].opacity < items[2].opacity);
+  assert.deepEqual(items.slice(0, 4).map((item) => item.opacity), [0.55, 0.68, 0.85, 1]);
 });
 
 test('hover presentation never moves hit positions, and the current page is distinct from hover', (t) => {
@@ -174,21 +175,26 @@ test('bubble slots retain their coordinates after sibling removal and continuous
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
   f.links[2].emit('pointerenter');
-  f.tick(349);
+  f.tick(499);
   assert.equal(f.bubbles.childElementCount, 0);
   f.tick(1);
   const first = f.bubbles.children[0];
   const firstPosition = [first.style.getPropertyValue('--bubble-x'), first.style.getPropertyValue('--bubble-y')];
   assert.equal(first.dataset.slot, '0');
-  f.tick(550);
+  f.tick(900);
   assert.equal(f.bubbles.childElementCount, 2);
   const second = f.bubbles.children[1];
   const secondPosition = [second.style.getPropertyValue('--bubble-x'), second.style.getPropertyValue('--bubble-y')];
   assert.equal(second.dataset.slot, '1');
+  f.tick(1700);
+  assert.equal(f.bubbles.childElementCount, 2, 'the fallback must not truncate the 2.6-second decoration animation');
   first.emit('animationend');
   assert.equal(f.bubbles.childElementCount, 1);
   assert.deepEqual([second.style.getPropertyValue('--bubble-x'), second.style.getPropertyValue('--bubble-y')], secondPosition);
-  f.tick(160);
+  f.tick(1199);
+  assert.equal(f.bubbles.children.some((node) => node.dataset.slot === '0'), false,
+    'each slot rests between decorations instead of immediately regenerating');
+  f.tick(1);
   const replacement = f.bubbles.children.find((node) => node.dataset.slot === '0');
   assert.ok(replacement && replacement !== first);
   assert.deepEqual([replacement.style.getPropertyValue('--bubble-x'), replacement.style.getPropertyValue('--bubble-y')], firstPosition);
@@ -242,7 +248,7 @@ test('refresh adapts the compact clover to translated label width and destructio
   assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '115px');
   assert.match(f.shape.innerHTML, /sidebar-clover-shadow/);
   f.links[2].emit('pointerenter');
-  f.tick(350);
+  f.tick(500);
   f.doc.hidden = true;
   f.doc.emit('visibilitychange');
   assert.equal(f.timers.size, 0);

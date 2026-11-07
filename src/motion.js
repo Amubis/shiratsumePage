@@ -11,8 +11,9 @@ export function exploreGrowthFrames(finalScale, steps = 28) {
   const end = Math.max(.035, finalScale);
   return Array.from({length:count+1}, (_,index) => {
     const progress=index/count;
-    const scale=.035+(end-.035)*progress**3.4;
+    const scale=.035+(end-.035)*progress**2.8;
     const rotation=-10*(1-progress);
     return {offset:progress,transform:`translate(-50%,-50%) scale(${scale}) rotate(${rotation}deg)`};
   });
 }
+export const EXPLORE_TIMING = Object.freeze({bump:180,collapse:320,hold:70,grow:820,reveal:180});
