@@ -1,5 +1,29 @@
 /* 0.2: clean typography, overlapping clovers and a stable side-navigation scene. */
 
+/* Start with video alone, including before the deferred application is ready. */
+html:is([data-phase="video"], [data-phase="veil"]) .hero-copy,
+html:is([data-phase="video"], [data-phase="veil"], [data-phase="text"]) .language-control {
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-phase="video"] .hero {
+  background: #000;
+}
+
+html:not(.is-booting)[data-phase="video"] .hero-media {
+  animation: introVideoIn .35s var(--easing) both;
+}
+
+[data-phase="controls"] .language-control {
+  animation: controlIn .3s .32s both;
+}
+
+@keyframes introVideoIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 html {
   scroll-snap-type: y proximity;
   scroll-padding-block-start: 0;

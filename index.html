@@ -2,9 +2,25 @@
 <html lang="zh-CN" data-phase="ready">
 <head>
   <meta charset="UTF-8">
+  <style>
+    html.is-booting { background: #000; }
+    html.is-booting body { visibility: hidden; }
+  </style>
+  <script>
+    // Hide the first paint before deferred scripts or external styles arrive.
+    document.documentElement.classList.add('is-booting');
+    document.documentElement.dataset.phase = 'video';
+    window.setTimeout(() => {
+      const page = document.documentElement;
+      if (page.classList.contains('is-booting')) {
+        page.dataset.phase = 'ready';
+        page.classList.remove('is-booting');
+      }
+    }, 6000);
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#B7BB5A">
-  <meta name="demo-version" content="0.3.0">
+  <meta name="demo-version" content="0.3.1">
   <meta name="description" content="しらつめ的小小庭院。把可爱，藏进每一个日常。">
   <title>しらつめ · little clover garden</title>
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">

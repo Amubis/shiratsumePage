@@ -157,7 +157,7 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
-/** Equal arc-length circular rings, with an elliptical inward size gradient. */
+/** Equal arc-length circular rings, with a soft field confined to the edges. */
 export function generateRadialHalftoneDots({ width = 1440, height = 900, spacing = 46, maxRadius = 35 } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
@@ -165,11 +165,15 @@ export function generateRadialHalftoneDots({ width = 1440, height = 900, spacing
   maxRadius = Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
   const cx = width / 2;
   const cy = height / 2;
-  // Every dot near an actual edge reaches its maximum radius. This includes
-  // side midpoints and preserves a continuous band despite staggered rings.
-  const boundaryBand = spacing / 2 + maxRadius;
-  const ellipseX = Math.max(spacing / 2, cx - boundaryBand);
-  const ellipseY = Math.max(spacing / 2, cy - boundaryBand);
+  // Each edge fades independently over its outer 18%, so the negative space
+  // follows the viewport rather than drawing an eye-shaped ellipse around it.
+  const edgeWidthX = width * 0.18;
+  const edgeWidthY = height * 0.18;
+  const edgeAmount = (distance, edgeWidth) => {
+    const full = Math.min(maxRadius + spacing / 6, edgeWidth * 0.61);
+    const t = clamp(1 - (distance - full) / Math.max(1, edgeWidth - full), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
   const outerRadius = Math.hypot(cx + maxRadius, cy + maxRadius) + spacing;
   const dots = [];
   for (let ring = 1; ring * spacing <= outerRadius; ring += 1) {
@@ -182,9 +186,12 @@ export function generateRadialHalftoneDots({ width = 1440, height = 900, spacing
       const x = cx + Math.cos(angle) * ringRadius;
       const y = cy + Math.sin(angle) * ringRadius;
       if (x < -maxRadius || x > width + maxRadius || y < -maxRadius || y > height + maxRadius) continue;
-      const inward = Math.hypot((x - cx) / ellipseX, (y - cy) / ellipseY);
-      const amount = clamp((inward - 0.24) / 0.76, 0, 1);
-      const radius = maxRadius * amount ** 2.5;
+      const horizontal = edgeAmount(Math.min(x, width - x), edgeWidthX);
+      const vertical = edgeAmount(Math.min(y, height - y), edgeWidthY);
+      // Smooth union makes corners slightly denser without an oval contour.
+      const amount = 1 - (1 - horizontal) * (1 - vertical);
+      const clearDistance = Math.hypot(Math.max(width * 0.2 - x, 0, x - width * 0.8), Math.max(height * 0.2 - y, 0, y - height * 0.8));
+      const radius = Math.min(maxRadius * amount, Math.max(0, clearDistance - 0.5));
       if (radius < 0.18) continue;
       dots.push({ x, y, radius, ring, rho: ringRadius / Math.min(cx, cy), ringRadius });
     }

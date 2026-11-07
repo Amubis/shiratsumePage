@@ -101,7 +101,7 @@ test('dots form stable concentric rings with physical spacing rather than a rect
 test('dot size grows outwards along a ray until the outer dots merge', () => {
   for (const [width, height] of [[1440, 900], [390, 844]]) {
     const dots = generateRadialHalftoneDots({ width, height });
-    const ray = dots.filter(({ x, y }) => x > width / 2 && Math.abs(y - height / 2) < 1e-7);
+    const ray = dots.filter(({ x, y }) => x > width / 2 && Math.abs(y - height / 2) / (x - width / 2) < 0.13).sort((a, b) => a.x - b.x);
     assert.ok(ray.length >= 2);
     for (let index = 1; index < ray.length; index += 1) assert.ok(ray[index].radius >= ray[index - 1].radius);
     assert.ok(ray.at(-1).radius >= 46 / Math.SQRT2);
@@ -109,8 +109,21 @@ test('dot size grows outwards along a ray until the outer dots merge', () => {
   }
 });
 
+test('dot footprints keep the central 60 percent rectangle fully clear on desktop and mobile', () => {
+  for (const [width, height] of [[1440, 900], [390, 844], [320, 568]]) {
+    const dots = svgDots(createHalftoneSVG({ width, height }));
+    dots.forEach(({ x, y, radius }) => {
+      const nearestEdge = Math.min(x / width, (width - x) / width, y / height, (height - y) / height);
+      assert.ok(nearestEdge <= 0.18);
+      const distance = Math.hypot(Math.max(width * 0.2 - x, 0, x - width * 0.8), Math.max(height * 0.2 - y, 0, y - height * 0.8));
+      // Test the rendered two-decimal radii, including a half-pixel safety gap.
+      assert.ok(distance >= radius + 0.48);
+    });
+  }
+});
+
 test('all four edges, including their midpoints, have a continuous filled outer band', () => {
-  for (const [width, height] of [[1440, 900], [390, 844]]) {
+  for (const [width, height] of [[1440, 900], [390, 844], [320, 568]]) {
     const dots = svgDots(createHalftoneSVG({ width, height }));
     const covered = (x, y) => dots.some((dot) => (dot.x - x) ** 2 + (dot.y - y) ** 2 <= dot.radius ** 2);
     for (const depth of [0, 10, 20]) {

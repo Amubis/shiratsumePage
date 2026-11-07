@@ -128,17 +128,21 @@ const player = createVideoPlayer({
   onStatus(status,details={}) {
     mediaDetails=details;
     updatePlaybackLabel(status);
-    if (status === 'playing' && introWaiting && currentIndex === 0) startIntro();
+    if (introWaiting && currentIndex === 0) {
+      if (status === 'playing') startIntro();
+      else if (['blocked','error','timeout'].includes(status)) finishIntro();
+    }
   },
 });
 
 function clearIntro() { introTimers.forEach(clearTimeout); introTimers = []; }
-function finishIntro() { const changed=root.dataset.phase!=='ready';introWaiting=false;clearTimeout(introFallbackTimer);clearIntro();root.dataset.phase='ready';if(changed)contrastLayer?.refresh(); }
+function finishIntro() { const changed=root.dataset.phase!=='ready';introWaiting=false;clearTimeout(introFallbackTimer);clearIntro();root.dataset.phase='ready';root.classList.remove('is-booting');if(changed)contrastLayer?.refresh(); }
 function startIntro() {
   introWaiting=false;clearTimeout(introFallbackTimer);
   clearIntro();
   if (reducedMotion() || currentIndex > 0) { finishIntro(); return; }
   root.dataset.phase = 'video';
+  root.classList.remove('is-booting');
   [[1500,'veil'],[1950,'text'],[2700,'controls'],[3350,'ready']].forEach(([time, phase]) => {
     introTimers.push(setTimeout(() => { root.dataset.phase=phase;contrastLayer?.refresh(); },time));
   });
@@ -404,7 +408,8 @@ videoReveal=createVideoReveal({
 });
 applyTheme();
 if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {
-  if(reducedMotion())finishIntro();
+  if(reducedMotion() || !root.classList.contains('is-booting'))finishIntro();
+  else if(MODELS[modelId].preview)startIntro();
   else {
     root.dataset.phase='video';introWaiting=true;
     introFallbackTimer=setTimeout(()=>{if(introWaiting)startIntro();},2000);
