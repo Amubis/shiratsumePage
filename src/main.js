@@ -3,6 +3,8 @@ import { createSidebar } from './sidebar.js';
 import { createContrastLayer } from './contrast.js';
 import { coverScale, exploreGrowthFrames, EXPLORE_TIMING } from './motion.js';
 import { createPageReveal } from './transition-preview.js';
+import { createOwnerProfile } from './owner-profile.js';
+import { createVideoReveal } from './video-reveal.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
@@ -19,6 +21,8 @@ let userPaused = reducedMotion();
 let watching = false;
 let sidebar;
 let contrastLayer;
+let ownerProfile;
+let videoReveal;
 let introTimers = [];
 let introWaiting = false;
 let introFallbackTimer;
@@ -85,6 +89,7 @@ function applyLanguage() {
   $('.top-links').setAttribute('aria-label', translate('menu'));
   updatePlaybackLabel();
   renderTitle();
+  ownerProfile?.setLanguage(language);
   sidebar?.refresh();
   contrastLayer?.refresh();
 }
@@ -92,10 +97,11 @@ function applyLanguage() {
 function updatePlaybackLabel(status) {
   if (status) mediaStatus = status;
   $('#watch-label').textContent = translate(watching ? 'returnHome' : 'watch');
+  $('#watch-toggle').setAttribute('aria-label',$('#watch-label').textContent);
+  $('#watch-toggle .round-icon use').setAttribute('href',watching?'#icon-return':'#icon-play');
   const paused = mediaStatus !== 'playing';
   const label = translate(paused ? 'play' : 'pause');
   $('#pause-toggle').setAttribute('aria-label', label);
-  $('#pause-toggle').title = label;
   $('#pause-toggle use').setAttribute('href', paused ? '#icon-play' : '#icon-pause');
   renderVideoNotice();
   contrastLayer?.refresh();
@@ -139,6 +145,7 @@ function startIntro() {
 }
 
 function setWatching(next) {
+  if(!next)videoReveal?.cancel();
   finishIntro();
   watching = next;
   document.body.classList.toggle('watch-mode', next);
@@ -258,6 +265,7 @@ navigator = createSectionNavigator({
   sections: $$('.page-section'), reducedMotion,
   onActive(index) {
     currentIndex = index;
+    if(index!==0){videoReveal?.cancel();ownerProfile?.close();}
     if(index!==0 && watching)setWatching(false);
     document.body.classList.toggle('on-home', index === 0);
     $$('.page-section').forEach((section,i) => section.classList.toggle('is-current',i === index));
@@ -270,6 +278,7 @@ navigator = createSectionNavigator({
   },
   onProgress(progress) { finishIntro(); root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress)); },
   async onBeforeNavigate(index,{source,signal}) {
+    ownerProfile?.close();
     if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');}
     finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
     if(source === 'explore') await runExploreWipe(signal);
@@ -296,7 +305,10 @@ $('.mobile-menu-toggle').addEventListener('click', () => {
   $('.mobile-menu-toggle').setAttribute('aria-expanded',String(open));
 });
 
-$('#watch-toggle').addEventListener('click', () => setWatching(!watching));
+$('#watch-toggle').addEventListener('click',()=>{
+  if(watching)setWatching(false);
+  else void videoReveal.enter();
+});
 $('#pause-toggle').addEventListener('click', () => {
   finishIntro();
   userPaused = !player.paused;
@@ -371,10 +383,10 @@ $('#lightbox-close').addEventListener('click', () => $('#lightbox').close());
 $('#lightbox').addEventListener('click', (event) => {if(event.target===$('#lightbox'))$('#lightbox').close();});
 document.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
-  if(event.key==='Escape') {if(watching)setWatching(false);setModelMenu(false);finishWipe();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
+  if(event.key==='Escape') {videoReveal?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
 document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);contrastLayer?.refresh();});
-const onMotionPreferenceChange=() => {finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();};
+const onMotionPreferenceChange=() => {videoReveal?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();});
@@ -383,6 +395,13 @@ window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(loc
 
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
 contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
+ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
+videoReveal=createVideoReveal({
+  hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
+  targets:[$('.hero-copy'),$('.topbar'),$('.language-control'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
+  onStart(){finishIntro();ownerProfile.close();userPaused=false;void player.resume();},
+  onComplete(){setWatching(true);},
+});
 applyTheme();
 if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {
   if(reducedMotion())finishIntro();

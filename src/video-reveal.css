@@ -1,0 +1,116 @@
+/* Keep the video itself clear; its removable treatment is a separate layer. */
+.hero .hero-media {
+  opacity: 1;
+  filter: none;
+}
+
+.hero-treatment {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background: rgba(246, 243, 239, .22);
+  background: color-mix(in srgb, var(--paper) 22%, transparent);
+  -webkit-backdrop-filter: blur(1.4px);
+  backdrop-filter: blur(1.4px);
+  opacity: 1;
+  transition: opacity .6s var(--easing);
+}
+
+[data-phase="video"] .hero-treatment,
+body.watch-mode .hero-treatment {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hero::after {
+  -webkit-mask-image: var(--video-reveal-mask, none);
+  mask-image: var(--video-reveal-mask, none);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-position: 0 0;
+  mask-position: 0 0;
+  mask-mode: alpha;
+}
+
+body.watch-reveal-animating :is(.hero-copy, .topbar, .language-control, .model-control, .hero-clovers, .hero-wash, .halftone-vignette, .scroll-cue, .hero-coordinate, .hero-treatment),
+body.watch-reveal-animating .hero::after {
+  transition: none !important;
+}
+
+.video-controls > button,
+.video-controls #watch-toggle,
+.video-controls #pause-toggle {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  transition: transform .22s cubic-bezier(.2, .7, .2, 1);
+}
+
+.video-controls .control-disc {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(246, 243, 239, .88);
+  background: color-mix(in srgb, var(--paper) 86%, var(--theme) 14%);
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.video-controls .round-icon {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.video-controls .round-icon .icon,
+.video-controls #pause-toggle .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.video-controls > button:hover {
+  transform: scale(1.08);
+}
+
+.video-controls > button:active {
+  transform: scale(.94);
+}
+
+.video-controls > button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 5px;
+}
+
+@media (max-width: 760px) {
+  .video-controls > button,
+  .video-controls #watch-toggle,
+  .video-controls #pause-toggle {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-controls > button {
+    transition: none;
+  }
+}

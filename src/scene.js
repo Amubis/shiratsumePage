@@ -157,13 +157,52 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
-/** Large circles merge into a continuous outer frame; the center stays airy. */
+/** Equal arc-length circular rings, with an elliptical inward size gradient. */
+export function generateRadialHalftoneDots({ width = 1440, height = 900, spacing = 46, maxRadius = 35 } = {}) {
+  width = Math.max(1, Number(width) || 1440);
+  height = Math.max(1, Number(height) || 900);
+  spacing = clamp(Number(spacing) || 46, 44, 48);
+  maxRadius = Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
+  const cx = width / 2;
+  const cy = height / 2;
+  // Every dot near an actual edge reaches its maximum radius. This includes
+  // side midpoints and preserves a continuous band despite staggered rings.
+  const boundaryBand = spacing / 2 + maxRadius;
+  const ellipseX = Math.max(spacing / 2, cx - boundaryBand);
+  const ellipseY = Math.max(spacing / 2, cy - boundaryBand);
+  const outerRadius = Math.hypot(cx + maxRadius, cy + maxRadius) + spacing;
+  const dots = [];
+  for (let ring = 1; ring * spacing <= outerRadius; ring += 1) {
+    const ringRadius = ring * spacing;
+    const count = Math.max(6, Math.ceil(2 * Math.PI * ringRadius / spacing));
+    const angleStep = 2 * Math.PI / count;
+    const phase = ring % 2 ? angleStep / 2 : 0;
+    for (let index = 0; index < count; index += 1) {
+      const angle = phase + index * angleStep;
+      const x = cx + Math.cos(angle) * ringRadius;
+      const y = cy + Math.sin(angle) * ringRadius;
+      if (x < -maxRadius || x > width + maxRadius || y < -maxRadius || y > height + maxRadius) continue;
+      const inward = Math.hypot((x - cx) / ellipseX, (y - cy) / ellipseY);
+      const amount = clamp((inward - 0.24) / 0.76, 0, 1);
+      const radius = maxRadius * amount ** 2.5;
+      if (radius < 0.18) continue;
+      dots.push({ x, y, radius, ring, rho: ringRadius / Math.min(cx, cy), ringRadius });
+    }
+  }
+  return dots;
+}
+
+/** Large outer ring dots merge into one frame; soft retains the old grid. */
 export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadius, profile = 'solid' } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
   const soft = profile === 'soft';
   spacing = clamp(Number(spacing) || (soft ? 34 : 46), soft ? 32 : 44, soft ? 36 : 48);
   maxRadius = soft ? clamp(Number(maxRadius) || 17, 14, 18) : Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
+  if (!soft) {
+    const dots = generateRadialHalftoneDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, ring, rho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" data-ring="${ring}" data-rho="${rho.toFixed(6)}"/>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="solid" data-layout="radial">${dots.join('')}</svg>`;
+  }
   const dots = [];
   const first = soft ? 0 : -spacing;
   for (let y = first; y <= height + spacing; y += spacing) {

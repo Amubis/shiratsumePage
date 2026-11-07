@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seededRandom, generateSceneLayout, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
+import { createHash } from 'node:crypto';
+import { seededRandom, generateSceneLayout, generateRadialHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -56,7 +57,7 @@ function svgDots(svg) {
     .map((match) => ({ x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]) }));
 }
 
-test('halftone uses fewer grid points and circles large enough to join the outer frame', () => {
+test('radial halftone preserves the accepted dot density, sizes and clear center', () => {
   const svg = createHalftoneSVG();
   assert.ok(!svg.includes('<filter'));
   const dots = svgDots(svg);
@@ -66,8 +67,46 @@ test('halftone uses fewer grid points and circles large enough to join the outer
   assert.ok(dots.some(({ radius }) => radius < 1));
   assert.equal((svg.match(/opacity=/g) || []).length, 1);
   assert.ok(svg.includes('opacity="1"'));
-  assert.equal(dots[1].x - dots[0].x, 46);
+  assert.ok(svg.includes('data-layout="radial"'));
+  assert.ok(svg.includes('data-ring='));
   assert.ok(createHalftoneSVG({ width: 390, height: 844 }).includes('viewBox="0 0 390 844"'));
+});
+
+test('dots form stable concentric rings with physical spacing rather than a rectangular grid', () => {
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const dots = generateRadialHalftoneDots({ width, height });
+    assert.deepEqual(dots, generateRadialHalftoneDots({ width, height }));
+    const rings = new Map();
+    dots.forEach((dot) => {
+      const distance = Math.hypot(dot.x - width / 2, dot.y - height / 2);
+      assert.ok(Math.abs(distance - dot.ringRadius) < 1e-7);
+      assert.ok(Math.abs(distance / Math.min(width / 2, height / 2) - dot.rho) < 1e-7);
+      if (!rings.has(dot.ring)) rings.set(dot.ring, []);
+      rings.get(dot.ring).push(dot);
+    });
+    assert.ok(rings.size >= 8);
+    rings.forEach((ring) => {
+      assert.equal(new Set(ring.map(({ rho }) => rho)).size, 1);
+      for (let index = 1; index < ring.length; index += 1) {
+        assert.ok(Math.hypot(ring[index].x - ring[index - 1].x, ring[index].y - ring[index - 1].y) > 38);
+      }
+    });
+    const xCoordinates = new Set(dots.map(({ x }) => x.toFixed(3)));
+    const yCoordinates = new Set(dots.map(({ y }) => y.toFixed(3)));
+    assert.ok(xCoordinates.size > dots.length * 0.3);
+    assert.ok(yCoordinates.size > dots.length * 0.3);
+  }
+});
+
+test('dot size grows outwards along a ray until the outer dots merge', () => {
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const dots = generateRadialHalftoneDots({ width, height });
+    const ray = dots.filter(({ x, y }) => x > width / 2 && Math.abs(y - height / 2) < 1e-7);
+    assert.ok(ray.length >= 2);
+    for (let index = 1; index < ray.length; index += 1) assert.ok(ray[index].radius >= ray[index - 1].radius);
+    assert.ok(ray.at(-1).radius >= 46 / Math.SQRT2);
+    assert.ok(dots.every(({ x, y, radius }) => Math.hypot(x - width / 2, y - height / 2) > radius));
+  }
 });
 
 test('all four edges, including their midpoints, have a continuous filled outer band', () => {
@@ -93,6 +132,8 @@ test('preview retains the original smaller, separated dot profile', () => {
   assert.equal(dots[1].x - dots[0].x, 34);
   assert.equal(Math.max(...dots.map(({ radius }) => radius)), 17);
   assert.ok(svg.includes('opacity=".58"'));
+  assert.equal(createHash('sha256').update(svg).digest('hex'), 'ada9ab0d352dc7c72784f4e30d848fc19668112878f4a0eadeffc4adc15f7f80');
+  assert.equal(createHash('sha256').update(createHalftoneSVG({ profile: 'soft', width: 390, height: 844 })).digest('hex'), 'fb5385aba858b0cbcc9cac8c21ff9fe2996cc499fe308c53e61daacb1be09d60');
 });
 
 test('preview clovers keep their original overlapping side cluster', () => {

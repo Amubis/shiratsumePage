@@ -1,0 +1,179 @@
+/* The owner identity is independent of the showcased model and its media. */
+.owner-profile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 26%;
+  height: 100%;
+  padding-inline: 26px;
+  overflow: visible;
+}
+
+.owner-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #65694d70;
+  border-radius: 50%;
+  background: #f8f4eb;
+  color: #42472c;
+  box-shadow: 0 2px 8px #24271c10;
+  transition: border-color .18s, box-shadow .18s;
+}
+
+.owner-avatar:hover,
+.owner-avatar[aria-expanded="true"] {
+  border-color: #41462d;
+  box-shadow: 0 3px 12px #24271c20;
+}
+
+.owner-avatar:focus-visible {
+  outline: 2px solid #41462d;
+  outline-offset: 4px;
+}
+
+.owner-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.owner-avatar-fallback {
+  display: block;
+  width: 25px;
+  height: 25px;
+  pointer-events: none;
+}
+
+.owner-card {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 26px;
+  z-index: 6;
+  width: min(320px, calc(100vw - 36px));
+  padding: 21px 22px;
+  border: 1px solid #666b4d45;
+  border-radius: 12px;
+  background: #fbf7ef;
+  color: #25291e;
+  box-shadow: 0 12px 34px #24271c23;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.owner-card[hidden] {
+  display: none;
+}
+
+.owner-profile.is-open .owner-card {
+  animation: ownerCardIn 200ms cubic-bezier(.2, .65, .3, 1) both;
+}
+
+@keyframes ownerCardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.owner-card::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 16px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid #666b4d45;
+  border-left: 1px solid #666b4d45;
+  background: #fbf7ef;
+  transform: rotate(45deg);
+}
+
+/* A small transparent bridge keeps the hover card reachable across its gap. */
+.owner-card::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  height: 14px;
+}
+
+.owner-card .owner-name {
+  margin: 0 0 10px;
+  font-family: var(--body, sans-serif);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: .035em;
+}
+
+.owner-bio,
+.owner-empty {
+  margin: 0;
+  color: #454a37;
+  font-size: 12px;
+  line-height: 1.9;
+  letter-spacing: .025em;
+}
+
+.owner-contacts-heading {
+  margin: 20px 0 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: .07em;
+}
+
+.owner-contacts {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.owner-contact-link {
+  display: inline-block;
+  padding-block: 3px;
+  color: #323b24;
+  font-size: 12px;
+  line-height: 1.7;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.owner-contact-link:hover {
+  color: #151b10;
+}
+
+[data-phase="text"] .owner-profile {
+  opacity: 0;
+}
+
+[data-phase="controls"] .owner-profile {
+  animation: controlIn .3s both;
+  animation-delay: .06s;
+}
+
+@media (max-width: 1100px) {
+  .owner-profile { flex-basis: 24%; padding-inline: 17px; }
+  .owner-card { left: 17px; }
+}
+
+@media (max-width: 760px) {
+  .owner-profile { flex: 1 1 auto; padding-inline: 16px; }
+  .owner-avatar { width: 40px; height: 40px; }
+  .owner-avatar-fallback { width: 23px; height: 23px; }
+  .owner-card { left: 0; padding: 19px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owner-avatar,
+  .owner-profile { animation: none; transition: none; }
+  .owner-profile.is-open .owner-card { animation: none; }
+}
