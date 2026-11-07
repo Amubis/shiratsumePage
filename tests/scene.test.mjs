@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { seededRandom, generateSceneLayout, generateRadialHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
+import { seededRandom, generateSceneLayout, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -57,7 +57,7 @@ function svgDots(svg) {
     .map((match) => ({ x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]) }));
 }
 
-test('radial halftone preserves the accepted dot density, sizes and clear center', () => {
+test('elliptical halftone preserves the accepted dot density, sizes and clear center', () => {
   const svg = createHalftoneSVG();
   assert.ok(!svg.includes('<filter'));
   const dots = svgDots(svg);
@@ -67,24 +67,27 @@ test('radial halftone preserves the accepted dot density, sizes and clear center
   assert.ok(dots.some(({ radius }) => radius < 1));
   assert.equal((svg.match(/opacity=/g) || []).length, 1);
   assert.ok(svg.includes('opacity="1"'));
-  assert.ok(svg.includes('data-layout="radial"'));
+  assert.ok(svg.includes('data-layout="elliptical"'));
+  assert.ok(svg.includes('data-ring-shape="ellipse"'));
   assert.ok(svg.includes('data-ring='));
   assert.ok(createHalftoneSVG({ width: 390, height: 844 }).includes('viewBox="0 0 390 844"'));
 });
 
-test('dots form stable concentric rings with physical spacing rather than a rectangular grid', () => {
+test('dots follow actual concentric ellipses with physical spacing and stable positions', () => {
   for (const [width, height] of [[1440, 900], [390, 844]]) {
-    const dots = generateRadialHalftoneDots({ width, height });
+    const dots = generateEllipticalHalftoneDots({ width, height });
+    assert.deepEqual(dots, generateEllipticalHalftoneDots({ width, height }));
     assert.deepEqual(dots, generateRadialHalftoneDots({ width, height }));
     const rings = new Map();
     dots.forEach((dot) => {
-      const distance = Math.hypot(dot.x - width / 2, dot.y - height / 2);
-      assert.ok(Math.abs(distance - dot.ringRadius) < 1e-7);
-      assert.ok(Math.abs(distance / Math.min(width / 2, height / 2) - dot.rho) < 1e-7);
+      const ellipseRho = Math.hypot((dot.x - width / 2) / dot.ellipseX, (dot.y - height / 2) / dot.ellipseY);
+      assert.ok(Math.abs(ellipseRho - 1) < 1e-7);
+      assert.ok(Math.abs(dot.ellipseX - (width * 0.45 + dot.ring * 46)) < 1e-7);
+      assert.ok(Math.abs(dot.ellipseY - (height * 0.435 + dot.ring * 46)) < 1e-7);
       if (!rings.has(dot.ring)) rings.set(dot.ring, []);
       rings.get(dot.ring).push(dot);
     });
-    assert.ok(rings.size >= 8);
+    assert.ok(rings.size >= 3);
     rings.forEach((ring) => {
       assert.equal(new Set(ring.map(({ rho }) => rho)).size, 1);
       for (let index = 1; index < ring.length; index += 1) {
@@ -98,27 +101,35 @@ test('dots form stable concentric rings with physical spacing rather than a rect
   }
 });
 
-test('dot size grows outwards along a ray until the outer dots merge', () => {
+test('dot size grows only across the narrow outer ellipse band and joins outside the reference', () => {
   for (const [width, height] of [[1440, 900], [390, 844]]) {
-    const dots = generateRadialHalftoneDots({ width, height });
-    const ray = dots.filter(({ x, y }) => x > width / 2 && Math.abs(y - height / 2) / (x - width / 2) < 0.13).sort((a, b) => a.x - b.x);
-    assert.ok(ray.length >= 2);
-    for (let index = 1; index < ray.length; index += 1) assert.ok(ray[index].radius >= ray[index - 1].radius);
-    assert.ok(ray.at(-1).radius >= 46 / Math.SQRT2);
+    const dots = generateEllipticalHalftoneDots({ width, height });
+    const ordered = [...dots].sort((a, b) => a.edgeRho - b.edgeRho);
+    for (let index = 1; index < ordered.length; index += 1) assert.ok(ordered[index].radius + 1e-9 >= ordered[index - 1].radius);
+    assert.ok(dots.every(({ edgeRho }) => edgeRho > 0.78));
+    assert.ok(dots.filter(({ edgeRho }) => edgeRho <= 0.85).every(({ radius }) => radius <= 4));
+    assert.ok(dots.some(({ edgeRho, radius }) => edgeRho >= 1 && radius === 35));
+    assert.ok(dots.filter(({ edgeRho }) => edgeRho >= 1).every(({ radius }) => radius === 35));
+    assert.ok(dots.some(({ radius }) => radius > 4 && radius < 35));
     assert.ok(dots.every(({ x, y, radius }) => Math.hypot(x - width / 2, y - height / 2) > radius));
   }
 });
 
-test('dot footprints keep the central 60 percent rectangle fully clear on desktop and mobile', () => {
-  for (const [width, height] of [[1440, 900], [390, 844], [320, 568]]) {
+test('dot footprints preserve the large central ellipse, including the circular radii', () => {
+  for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
     const dots = svgDots(createHalftoneSVG({ width, height }));
+    const axisX = width * 0.45;
+    const axisY = height * 0.435;
+    const minimumAxis = Math.min(axisX, axisY);
+    const safeRho = Math.min(0.78, 1 - 35 / minimumAxis) - 0.0001;
     dots.forEach(({ x, y, radius }) => {
-      const nearestEdge = Math.min(x / width, (width - x) / width, y / height, (height - y) / height);
-      assert.ok(nearestEdge <= 0.18);
-      const distance = Math.hypot(Math.max(width * 0.2 - x, 0, x - width * 0.8), Math.max(height * 0.2 - y, 0, y - height * 0.8));
-      // Test the rendered two-decimal radii, including a half-pixel safety gap.
-      assert.ok(distance >= radius + 0.48);
+      const centerRho = Math.hypot((x - width / 2) / axisX, (y - height / 2) / axisY);
+      // Normalized ellipse distance is 1/minimumAxis-Lipschitz. This bounds the
+      // entire rendered circle, rather than checking its center alone.
+      assert.ok(centerRho - radius / minimumAxis >= safeRho);
     });
+    assert.ok(safeRho * 0.9 >= 0.68);
+    assert.ok(safeRho * 0.87 >= 0.65);
   }
 });
 

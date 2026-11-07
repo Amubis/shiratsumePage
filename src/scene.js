@@ -157,46 +157,69 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
-/** Equal arc-length circular rings, with a soft field confined to the edges. */
-export function generateRadialHalftoneDots({ width = 1440, height = 900, spacing = 46, maxRadius = 35 } = {}) {
+/** Actual concentric ellipses, with circular dots placed by physical arc length. */
+export function generateEllipticalHalftoneDots({ width = 1440, height = 900, spacing = 46, maxRadius = 35 } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
   spacing = clamp(Number(spacing) || 46, 44, 48);
   maxRadius = Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
   const cx = width / 2;
   const cy = height / 2;
-  // Each edge fades independently over its outer 18%, so the negative space
-  // follows the viewport rather than drawing an eye-shaped ellipse around it.
-  const edgeWidthX = width * 0.18;
-  const edgeWidthY = height * 0.18;
-  const edgeAmount = (distance, edgeWidth) => {
-    const full = Math.min(maxRadius + spacing / 6, edgeWidth * 0.61);
-    const t = clamp(1 - (distance - full) / Math.max(1, edgeWidth - full), 0, 1);
-    return t * t * (3 - 2 * t);
-  };
-  const outerRadius = Math.hypot(cx + maxRadius, cy + maxRadius) + spacing;
+  const baseX = width * 0.45;
+  const baseY = height * 0.435;
+  const minimumAxis = Math.min(baseX, baseY);
+  // The reference ellipse leaves 5% horizontal and 6.5% vertical margins.
+  // Expanding both axes by one physical spacing avoids compressed short-axis
+  // rows on portrait screens while keeping every individual ring elliptical.
+  const firstRing = Math.max(Math.ceil(-0.22 * Math.max(baseX, baseY) / spacing), Math.ceil((spacing / 2 - minimumAxis) / spacing));
+  const lastRing = Math.ceil((Math.hypot(cx + maxRadius, cy + maxRadius) - minimumAxis) / spacing) + 1;
   const dots = [];
-  for (let ring = 1; ring * spacing <= outerRadius; ring += 1) {
-    const ringRadius = ring * spacing;
-    const count = Math.max(6, Math.ceil(2 * Math.PI * ringRadius / spacing));
-    const angleStep = 2 * Math.PI / count;
-    const phase = ring % 2 ? angleStep / 2 : 0;
+  for (let ring = firstRing; ring <= lastRing; ring += 1) {
+    const ellipseX = baseX + ring * spacing;
+    const ellipseY = baseY + ring * spacing;
+    const perimeter = Math.PI * (3 * (ellipseX + ellipseY) - Math.sqrt((3 * ellipseX + ellipseY) * (ellipseX + 3 * ellipseY)));
+    const segments = Math.max(256, Math.ceil(perimeter / 3));
+    const lengths = [0];
+    let previousX = ellipseX;
+    let previousY = 0;
+    for (let index = 1; index <= segments; index += 1) {
+      const angle = 2 * Math.PI * index / segments;
+      const x = Math.cos(angle) * ellipseX;
+      const y = Math.sin(angle) * ellipseY;
+      lengths.push(lengths.at(-1) + Math.hypot(x - previousX, y - previousY));
+      [previousX, previousY] = [x, y];
+    }
+    const total = lengths.at(-1);
+    const count = Math.max(6, Math.ceil(total / spacing));
+    const step = total / count;
+    const phase = Math.abs(ring) % 2 ? 0.5 : 0;
     for (let index = 0; index < count; index += 1) {
-      const angle = phase + index * angleStep;
-      const x = cx + Math.cos(angle) * ringRadius;
-      const y = cy + Math.sin(angle) * ringRadius;
+      const target = (index + phase) * step;
+      let low = 0;
+      let high = segments;
+      while (high - low > 1) {
+        const middle = (low + high) >> 1;
+        if (lengths[middle] <= target) low = middle;
+        else high = middle;
+      }
+      const fraction = (target - lengths[low]) / (lengths[high] - lengths[low]);
+      const angle = 2 * Math.PI * (low + fraction) / segments;
+      const x = cx + Math.cos(angle) * ellipseX;
+      const y = cy + Math.sin(angle) * ellipseY;
       if (x < -maxRadius || x > width + maxRadius || y < -maxRadius || y > height + maxRadius) continue;
-      const horizontal = edgeAmount(Math.min(x, width - x), edgeWidthX);
-      const vertical = edgeAmount(Math.min(y, height - y), edgeWidthY);
-      // Smooth union makes corners slightly denser without an oval contour.
-      const amount = 1 - (1 - horizontal) * (1 - vertical);
-      const clearDistance = Math.hypot(Math.max(width * 0.2 - x, 0, x - width * 0.8), Math.max(height * 0.2 - y, 0, y - height * 0.8));
-      const radius = Math.min(maxRadius * amount, Math.max(0, clearDistance - 0.5));
+      const edgeRho = Math.hypot((x - cx) / baseX, (y - cy) / baseY);
+      const amount = clamp((edgeRho - 0.78) / 0.22, 0, 1);
+      const radius = edgeRho >= 1 ? maxRadius : maxRadius * amount ** 2;
       if (radius < 0.18) continue;
-      dots.push({ x, y, radius, ring, rho: ringRadius / Math.min(cx, cy), ringRadius });
+      dots.push({ x, y, radius, ring, rho: 1 + ring * spacing / minimumAxis, ellipseX, ellipseY, edgeRho });
     }
   }
   return dots;
+}
+
+/** Compatibility alias for the previous internal helper name. */
+export function generateRadialHalftoneDots(options) {
+  return generateEllipticalHalftoneDots(options);
 }
 
 /** Large outer ring dots merge into one frame; soft retains the old grid. */
@@ -207,8 +230,8 @@ export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadi
   spacing = clamp(Number(spacing) || (soft ? 34 : 46), soft ? 32 : 44, soft ? 36 : 48);
   maxRadius = soft ? clamp(Number(maxRadius) || 17, 14, 18) : Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
   if (!soft) {
-    const dots = generateRadialHalftoneDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, ring, rho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" data-ring="${ring}" data-rho="${rho.toFixed(6)}"/>`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="solid" data-layout="radial">${dots.join('')}</svg>`;
+    const dots = generateEllipticalHalftoneDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, ring, rho, ellipseX, ellipseY }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" data-ring="${ring}" data-rho="${rho.toFixed(6)}" data-ellipse-x="${ellipseX.toFixed(3)}" data-ellipse-y="${ellipseY.toFixed(3)}"/>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="solid" data-layout="elliptical" data-ring-shape="ellipse">${dots.join('')}</svg>`;
   }
   const dots = [];
   const first = soft ? 0 : -spacing;
