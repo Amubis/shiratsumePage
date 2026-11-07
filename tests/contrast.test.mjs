@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTransform, shapeMatrix, projectShape, maskSvg, syncCloneAnimations, isShapeVisible } from '../src/contrast.js';
+import { parseTransform, shapeMatrix, projectShape, maskSvg, syncCloneAnimations, isShapeVisible, createContrastLayer } from '../src/contrast.js';
 import { CLOVER_PATH, SMALL_CLOVER_PATH } from '../src/scene.js';
 
 const close = (actual, expected) => actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < 1e-8, `component ${index}: ${value} ≠ ${expected[index]}`));
@@ -138,4 +138,150 @@ test('combined low ancestor opacity delays the mask, even when every individual 
   assert.equal(isShapeVisible(shape, scene, (node) => styles.get(node)), false);
   styles.set(wrapper, { opacity: '0.5' });
   assert.equal(isShapeVisible(shape, scene, (node) => styles.get(node)), true);
+});
+
+class ClipElement {
+  constructor(tag, doc) {
+    this.nodeType = 1;
+    this.localName = tag;
+    this.ownerDocument = doc;
+    this.values = new Map();
+    this.childNodes = [];
+    this.parentElement = null;
+    this.style = { clipWrites: 0 };
+    Object.defineProperty(this.style, 'cssText', { set(value) {
+      for (const declaration of value.split(';')) {
+        const [key, value] = declaration.split(':');
+        if (key && value) this[key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+      }
+    } });
+    Object.defineProperty(this.style, 'clipPath', { get() { return this.clipValue; }, set(value) { this.clipWrites++; this.clipValue = value; } });
+    this.style.setProperty = function (name, value) { this[name] = value; };
+    this.style.getPropertyValue = function (name) { return this[name] || ''; };
+    this.style.removeProperty = function (name) { delete this[name]; };
+    this.classList = { contains: (name) => this.className.split(/\s+/).includes(name) };
+  }
+  get children() { return this.childNodes; }
+  get attributes() { return [...this.values].map(([name, value]) => ({ name, value })); }
+  get className() { return this.getAttribute('class') || ''; }
+  set className(value) { this.setAttribute('class', value); }
+  get dataset() { return Object.fromEntries([...this.values].filter(([key]) => key.startsWith('data-')).map(([key, value]) => [key.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value])); }
+  get isConnected() { return this === this.ownerDocument.documentElement || Boolean(this.parentElement?.isConnected); }
+  get textContent() { return this.text || this.children.map((child) => child.textContent).join(''); }
+  set textContent(value) { this.text = value; this.replaceChildren(); }
+  setAttribute(name, value) { this.values.set(name, String(value)); }
+  getAttribute(name) { return this.values.get(name) ?? null; }
+  hasAttribute(name) { return this.values.has(name); }
+  removeAttribute(name) { this.values.delete(name); }
+  append(...children) { children.forEach((child) => { child.remove(); child.parentElement = this; this.childNodes.push(child); }); }
+  appendChild(child) { this.append(child); return child; }
+  removeChild(child) { child.remove(); return child; }
+  replaceChildren(...children) { this.childNodes.forEach((child) => { child.parentElement = null; }); this.childNodes = []; this.append(...children); }
+  remove() { if (this.parentElement) this.parentElement.childNodes = this.parentElement.childNodes.filter((child) => child !== this); this.parentElement = null; }
+  matches(selector) { return selector.split(',').some((value) => {
+    const match = value.trim().match(/^(\w+)?(?:\[([^\]]+)\])?$/);
+    if (match) return (!match[1] || match[1] === this.localName) && (!match[2] || this.hasAttribute(match[2]));
+    return value.startsWith('.') ? this.classList.contains(value.slice(1)) : value.startsWith('#') && this.getAttribute('id') === value.slice(1);
+  }); }
+  closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector); }
+  querySelectorAll(selector) { return this.children.flatMap((child) => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  cloneNode(deep) { const clone = new ClipElement(this.localName, this.ownerDocument); this.values.forEach((value, name) => clone.setAttribute(name, value)); clone.text = this.text; if (deep) clone.append(...this.children.map((child) => child.cloneNode(true))); return clone; }
+  getBoundingClientRect() { return this.rect || this.parentElement.getBoundingClientRect(); }
+}
+
+function contrastFixture() {
+  const frames = new Map();
+  const docListeners = new Map();
+  const winListeners = new Map();
+  let serial = 0;
+  const doc = {
+    hidden: false,
+    createElement: (tag) => new ClipElement(tag, doc),
+    createElementNS: (namespace, tag) => { const node = new ClipElement(tag, doc); node.namespaceURI = namespace; return node; },
+    addEventListener: (name, callback) => docListeners.set(name, callback),
+    removeEventListener: (name) => docListeners.delete(name),
+  };
+  doc.defaultView = {
+    requestAnimationFrame(callback) { frames.set(++serial, callback); return serial; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+    getComputedStyle(node) { return { display: 'block', visibility: 'visible', opacity: '1', transform: 'none', transformOrigin: '50% 50%', paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px', ...node.computed }; },
+    addEventListener: (name, callback) => winListeners.set(name, callback),
+    removeEventListener: (name) => winListeners.delete(name),
+  };
+  doc.documentElement = doc.createElement('html');
+  doc.body = doc.createElement('body');
+  doc.documentElement.append(doc.body);
+  const scene = doc.createElement('section');
+  const shape = doc.createElement('div');
+  shape.setAttribute('data-contrast-shape', '');
+  shape.setAttribute('data-shape-variant', 'large');
+  shape.offsetWidth = shape.offsetHeight = 100;
+  shape.rect = { left: 0, top: 0, width: 100, height: 100 };
+  const target = doc.createElement('h1');
+  target.setAttribute('data-contrast', '');
+  target.rect = { left: 10, top: 10, width: 80, height: 40 };
+  const label = doc.createElement('span');
+  label.setAttribute('id', 'model-name');
+  label.setAttribute('data-i18n', 'name');
+  label.textContent = 'しらつめ';
+  target.append(label);
+  scene.append(shape, target);
+  doc.body.append(scene);
+  return { doc, scene, shape, target, label, frames, docListeners, winListeners, step(time) { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((callback) => callback(time)); } };
+}
+
+test('animated contrast keeps one local clip URL and path node while exact geometry moves', () => {
+  const env = contrastFixture();
+  const layer = createContrastLayer({ scene: env.scene });
+  const copy = env.target.querySelector('.contrast-copy');
+  const url = copy.style.clipPath;
+  const path = env.doc.body.querySelector('clipPath').children[0];
+  const initial = path.getAttribute('transform');
+  assert.ok(url.startsWith('url(') && !url.includes('data:'));
+  assert.equal(copy.style.webkitClipPath, url);
+  assert.equal(copy.style.visibility, 'visible');
+  for (let index = 1; index <= 90; index++) {
+    env.shape.rect = { left: index / 10, top: 0, width: 100, height: 100 };
+    env.step(index * 40);
+    assert.equal(copy.style.clipPath, url);
+    assert.equal(env.doc.body.querySelector('clipPath').children[0], path);
+  }
+  assert.notEqual(path.getAttribute('transform'), initial);
+  assert.equal(copy.style.clipWrites, 1, 'animation never reassigns the resource URL');
+  assert.equal(copy.style.maskImage, undefined);
+  assert.equal(copy.style.webkitMaskImage, undefined);
+  env.shape.rect = { left: 1000, top: 0, width: 100, height: 100 };
+  env.step(3640);
+  assert.equal(copy.style.visibility, 'hidden');
+  assert.equal(env.doc.body.querySelector('clipPath').children.length, 0);
+  layer.destroy();
+});
+
+test('language refresh and visibility lifecycle release stable clips without duplicate IDs or stale frames', () => {
+  const env = contrastFixture();
+  const layer = createContrastLayer({ scene: env.scene });
+  const oldClip = env.doc.body.querySelector('clipPath');
+  env.label.textContent = '白詰草';
+  layer.refresh();
+  assert.equal(oldClip.isConnected, false);
+  assert.equal(env.target.querySelectorAll('.contrast-copy').length, 1);
+  assert.equal(env.doc.body.querySelectorAll('clipPath').length, 1);
+  const copy = env.target.querySelector('.contrast-copy');
+  assert.equal(copy.textContent, '白詰草');
+  assert.equal(copy.querySelector('[id]'), null);
+  assert.equal(copy.querySelector('[data-i18n]'), null);
+  env.doc.hidden = true;
+  env.docListeners.get('visibilitychange')();
+  assert.equal(env.frames.size, 0);
+  assert.equal(copy.style.visibility, 'hidden');
+  env.doc.hidden = false;
+  env.docListeners.get('visibilitychange')();
+  assert.equal(env.frames.size, 1);
+  assert.equal(copy.style.visibility, 'visible');
+  layer.destroy();
+  layer.destroy();
+  assert.equal(env.doc.body.querySelectorAll('clipPath').length, 0);
+  assert.equal(env.target.querySelector('.contrast-copy'), null);
+  assert.equal(env.frames.size + env.docListeners.size + env.winListeners.size, 0);
 });

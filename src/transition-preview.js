@@ -1,4 +1,5 @@
-import { shapeMatrix, projectShape, maskSvg } from './contrast.js';
+import { shapeMatrix, projectShape } from './contrast.js';
+import { createStableClip } from './stable-clip.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const IDREFS = new Set(['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-owns', 'aria-activedescendant', 'aria-details', 'aria-errormessage', 'for', 'form', 'headers', 'list', 'popovertarget', 'commandfor']);
@@ -72,8 +73,6 @@ export function sanitizePageClone(root, { prefix = `wipe-snapshot-${++snapshotSe
   return root;
 }
 
-const maskImage = (svg) => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-
 /** A static DOM snapshot of the incoming section, revealed by the wipe's path.
  * CSS positions the wrapper and section at the viewport origin; root owns opacity.
  */
@@ -86,10 +85,11 @@ export function createPageReveal({ container, shape, section } = {}) {
   element.setAttribute('aria-hidden', 'true');
   element.setAttribute('inert', '');
   element.inert = true;
-  element.style.cssText = 'visibility:hidden;pointer-events:none;user-select:none;mask-repeat:no-repeat;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;-webkit-mask-size:100% 100%;';
-  const transparent = maskImage(maskSvg(1, 1, []));
-  element.style.maskImage = transparent;
-  element.style.webkitMaskImage = transparent;
+  element.style.cssText = 'visibility:hidden;pointer-events:none;user-select:none;';
+  const clip = createStableClip({ document: doc, prefix: 'wipe-page' });
+  clip.update([]);
+  element.style.clipPath = clip.url;
+  element.style.webkitClipPath = clip.url;
   element.append(sanitizePageClone(section.cloneNode(true)));
   container.append(element);
 
@@ -114,9 +114,7 @@ export function createPageReveal({ container, shape, section } = {}) {
     };
     descriptor.matrix = shapeMatrix(descriptor);
     const projected = projectShape(descriptor, { left: 0, top: 0, width, height });
-    const image = maskImage(maskSvg(width, height, projected ? [projected] : []));
-    element.style.maskImage = image;
-    element.style.webkitMaskImage = image;
+    clip.update(projected ? [projected] : []);
     element.style.visibility = 'visible';
   }
 
@@ -140,8 +138,8 @@ export function createPageReveal({ container, shape, section } = {}) {
       if (sealed || destroyed) return;
       sealed = true;
       stop();
-      element.style.maskImage = 'none';
-      element.style.webkitMaskImage = 'none';
+      element.style.clipPath = 'none';
+      element.style.webkitClipPath = 'none';
       element.style.visibility = 'visible';
     },
     destroy() {
@@ -149,6 +147,7 @@ export function createPageReveal({ container, shape, section } = {}) {
       destroyed = true;
       stop();
       element.remove();
+      clip.destroy();
     },
   };
 }

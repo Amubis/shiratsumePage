@@ -89,42 +89,55 @@ function environment() {
     cancelAnimationFrame(id) { pending.delete(id); },
     getComputedStyle(shape) { reads++; return { transform: shape.transform, transformOrigin: '50px 50px' }; },
   };
-  const doc = { defaultView: win, createElement: (name) => E(name) };
+  const body = E('body');
+  const doc = {
+    defaultView: win, body,
+    createElement: (name) => E(name),
+    createElementNS: (namespace, name) => { const node = E(name); node.namespaceURI = namespace; return node; },
+  };
   const container = E('div');
   container.ownerDocument = doc;
   const section = E('section', { id: 'hello', class: 'page-section hello-section' }, [E('img', { src: './photo.jpg', loading: 'lazy' })]);
   const shape = { offsetWidth: 100, offsetHeight: 100, transform: 'matrix(1,0,0,1,0,0)', rect: { left: 20, top: 30, width: 100, height: 100 }, getBoundingClientRect() { return this.rect; } };
   return {
-    container, shape, section, pending,
+    container, shape, section, pending, doc,
     reads: () => reads,
     step(time) { now = time; const callbacks = [...pending.values()]; pending.clear(); callbacks.forEach((fn) => fn(time)); },
   };
 }
-const svgFrom = (image) => decodeURIComponent(image.slice('url("data:image/svg+xml,'.length, -2));
+const clips = (env) => walk(env.doc.body).filter((node) => node.localName === 'clipPath');
 
 test('the incoming DOM begins transparent, follows the actual growing clover, then seals and cleans up', () => {
   const env = environment();
   const reveal = createPageReveal(env);
   assert.equal(reveal.element.style.visibility, 'hidden');
-  assert.ok(!svgFrom(reveal.element.style.maskImage).includes('<path'));
+  const stableURL = reveal.element.style.clipPath;
+  assert.match(stableURL, /^url\("#live-clip-/);
+  assert.equal(clips(env).length, 1);
+  const clip = clips(env)[0];
+  assert.equal(clip.children.length, 0, 'an empty live clip hides the initial snapshot');
+  assert.equal(reveal.element.style.maskImage, undefined);
   assert.equal(reveal.element.getAttribute('aria-hidden'), 'true');
   assert.equal(reveal.element.inert, true);
   assert.equal(env.container.children.length, 1);
   reveal.start();
-  const firstMask = svgFrom(reveal.element.style.maskImage);
-  assert.ok(firstMask.includes(CLOVER_PATH));
-  assert.ok(firstMask.includes('transform="matrix(1 0 0 1 20 30)"'));
-  assert.equal(reveal.element.style.webkitMaskImage, reveal.element.style.maskImage);
+  const path = clip.children[0];
+  assert.equal(path.getAttribute('d'), CLOVER_PATH);
+  assert.equal(path.getAttribute('transform'), 'matrix(1 0 0 1 20 30)');
+  assert.equal(reveal.element.style.webkitClipPath, stableURL);
   reveal.start();
   assert.equal(env.pending.size, 1);
 
   env.shape.transform = 'matrix(2,0,0,2,-50,-50)';
   env.shape.rect = { left: -30, top: -20, width: 200, height: 200 };
   env.step(20);
-  assert.ok(svgFrom(reveal.element.style.maskImage).includes('transform="matrix(2 0 0 2 -30 -20)"'));
+  assert.equal(reveal.element.style.clipPath, stableURL, 'animation never replaces a resource URL');
+  assert.equal(clip.children[0], path, 'frames reuse the existing SVG path node');
+  assert.equal(path.getAttribute('transform'), 'matrix(2 0 0 2 -30 -20)');
   reveal.seal();
   assert.equal(env.pending.size, 0);
-  assert.equal(reveal.element.style.maskImage, 'none');
+  assert.equal(reveal.element.style.clipPath, 'none');
+  assert.equal(reveal.element.style.webkitClipPath, 'none');
   assert.equal(reveal.element.style.visibility, 'visible');
   assert.equal(env.container.children.length, 1);
   reveal.destroy();
@@ -132,7 +145,21 @@ test('the incoming DOM begins transparent, follows the actual growing clover, th
   reveal.start();
   assert.equal(env.container.children.length, 0);
   assert.equal(env.pending.size, 0);
+  assert.equal(clips(env).length, 0, 'destroy releases the document-level clip definition');
   assert.equal(env.section.getAttribute('id'), 'hello');
+});
+
+test('leaving the viewport clears geometry without changing the document clip URL', () => {
+  const env = environment();
+  const reveal = createPageReveal(env);
+  reveal.start();
+  const url = reveal.element.style.clipPath;
+  env.shape.rect = { left: 1000, top: 1000, width: 100, height: 100 };
+  env.step(20);
+  assert.equal(clips(env)[0].children.length, 0);
+  assert.equal(reveal.element.style.clipPath, url);
+  reveal.destroy();
+  assert.equal(clips(env).length, 0);
 });
 
 test('high-refresh displays are throttled to 60fps without freezing after 60 total updates', () => {

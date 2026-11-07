@@ -1,4 +1,5 @@
 import { CLOVER_PATH, SMALL_CLOVER_PATH } from './scene.js';
+import { createStableClip } from './stable-clip.js';
 
 const IDREFS = new Set(['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-owns', 'aria-activedescendant', 'for', 'form', 'headers']);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -164,21 +165,16 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
       shape.matrix = shapeMatrix(shape);
       return [shape];
     });
-    const layouts = records.map(({ copy }) => ({ copy, rect: copy.getBoundingClientRect() }));
-    const updates = layouts.map(({ copy, rect }) => {
+    const layouts = records.map(({ copy, clip }) => ({ copy, clip, rect: copy.getBoundingClientRect() }));
+    const updates = layouts.map(({ copy, clip, rect }) => {
       const projections = shapes.map((shape) => projectShape(shape, rect)).filter(Boolean);
-      return { copy, image: projections.length ? `url("data:image/svg+xml,${encodeURIComponent(maskSvg(rect.width, rect.height, projections))}")` : '' };
+      return { copy, clip, projections };
     });
-    for (const { copy, image } of updates) {
-      if (image) {
-        copy.style.maskImage = image;
-        copy.style.webkitMaskImage = image;
-        copy.style.visibility = 'visible';
-      } else {
-        copy.style.visibility = 'hidden';
-        copy.style.maskImage = 'none';
-        copy.style.webkitMaskImage = 'none';
-      }
+    for (const { copy, clip, projections } of updates) {
+      // The local SVG resource and CSS URL stay the same for the copy's lifetime.
+      // Only path geometry changes, avoiding WebKit's asynchronous image decode.
+      clip.update(projections);
+      copy.style.visibility = projections.length ? 'visible' : 'hidden';
     }
   }
 
@@ -195,18 +191,21 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
   function refresh() {
     if (destroyed) return;
     stop();
-    records.forEach(({ copy }) => copy.remove());
+    records.forEach(({ copy, clip }) => { copy.remove(); clip.destroy(); });
     const elements = Array.from(targets || scene.querySelectorAll('[data-contrast]')).filter((target) => target.isConnected && !target.closest('.contrast-copy'));
     const animationPairs = [];
     // Read styles and clone content before appending anything that affects selectors.
-    records = elements.map((target) => {
-      const style = win.getComputedStyle(target);
+    const layouts = elements.map((target) => ({ target, style: win.getComputedStyle(target) }));
+    records = layouts.map(({ target, style }) => {
       const copy = doc.createElement('span');
       copy.className = 'contrast-copy';
       copy.setAttribute('aria-hidden', 'true');
       copy.setAttribute('inert', '');
       copy.inert = true;
-      copy.style.cssText = 'position:absolute;inset:0;box-sizing:border-box;pointer-events:none;user-select:none;visibility:hidden;mask-repeat:no-repeat;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;-webkit-mask-size:100% 100%;';
+      copy.style.cssText = 'position:absolute;inset:0;box-sizing:border-box;pointer-events:none;user-select:none;visibility:hidden;';
+      const clip = createStableClip({ document: doc, prefix: 'contrast' });
+      copy.style.clipPath = clip.url;
+      copy.style.webkitClipPath = clip.url;
       for (const property of LAYOUT_PROPERTIES) copy.style[property] = style[property];
       for (const node of Array.from(target.childNodes)) {
         const clone = node.cloneNode(true);
@@ -215,7 +214,7 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
         sanitizeClone(clone);
         copy.append(clone);
       }
-      return { target, copy };
+      return { target, copy, clip };
     });
     records.forEach(({ target, copy }) => target.append(copy));
     syncCloneAnimations(animationPairs);
@@ -236,7 +235,7 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
       stop();
       win.removeEventListener('resize', refresh);
       doc.removeEventListener('visibilitychange', resume);
-      records.forEach(({ copy }) => copy.remove());
+      records.forEach(({ copy, clip }) => { copy.remove(); clip.destroy(); });
       records = [];
     },
   };

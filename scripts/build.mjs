@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(project, 'dist');
-const moduleNames = ['scene', 'media', 'navigation', 'content', 'motion', 'sidebar', 'contrast', 'transition-preview', 'owner-profile', 'video-reveal'];
+const moduleNames = ['scene', 'media', 'navigation', 'content', 'motion', 'sidebar', 'stable-clip', 'contrast', 'transition-preview', 'owner-profile', 'video-reveal'];
 const bundled = [];
 const emitted=new Set();
 function rewriteImports(source,available){

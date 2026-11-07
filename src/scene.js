@@ -157,81 +157,63 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
-/** Actual concentric ellipses, with circular dots placed by physical arc length. */
-export function generateEllipticalHalftoneDots({ width = 1440, height = 900, spacing = 46, maxRadius = 35 } = {}) {
+/** A rotated square lattice; only the positions rotate, not its ellipse field. */
+export function generateTiltedGridDots({ width = 1440, height = 900, spacing = 32, maxRadius = 35 } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
-  spacing = clamp(Number(spacing) || 46, 44, 48);
+  spacing = clamp(Number(spacing) || 32, 24, 48);
   maxRadius = Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
   const cx = width / 2;
   const cy = height / 2;
   const baseX = width * 0.45;
   const baseY = height * 0.435;
-  const minimumAxis = Math.min(baseX, baseY);
-  // The reference ellipse leaves 5% horizontal and 6.5% vertical margins.
-  // Expanding both axes by one physical spacing avoids compressed short-axis
-  // rows on portrait screens while keeping every individual ring elliptical.
-  const firstRing = Math.max(Math.ceil(-0.22 * Math.max(baseX, baseY) / spacing), Math.ceil((spacing / 2 - minimumAxis) / spacing));
-  const lastRing = Math.ceil((Math.hypot(cx + maxRadius, cy + maxRadius) - minimumAxis) / spacing) + 1;
+  const angle = 8 * Math.PI / 180;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const padding = Math.max(36, maxRadius + 1);
+  // Inverse-transform the expanded screen, rather than rotating a grid clipped
+  // to the original rectangle: that would leave bare triangles at its corners.
+  const corners = [[-padding, -padding], [width + padding, -padding], [-padding, height + padding], [width + padding, height + padding]]
+    .map(([x, y]) => ({ x: cosine * (x - cx) + sine * (y - cy), y: -sine * (x - cx) + cosine * (y - cy) }));
+  const firstX = Math.floor(Math.min(...corners.map(({ x }) => x)) / spacing);
+  const lastX = Math.ceil(Math.max(...corners.map(({ x }) => x)) / spacing);
+  const firstY = Math.floor(Math.min(...corners.map(({ y }) => y)) / spacing);
+  const lastY = Math.ceil(Math.max(...corners.map(({ y }) => y)) / spacing);
   const dots = [];
-  for (let ring = firstRing; ring <= lastRing; ring += 1) {
-    const ellipseX = baseX + ring * spacing;
-    const ellipseY = baseY + ring * spacing;
-    const perimeter = Math.PI * (3 * (ellipseX + ellipseY) - Math.sqrt((3 * ellipseX + ellipseY) * (ellipseX + 3 * ellipseY)));
-    const segments = Math.max(256, Math.ceil(perimeter / 3));
-    const lengths = [0];
-    let previousX = ellipseX;
-    let previousY = 0;
-    for (let index = 1; index <= segments; index += 1) {
-      const angle = 2 * Math.PI * index / segments;
-      const x = Math.cos(angle) * ellipseX;
-      const y = Math.sin(angle) * ellipseY;
-      lengths.push(lengths.at(-1) + Math.hypot(x - previousX, y - previousY));
-      [previousX, previousY] = [x, y];
-    }
-    const total = lengths.at(-1);
-    const count = Math.max(6, Math.ceil(total / spacing));
-    const step = total / count;
-    const phase = Math.abs(ring) % 2 ? 0.5 : 0;
-    for (let index = 0; index < count; index += 1) {
-      const target = (index + phase) * step;
-      let low = 0;
-      let high = segments;
-      while (high - low > 1) {
-        const middle = (low + high) >> 1;
-        if (lengths[middle] <= target) low = middle;
-        else high = middle;
-      }
-      const fraction = (target - lengths[low]) / (lengths[high] - lengths[low]);
-      const angle = 2 * Math.PI * (low + fraction) / segments;
-      const x = cx + Math.cos(angle) * ellipseX;
-      const y = cy + Math.sin(angle) * ellipseY;
-      if (x < -maxRadius || x > width + maxRadius || y < -maxRadius || y > height + maxRadius) continue;
+  for (let gridY = firstY; gridY <= lastY; gridY += 1) {
+    for (let gridX = firstX; gridX <= lastX; gridX += 1) {
+      const x = cx + cosine * gridX * spacing - sine * gridY * spacing;
+      const y = cy + sine * gridX * spacing + cosine * gridY * spacing;
+      if (x < -padding || x > width + padding || y < -padding || y > height + padding) continue;
       const edgeRho = Math.hypot((x - cx) / baseX, (y - cy) / baseY);
       const amount = clamp((edgeRho - 0.78) / 0.22, 0, 1);
       const radius = edgeRho >= 1 ? maxRadius : maxRadius * amount ** 2;
       if (radius < 0.18) continue;
-      dots.push({ x, y, radius, ring, rho: 1 + ring * spacing / minimumAxis, ellipseX, ellipseY, edgeRho });
+      dots.push({ x, y, radius, gridX, gridY, rho: edgeRho, edgeRho });
     }
   }
   return dots;
 }
 
-/** Compatibility alias for the previous internal helper name. */
-export function generateRadialHalftoneDots(options) {
-  return generateEllipticalHalftoneDots(options);
+/** Compatibility aliases for the previous internal helper names. */
+export function generateEllipticalHalftoneDots(options) {
+  return generateTiltedGridDots(options);
 }
 
-/** Large outer ring dots merge into one frame; soft retains the old grid. */
+export function generateRadialHalftoneDots(options) {
+  return generateTiltedGridDots(options);
+}
+
+/** Large outer dots merge into one frame; soft retains the previous grid. */
 export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadius, profile = 'solid' } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
   const soft = profile === 'soft';
-  spacing = clamp(Number(spacing) || (soft ? 34 : 46), soft ? 32 : 44, soft ? 36 : 48);
+  spacing = clamp(Number(spacing) || (soft ? 34 : 32), soft ? 32 : 24, soft ? 36 : 48);
   maxRadius = soft ? clamp(Number(maxRadius) || 17, 14, 18) : Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
   if (!soft) {
-    const dots = generateEllipticalHalftoneDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, ring, rho, ellipseX, ellipseY }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" data-ring="${ring}" data-rho="${rho.toFixed(6)}" data-ellipse-x="${ellipseX.toFixed(3)}" data-ellipse-y="${ellipseY.toFixed(3)}"/>`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="solid" data-layout="elliptical" data-ring-shape="ellipse">${dots.join('')}</svg>`;
+    const dots = generateTiltedGridDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, gridX, gridY, edgeRho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" data-grid-x="${gridX}" data-grid-y="${gridY}" data-rho="${edgeRho.toFixed(6)}"/>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="solid" data-layout="tilted-grid" data-angle="8">${dots.join('')}</svg>`;
   }
   const dots = [];
   const first = soft ? 0 : -spacing;
