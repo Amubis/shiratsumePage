@@ -20,13 +20,9 @@
   background: transparent;
   perspective: 1100px;
   isolation: isolate;
-  transition: transform .3s cubic-bezier(.2,.8,.2,1.35);
+  transition: none;
   -webkit-user-select: none;
   user-select: none;
-}
-
-.outfit-stage:active {
-  transform: translateY(3px) scale(.99);
 }
 
 .outfit-stage:focus-visible {
@@ -109,34 +105,18 @@
   text-align: center;
 }
 
-.outfit-caption {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 11px;
-  margin: 0 0 3px;
-  font-size: 11px;
-  color: var(--ink);
-  letter-spacing: .08em;
-}
-
-.outfit-count {
-  font-size: 8px;
-  color: var(--theme-dark);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: .12em;
-}
-
 .outfit-dots {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  height: 56px;
+  width: 176px;
+  margin-inline: auto;
+  touch-action: manipulation;
 }
 
 .outfit-dot {
-  display: grid;
-  place-items: center;
+  position: absolute;
+  top: 6px;
+  display: block;
   width: 44px;
   height: 44px;
   padding: 0;
@@ -146,30 +126,45 @@
 }
 
 .outfit-dot-circle {
+  position: absolute;
+  top: 50%;
+  left: 22px;
   display: block;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--theme-dark);
-  opacity: .28;
-  transition: transform .25s cubic-bezier(.2,.8,.2,1.4), opacity .2s var(--easing), background .2s var(--easing);
+  background: color-mix(in srgb, var(--theme) calc(var(--dot-influence, 0) * 75%), var(--theme-dark));
+  opacity: .3;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-.outfit-dot.is-selected .outfit-dot-circle {
-  background: var(--theme-dark);
-  transform: scale(1.65);
-  opacity: 1;
+.outfit-rail-clover {
+  position: absolute;
+  top: 50%;
+  left: 44px;
+  z-index: 2;
+  display: block;
+  width: 17px;
+  height: 17px;
+  color: var(--theme);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 @media (hover: hover) {
-  .outfit-stage:hover { transform: translateY(-2px); }
   .outfit-stage:hover .outfit-cue-art { transform: rotate(24deg); }
-  .outfit-cue-art { transition: transform .4s var(--easing); }
-  .outfit-dot:hover .outfit-dot-circle { transform: scale(1.5); opacity: .8; }
-  .outfit-dot.is-selected:hover .outfit-dot-circle { transform: scale(1.85); opacity: 1; }
+  .outfit-cue-art { transition: transform .4s var(--water-easing, var(--easing)); }
 }
 
-.outfit-dot:active .outfit-dot-circle { transform: scale(.75); }
+.outfit-dot:focus-visible { outline: none; }
+.outfit-dot:focus-visible .outfit-dot-circle {
+  outline: 1px solid var(--theme-dark);
+  outline-offset: 7px;
+}
+.outfit-dots:has(.outfit-dot:focus-visible) .outfit-rail-clover {
+  filter: drop-shadow(0 0 1px var(--theme-dark));
+}
 
 @media (max-width: 760px) {
   .outfit-stage {
@@ -181,7 +176,6 @@
   .outfit-cue { right: 7%; }
   .outfit-cue-art { width: 57px; height: 57px; }
   .outfit-cue-arrow { top: 16px; left: 16px; }
-  .outfit-caption { font-size: 10px; }
 }
 
 @media (max-height: 680px) and (min-width: 761px) {
@@ -193,6 +187,4 @@
   .outfit-stage,
   .outfit-cue-art,
   .outfit-dot-circle { transition: none; }
-  .outfit-stage:hover,
-  .outfit-stage:active { transform: none; }
 }

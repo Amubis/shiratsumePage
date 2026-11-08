@@ -1,4 +1,4 @@
-import { cloverSVG, createCloverScene, createHalftoneSVG, createHalftoneSeamSVG, halftoneShadowSVG } from './scene.js';
+import { cloverSVG, createCloverScene, createHalftoneSVG, createHalftoneSeamSVG, halftoneShadowSVG, HALFTONE_GEOMETRY } from './scene.js';
 import { createSidebar } from './sidebar.js';
 import { createContrastLayer } from './contrast.js';
 import { coverScale, exploreGrowthFrames, EXPLORE_TIMING } from './motion.js';
@@ -46,6 +46,8 @@ $$('[data-clover]').forEach((element) => {
 });
 function renderHalftone(){
   $('.halftone-vignette').innerHTML=createHalftoneSVG({width:innerWidth,height:innerHeight,profile:MODELS[modelId].preview?'soft':'connected'});
+  root.style.setProperty('--shade-rx',`${HALFTONE_GEOMETRY.innerWidth / HALFTONE_GEOMETRY.innerScale * 50}%`);
+  root.style.setProperty('--shade-ry',`${HALFTONE_GEOMETRY.innerHeight / HALFTONE_GEOMETRY.innerScale * 50}%`);
   if (!MODELS[modelId].preview) $('.intro-halftone-seam').innerHTML=createHalftoneSeamSVG({width:innerWidth,height:innerHeight});
 }
 renderHalftone();
@@ -418,7 +420,7 @@ ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
 outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
 videoReveal=createVideoReveal({
   hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
-  targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
+  targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.hero-edge-shade'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
   onStart(){finishIntro();ownerProfile.close();userPaused=false;void player.resume();},
   onComplete(){setWatching(true);},
 });

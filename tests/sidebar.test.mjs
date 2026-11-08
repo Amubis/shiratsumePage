@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getSidebarLayout, getTransformPose, createSidebar } from '../src/sidebar.js';
+import { getSidebarLayout, getSidebarPointerPosition, getSidebarPointerIndex, getTransformPose, createSidebar } from '../src/sidebar.js';
 
 class FakeNode {
   constructor() {
@@ -156,12 +156,16 @@ test('sidebar hierarchy has a pronounced size falloff and tighter distant spacin
   assert.deepEqual(items.slice(0, 4).map((item) => item.opacity), [0.55, 0.68, 0.85, 1]);
 });
 
-test('hover presentation never moves hit positions, and the current page is distinct from hover', (t) => {
+test('hover moves spacing and size together while the actual page remains distinct', (t) => {
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
   const positions = f.links.map((row) => row.style.getPropertyValue('--nav-y'));
   f.links[3].emit('pointerenter');
-  assert.deepEqual(f.links.map((row) => row.style.getPropertyValue('--nav-y')), positions);
+  const hovered = f.links.map((row) => parseFloat(row.style.getPropertyValue('--nav-y')));
+  assert.notDeepEqual(f.links.map((row) => row.style.getPropertyValue('--nav-y')), positions);
+  assert.equal(hovered[3], parseFloat(positions[3]), 'the selected text stays on its stable input anchor');
+  assert.equal(hovered[3] - hovered[2], 62);
+  assert.equal(hovered[1] - hovered[0], 24, 'labels far from the hovered target pack tightly');
   assert.equal(f.links[3].classList.contains('is-highlighted'), true);
   assert.equal(f.links[3].style.getPropertyValue('--nav-font-size'), '27px');
   assert.equal(f.links[1].getAttribute('aria-current'), 'page');
@@ -169,6 +173,99 @@ test('hover presentation never moves hit positions, and the current page is dist
   f.list.emit('pointerleave');
   assert.equal(f.links[1].classList.contains('is-highlighted'), true);
   assert.equal(f.mobile.textContent, '认识一下');
+});
+
+test('fractional pointer proximity smoothly changes neighboring type and gaps', () => {
+  const anchors = [-62, 0, 68, 94];
+  const resting = getSidebarLayout(4, 1, 1, { focusPosition: 1, anchors });
+  const drifting = getSidebarLayout(4, 1, 1, { focusPosition: 1.3, anchors });
+  assert.equal(drifting[1].y, 0);
+  assert.equal(drifting[1].fontSize, 27);
+  assert.ok(drifting[2].fontSize > resting[2].fontSize);
+  assert.ok(drifting[0].fontSize < resting[0].fontSize);
+  assert.notEqual(drifting[2].y - drifting[1].y, resting[2].y - resting[1].y);
+  assert.equal(getSidebarPointerPosition(34, anchors), 1.5);
+  assert.equal(getSidebarPointerIndex(80, anchors, 3), 3, 'small boundary jitter keeps the last target');
+  assert.equal(getSidebarPointerIndex(77, anchors, 3), 2);
+  assert.equal(getSidebarPointerIndex(80, anchors, 2), 2);
+  assert.equal(getSidebarPointerIndex(85, anchors, 2), 3);
+});
+
+test('stable panel mapping ignores animated row entry and the clover snaps to a label', (t) => {
+  const f = sidebarFixture(t);
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  assert.equal(f.links[3].classList.contains('is-highlighted'), true);
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px');
+  const lastSelection = f.selected.length;
+  f.links[1].emit('pointerenter', { clientY: 234 });
+  f.list.emit('pointermove', { clientY: 234 });
+  assert.equal(f.links[3].classList.contains('is-highlighted'), true);
+  assert.equal(f.selected.length, lastSelection, 'moving rows cannot feed a selection loop');
+  f.list.emit('pointermove', { clientY: 220 });
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px', 'the clover never follows a fractional pointer coordinate');
+  f.list.emit('pointermove', { clientY: 217 });
+  assert.equal(f.links[2].classList.contains('is-highlighted'), true);
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '68px');
+  assert.equal(f.links[1].getAttribute('aria-current'), 'page');
+  f.list.emit('pointerleave');
+  assert.equal(f.links[1].classList.contains('is-highlighted'), true);
+  assert.equal(f.list.classList.contains('is-pointer-tracking'), false);
+});
+
+test('pointer clicks activate the logical highlighted link while keyboard clicks stay native', (t) => {
+  const f = sidebarFixture(t);
+  const clicked = [];
+  f.links.forEach((row, index) => { row.click = () => clicked.push(index); });
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  let prevented = 0;
+  let stopped = 0;
+  const fields = { target: f.links[0], detail: 1, button: 0, preventDefault: () => { prevented += 1; }, stopPropagation: () => { stopped += 1; } };
+  f.list.emit('click', fields);
+  assert.deepEqual(clicked, [3]);
+  assert.equal(prevented, 1);
+  assert.equal(stopped, 1);
+  f.list.emit('click', { ...fields, detail: 0 });
+  f.list.emit('click', { ...fields, ctrlKey: true });
+  assert.deepEqual(clicked, [3]);
+  assert.equal(prevented, 1);
+});
+
+test('a rapid click resolves its own coordinate before a queued pointer frame', (t) => {
+  const f = sidebarFixture(t);
+  let queued = null;
+  f.win.requestAnimationFrame = (callback) => { queued = callback; return 1; };
+  f.win.cancelAnimationFrame = () => { queued = null; };
+  const clicked = [];
+  f.links.forEach((row, index) => { row.click = () => clicked.push(index); });
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  f.list.emit('pointermove', { clientY: 208 });
+  assert.ok(queued);
+  assert.equal(f.links[3].classList.contains('is-highlighted'), true);
+  f.list.emit('click', { detail: 1, button: 0, clientY: 140, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(clicked, [1]);
+  assert.equal(queued, null);
+  assert.equal(f.links[1].classList.contains('is-highlighted'), true);
+});
+
+test('keyboard focus can take priority over hover and touch never redirects its click', (t) => {
+  const f = sidebarFixture(t);
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  f.doc.emit('keydown', { key: 'Tab' });
+  f.links[0].emit('focus');
+  assert.equal(f.links[0].classList.contains('is-highlighted'), true);
+  assert.equal(f.links[1].getAttribute('aria-current'), 'page');
+  f.list.emit('pointermove', { clientY: 234 });
+  assert.equal(f.links[3].classList.contains('is-highlighted'), true);
+  f.root.emit('pointerdown', { pointerType: 'touch' });
+  assert.equal(f.links[1].classList.contains('is-highlighted'), true);
+  f.list.emit('click', { detail: 1, button: 0, clientY: 234,
+    preventDefault() { assert.fail('a touch click must retain its actual link'); },
+    stopPropagation() { assert.fail('a touch click must retain its actual link'); },
+  });
 });
 
 test('bubble slots retain their coordinates after sibling removal and continuously refill', (t) => {
@@ -206,7 +303,7 @@ test('bubble slots retain their coordinates after sibling removal and continuous
   assert.equal(f.timers.size, 0);
 });
 
-test('rotation resumes the visible interrupted pose and changes direction on exit', (t) => {
+test('entry and exit spin fully while switching targets rolls from the visible pose', (t) => {
   const f = sidebarFixture(t);
   f.links[0].emit('pointerenter');
   assert.match(f.animations[0].frames.at(-1).transform, /rotate\(-360deg\)/);
@@ -214,11 +311,12 @@ test('rotation resumes the visible interrupted pose and changes direction on exi
   f.links[2].emit('pointerenter');
   assert.equal(f.animations[0].cancelled, true);
   assert.match(f.animations[1].frames[0].transform, /rotate\(-90deg\)/);
-  assert.match(f.animations[1].frames.at(-1).transform, /rotate\(-450deg\)/);
+  assert.match(f.animations[1].frames.at(-1).transform, /rotate\(-50deg\)/);
+  assert.match(f.animations[1].frames[1].transform, /rotate\(-44deg\)/, 'the small roll overshoots before settling');
   f.list.emit('pointerleave');
   assert.equal(f.animations[1].cancelled, true);
   assert.match(f.animations[2].frames.at(-1).transform, /rotate\(270deg\)/);
-  assert.ok(f.animations.every((animation) => animation.options.duration === 450));
+  assert.deepEqual(f.animations.map((animation) => animation.options.duration), [450, 520, 450]);
   assert.equal(f.animations.filter((animation) => !animation.cancelled).length, 1);
 });
 

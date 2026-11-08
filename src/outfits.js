@@ -28,10 +28,44 @@ export function wrapOutfitIndex(index, length = OUTFITS.length) {
   return ((index % length) + length) % length;
 }
 
+/** Visual spacing is independent from the fixed, accessible 44px button slots. */
+export function outfitRailGeometry(position, count = OUTFITS.length, slot = 44) {
+  const focus = Math.max(-.45, Math.min(count - .55, Number(position) || 0));
+  const influence = (distance) => Math.max(0, 1 - Math.abs(distance) / 1.3);
+  const gaps = Array.from({ length: Math.max(0, count - 1) }, (_, index) => 21 + 15 * influence(index + .5 - focus));
+  let x = count * slot / 2 - gaps.reduce((sum, gap) => sum + gap, 0) / 2;
+  const dots = Array.from({ length: count }, (_, index) => {
+    if (index) x += gaps[index - 1];
+    const distance = Math.abs(index - focus);
+    const amount = influence(distance);
+    return { index, x, size: 3.5 + 4 * amount, opacity: (.25 + .65 * amount) * Math.min(1, distance / .24), influence: amount };
+  });
+  const lower = Math.max(0, Math.min(count - 2, Math.floor(focus)));
+  const cloverX = count === 1 ? dots[0].x : dots[lower].x + (dots[lower + 1].x - dots[lower].x) * (focus - lower);
+  return { position: focus, width: count * slot, dots, cloverX, cloverSize: 17 };
+}
+
+/** Pointer clicks resolve against what is actually painted, including moving gaps. */
+export function nearestOutfitDot(x, geometry) {
+  return geometry.dots.reduce((best, dot) => Math.abs(dot.x - x) < Math.abs(best.x - x) ? dot : best).index;
+}
+
+function railPositionAtX(x, count) {
+  let lower = -.45;
+  let upper = count - .55;
+  for (let step = 0; step < 18; step += 1) {
+    const middle = (lower + upper) / 2;
+    if (outfitRailGeometry(middle, count).cloverX < x) lower = middle;
+    else upper = middle;
+  }
+  return (lower + upper) / 2;
+}
+
 /** A single-view carousel. Supply a real back image in OUTFITS before adding another view. */
 export function createOutfitShowcase({ container, language = 'zh', reducedMotion = () => false, onChange = () => {} } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An outfit showcase container is required.');
   const doc = container.ownerDocument;
+  const win = doc.defaultView;
   const uid = `outfit-showcase-${++outfitSerial}`;
   const listeners = [];
   const preloads = new Map();
@@ -44,6 +78,20 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   let destroyed = false;
   let serial = 0;
   let pressAnimation;
+  let pressed = false;
+  let pressReleased = false;
+  let pressPointer = null;
+  let pressBounds = null;
+  let keyboardHeld = false;
+  let suppressClick = false;
+  let railPosition = 0;
+  let railTarget = 0;
+  let railVelocity = 0;
+  let railRotation = 0;
+  let railFrame = null;
+  let railTime = null;
+  let railHovered = false;
+  let railPointerX = null;
 
   function element(tag, className) {
     const node = doc.createElement(tag);
@@ -69,8 +117,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   const mask = svgElement('mask', { id: `${uid}-mask`, maskUnits: 'userSpaceOnUse', x: '0', y: '0', width: '941', height: '1672', 'mask-type': 'alpha', style: 'mask-type:alpha' });
   const shadowSource = svgElement('image', { x: '0', y: '0', width: '941', height: '1672', preserveAspectRatio: 'xMidYMid meet', href: OUTFITS[0].front });
   mask.append(shadowSource);
-  const pattern = svgElement('pattern', { id: `${uid}-dots`, width: '16', height: '16', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
-  pattern.append(svgElement('circle', { cx: '8', cy: '8', r: '6.6', fill: 'currentColor' }));
+  const pattern = svgElement('pattern', { id: `${uid}-dots`, width: '26', height: '26', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
+  pattern.append(svgElement('circle', { cx: '13', cy: '13', r: '14', fill: 'currentColor' }));
   defs.append(mask, pattern);
   const shadowGroup = svgElement('g', { mask: `url(#${uid}-mask)`, opacity: '.36' });
   shadowGroup.append(svgElement('rect', { width: '941', height: '1672', fill: `url(#${uid}-dots)` }));
@@ -90,27 +138,42 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   cue.append(cueArt, cueLabel);
   stage.append(art, cue);
   const footer = element('div', 'outfit-footer');
-  const caption = element('p', 'outfit-caption');
-  const count = element('span', 'outfit-count');
-  const name = element('span', 'outfit-name');
-  caption.append(count, name);
   const dots = element('div', 'outfit-dots');
   dots.setAttribute('role', 'group');
+  const railClover = element('span', 'outfit-rail-clover');
+  railClover.setAttribute('aria-hidden', 'true');
+  railClover.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'small' });
   const dotButtons = OUTFITS.map((outfit, index) => {
     const button = element('button', 'outfit-dot');
     button.type = 'button';
+    button.style.left = `${index * 44}px`;
     const circle = element('span', 'outfit-dot-circle');
     circle.setAttribute('aria-hidden', 'true');
     button.append(circle);
     dots.append(button);
-    bind(button, 'click', () => { void goTo(index); });
+    bind(button, 'click', (event) => {
+      event.stopPropagation();
+      const selected = event.detail && Number.isFinite(event.clientX) ? pickPointerDot(event.clientX) : index;
+      void goTo(selected);
+    });
+    bind(button, 'focus', () => { if (!railHovered) targetRail(index); });
+    bind(button, 'blur', () => { if (!railHovered) targetRail(currentIndex); });
+    bind(button, 'keydown', (event) => {
+      const targets = { ArrowLeft: wrapOutfitIndex(index - 1), ArrowRight: wrapOutfitIndex(index + 1), Home: 0, End: OUTFITS.length - 1 };
+      if (!Object.hasOwn(targets, event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dotButtons[targets[event.key]].focus?.();
+      void goTo(targets[event.key]);
+    });
     return button;
   });
+  dots.append(railClover);
   const status = element('p', 'outfit-status sr-only');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   status.setAttribute('aria-atomic', 'true');
-  footer.append(caption, dots);
+  footer.append(dots);
   container.replaceChildren(stage, footer, status);
 
   function renderLabels(announce = false) {
@@ -122,8 +185,6 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     stage.setAttribute('aria-busy', String(busy));
     stage.disabled = !enabled;
     image.alt = `しらつめ · ${label} · ${copy.front}`;
-    count.textContent = number;
-    name.textContent = label;
     cueLabel.textContent = copy.hint;
     cue.hidden = interacted;
     dots.setAttribute('aria-label', copy.choose);
@@ -135,6 +196,100 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     });
     if (announce) status.textContent = `${label} · ${number}`;
   }
+
+  function paintRail() {
+    const geometry = outfitRailGeometry(railPosition);
+    dots.style.width = `${geometry.width}px`;
+    geometry.dots.forEach((dot) => {
+      const circle = dotButtons[dot.index].children[0];
+      circle.style.left = `${dot.x - dot.index * 44}px`;
+      circle.style.width = `${dot.size}px`;
+      circle.style.height = `${dot.size}px`;
+      circle.style.opacity = String(dot.opacity);
+      circle.style.setProperty('--dot-influence', String(dot.influence));
+    });
+    railClover.style.left = `${geometry.cloverX}px`;
+    railClover.style.transform = `translate(-50%, -50%) rotate(${railRotation}deg)`;
+  }
+
+  function stopRail() {
+    if (railFrame !== null) win?.cancelAnimationFrame?.(railFrame);
+    railFrame = null;
+    railTime = null;
+  }
+
+  function rollBetween(from, to) {
+    const previous = outfitRailGeometry(from);
+    const next = outfitRailGeometry(to);
+    return (next.cloverX - previous.cloverX) / (next.cloverSize / 2) * 180 / Math.PI;
+  }
+
+  function targetRail(target, immediate = false) {
+    if (destroyed) return;
+    railTarget = Math.max(-.45, Math.min(OUTFITS.length - .55, target));
+    if (immediate || reducedMotion() || !win?.requestAnimationFrame) {
+      stopRail();
+      railRotation += rollBetween(railPosition, railTarget);
+      railPosition = railTarget;
+      railVelocity = 0;
+      paintRail();
+      return;
+    }
+    if (railFrame !== null) return;
+    const tick = (time) => {
+      railFrame = null;
+      if (destroyed || !enabled) { railTime = null; return; }
+      const dt = Math.min(1 / 30, Math.max(1 / 240, railTime === null ? 1 / 60 : (time - railTime) / 1000));
+      railTime = time;
+      const before = railPosition;
+      const stiffness = railHovered ? 350 : 210;
+      const damping = railHovered ? 32 : 21;
+      railVelocity += (stiffness * (railTarget - railPosition) - damping * railVelocity) * dt;
+      railPosition += railVelocity * dt;
+      railRotation += rollBetween(before, railPosition);
+      paintRail();
+      if (Math.abs(railPosition - railTarget) < .0015 && Math.abs(railVelocity) < .012) {
+        railRotation += rollBetween(railPosition, railTarget);
+        railPosition = railTarget;
+        railVelocity = 0;
+        railTime = null;
+        paintRail();
+        return;
+      }
+      railFrame = win.requestAnimationFrame(tick);
+    };
+    railFrame = win.requestAnimationFrame(tick);
+  }
+
+  function localRailX(clientX) {
+    const bounds = dots.getBoundingClientRect();
+    return (clientX - bounds.left) * (OUTFITS.length * 44 / (bounds.width || OUTFITS.length * 44));
+  }
+
+  function pickPointerDot(clientX) {
+    return nearestOutfitDot(localRailX(clientX), outfitRailGeometry(railPosition));
+  }
+
+  function followRailPointer(event) {
+    if (!enabled || event.pointerType === 'touch' || !Number.isFinite(event.clientX)) return;
+    railHovered = true;
+    railPointerX = localRailX(event.clientX);
+    const geometry = outfitRailGeometry(railPosition);
+    const nearest = geometry.dots[nearestOutfitDot(railPointerX, geometry)];
+    targetRail(Math.abs(railPointerX - nearest.x) <= 9 ? nearest.index : railPositionAtX(railPointerX, OUTFITS.length));
+  }
+
+  bind(dots, 'pointerenter', followRailPointer);
+  bind(dots, 'pointermove', followRailPointer);
+  bind(dots, 'pointerleave', () => {
+    railHovered = false;
+    railPointerX = null;
+    targetRail(currentIndex);
+  });
+  bind(dots, 'click', (event) => {
+    if (!event.detail || !Number.isFinite(event.clientX)) return;
+    void goTo(pickPointerDot(event.clientX));
+  });
 
   function markInteracted() {
     interacted = true;
@@ -178,7 +333,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     if (destroyed || !enabled || busy || !Number.isInteger(index)) return false;
     const destination = wrapOutfitIndex(index);
     if (interaction) markInteracted();
-    if (destination === currentIndex) return true;
+    if (destination === currentIndex) { if (pressReleased) cancelPress(); return true; }
     const request = ++serial;
     const direction = wrapOutfitIndex(destination - currentIndex) <= OUTFITS.length / 2 ? 1 : -1;
     busy = true;
@@ -187,10 +342,14 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     if (destroyed || !enabled || request !== serial) return false;
     if (!loaded) {
       busy = false;
+      cancelPress();
       stage.setAttribute('aria-busy', 'false');
       status.textContent = OUTFIT_COPY[locale].failure;
       return false;
     }
+    // A slow connection leaves the released portrait quietly compressed until
+    // its replacement is decoded. Rebound and flip then begin together.
+    if (pressReleased || pressed) reboundPress();
     if (animate && !reducedMotion()) await animateArt([
       { transform: 'translateX(0) rotateY(0deg)', opacity: 1 },
       { transform: `translateX(${-direction * 22}px) rotateY(${-direction * 66}deg)`, opacity: 0 },
@@ -200,10 +359,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     image.src = OUTFITS[currentIndex].front;
     shadowSource.setAttribute('href', OUTFITS[currentIndex].front);
     renderLabels(true);
+    if (!railHovered) targetRail(currentIndex);
     onChange(currentIndex, OUTFITS[currentIndex]);
     if (animate && !reducedMotion()) await animateArt([
       { transform: `translateX(${direction * 22}px) rotateY(${direction * 66}deg)`, opacity: 0 },
-      { transform: 'translateX(-2px) rotateY(-2deg)', opacity: 1, offset: .82 },
+      { transform: `translateX(${-direction * 2}px) rotateY(${-direction * 3}deg) rotateZ(${-direction * .8}deg)`, opacity: 1, offset: .8 },
       { transform: 'translateX(0) rotateY(0deg)', opacity: 1 },
     ], 320);
     if (destroyed || !enabled || request !== serial) return false;
@@ -213,26 +373,112 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     return true;
   }
 
-  function bounce() {
-    if (destroyed || !enabled || busy || reducedMotion() || !stage.animate) return;
+  function holdPress() {
+    if (destroyed || !enabled || busy) return false;
     pressAnimation?.cancel();
-    pressAnimation = stage.animate([
-      { transform: 'translateY(3px) scale(.99)' },
-      { transform: 'translateY(-4px) scale(1.004)', offset: .55 },
-      { transform: 'translateY(0) scale(1)' },
-    ], { duration: 360, easing: 'cubic-bezier(.22,.7,.3,1)' });
-    pressAnimation.finished?.catch(() => {});
+    pressed = true;
+    pressReleased = false;
+    stage.classList.add('is-pressed');
+    stage.style.transform = 'scale(.94)';
+    if (!reducedMotion() && stage.animate) {
+      pressAnimation = stage.animate([{ transform: 'scale(1)' }, { transform: 'scale(.94)' }], { duration: 110, easing: 'cubic-bezier(.2,.65,.3,1)', fill: 'forwards' });
+      pressAnimation.finished?.catch(() => {});
+    }
+    return true;
   }
 
-  bind(stage, 'click', () => { bounce(); void goTo(currentIndex + 1); });
+  function releasePointerCapture() {
+    const id = pressPointer;
+    pressPointer = null;
+    if (id !== null && stage.hasPointerCapture?.(id)) stage.releasePointerCapture(id);
+  }
+
+  function cancelPress() {
+    pressed = false;
+    pressReleased = false;
+    keyboardHeld = false;
+    pressBounds = null;
+    releasePointerCapture();
+    pressAnimation?.cancel();
+    pressAnimation = null;
+    stage.classList.remove('is-pressed');
+    stage.style.transform = '';
+  }
+
+  function reboundPress() {
+    pressed = false;
+    pressReleased = false;
+    keyboardHeld = false;
+    releasePointerCapture();
+    pressAnimation?.cancel();
+    stage.classList.remove('is-pressed');
+    stage.style.transform = '';
+    if (reducedMotion() || !stage.animate) { pressAnimation = null; return; }
+    const animation = stage.animate([
+      { transform: 'scale(.94)' },
+      { transform: 'scale(1.06)', offset: .34 },
+      { transform: 'scale(.995)', offset: .74 },
+      { transform: 'scale(1)' },
+    ], { duration: 480, easing: 'cubic-bezier(.2,.65,.3,1)', fill: 'both' });
+    pressAnimation = animation;
+    animation.finished.then(() => {
+      if (pressAnimation === animation) { animation.cancel(); pressAnimation = null; }
+    }).catch(() => {});
+  }
+
+  bind(stage, 'pointerdown', (event) => {
+    const bounds = stage.getBoundingClientRect?.();
+    if ((event.button ?? 0) !== 0 || !holdPress()) return;
+    pressBounds = bounds;
+    suppressClick = false;
+    pressPointer = event.pointerId ?? null;
+    if (pressPointer !== null) stage.setPointerCapture?.(pressPointer);
+  });
+  bind(stage, 'pointerup', (event) => {
+    if (!pressed || (pressPointer !== null && event.pointerId !== pressPointer)) return;
+    const rect = pressBounds || stage.getBoundingClientRect?.();
+    const outside = rect && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+      && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom);
+    pressed = false;
+    if (outside) { suppressClick = true; cancelPress(); return; }
+    pressReleased = true;
+    releasePointerCapture();
+  });
+  bind(stage, 'pointercancel', () => { suppressClick = true; cancelPress(); });
+  bind(stage, 'lostpointercapture', () => { if (pressed) { suppressClick = true; cancelPress(); } });
+  bind(stage, 'blur', () => { if (keyboardHeld || pressed) cancelPress(); });
+  bind(stage, 'click', () => {
+    if (suppressClick) { suppressClick = false; return; }
+    if (destroyed || !enabled || busy) return;
+    if (!pressReleased) { holdPress(); pressed = false; pressReleased = true; }
+    void goTo(currentIndex + 1);
+  });
   bind(stage, 'keydown', (event) => {
+    // A cancelled pointer gesture must not swallow a later keyboard activation.
+    if (event.key === 'Enter') { suppressClick = false; return; }
+    if (event.key === ' ' || event.key === 'Spacebar') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat && holdPress()) keyboardHeld = true;
+      return;
+    }
     const targets = { ArrowLeft: currentIndex - 1, ArrowRight: currentIndex + 1, Home: 0, End: OUTFITS.length - 1 };
     if (!Object.hasOwn(targets, event.key)) return;
     event.preventDefault();
     event.stopPropagation();
     void goTo(targets[event.key]);
   });
+  bind(stage, 'keyup', (event) => {
+    if ((event.key !== ' ' && event.key !== 'Spacebar') || !keyboardHeld) return;
+    event.preventDefault();
+    event.stopPropagation();
+    keyboardHeld = false;
+    pressed = false;
+    pressReleased = true;
+    void goTo(currentIndex + 1);
+  });
   renderLabels();
+  targetRail(currentIndex, true);
   void preload(0).then(() => { if (!destroyed) void preload(1); });
 
   return {
@@ -253,7 +499,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
         busy = false;
         animations.forEach((animation) => animation.cancel());
         animations.clear();
-        pressAnimation?.cancel();
+        cancelPress();
+        stopRail();
+        railHovered = false;
+        railPointerX = null;
+        targetRail(currentIndex, true);
       }
       renderLabels();
     },
@@ -264,7 +514,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       listeners.splice(0).forEach((dispose) => dispose());
       animations.forEach((animation) => animation.cancel());
       animations.clear();
-      pressAnimation?.cancel();
+      cancelPress();
+      stopRail();
       container.replaceChildren();
       container.classList.remove('outfit-showcase');
     },

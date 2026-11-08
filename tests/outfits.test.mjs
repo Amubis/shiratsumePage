@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
-import { OUTFITS, MODEL_PROFILE, wrapOutfitIndex, createOutfitShowcase } from '../src/outfits.js';
+import { OUTFITS, MODEL_PROFILE, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, createOutfitShowcase } from '../src/outfits.js';
 
 class Element {
   constructor(tag, doc) {
@@ -11,6 +11,8 @@ class Element {
     this.attributes = new Map();
     this.listeners = new Map();
     this.classes = new Set();
+    this.style = { setProperty(name, value) { this[name] = String(value); } };
+    this.captures = new Set();
     this.classList = {
       add: (...names) => names.forEach((name) => this.classes.add(name)),
       remove: (...names) => names.forEach((name) => this.classes.delete(name)),
@@ -23,6 +25,7 @@ class Element {
     };
     if (tag === 'img') this.decode = async () => {
       if (doc.failedImages.has(this.src)) throw new Error('Missing image');
+      if (doc.delayedImages.has(this.src)) await doc.delayedImages.get(this.src);
     };
   }
   set className(value) { this.classes = new Set(value.split(/\s+/).filter(Boolean)); }
@@ -39,6 +42,28 @@ class Element {
     this.listeners.get(type).add(handler);
   }
   removeEventListener(type, handler) { this.listeners.get(type)?.delete(handler); }
+  getBoundingClientRect() {
+    return this.classList.contains('outfit-dots') ? { left: 10, top: 10, right: 186, bottom: 66, width: 176, height: 56 }
+      : { left: 0, top: 0, right: 500, bottom: 600, width: 500, height: 600 };
+  }
+  setPointerCapture(id) { this.captures.add(id); }
+  releasePointerCapture(id) { this.captures.delete(id); }
+  hasPointerCapture(id) { return this.captures.has(id); }
+  focus() {
+    const previous = this.ownerDocument.activeElement;
+    this.ownerDocument.activeElement = this;
+    previous?.emit('blur');
+    this.emit('focus');
+  }
+  animate(frames, options) {
+    let resolve, reject;
+    const finished = new Promise((yes, no) => { resolve = yes; reject = no; });
+    const animation = { node: this, frames, options, finished, stopped: false,
+      cancel() { this.stopped = true; reject(new Error('cancelled')); },
+      finish() { this.stopped = true; resolve(); } };
+    this.ownerDocument.animations.push(animation);
+    return animation;
+  }
   emit(type, fields = {}) {
     const event = { type, target: this, prevented: false, stopped: false,
       preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...fields };
@@ -49,15 +74,31 @@ class Element {
   find(className) { return this.all((node) => node.classList.contains(className))[0]; }
 }
 
-function fixture(t, options = {}) {
-  const doc = { failedImages: new Set() };
+function fixture(t, { docSetup, ...options } = {}) {
+  const doc = { failedImages: new Set(), delayedImages: new Map(), animations: [] };
+  let clock = 0;
+  let frameSerial = 0;
+  const frames = new Map();
+  doc.defaultView = {
+    requestAnimationFrame(callback) { const id = ++frameSerial; frames.set(id, callback); return id; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+  };
+  doc.tick = (milliseconds) => {
+    for (let elapsed = 0; elapsed < milliseconds; elapsed += 1000 / 60) {
+      clock += 1000 / 60;
+      const batch = [...frames];
+      batch.forEach(([id]) => frames.delete(id));
+      batch.forEach(([, callback]) => callback(clock));
+    }
+  };
+  docSetup?.(doc);
   doc.createElement = (tag) => new Element(tag, doc);
   doc.createElementNS = (_, tag) => new Element(tag, doc);
   const container = doc.createElement('div');
   const changed = [];
   const api = createOutfitShowcase({ container, reducedMotion: () => true, onChange: (index) => changed.push(index), ...options });
   t.after(() => api.destroy());
-  return { doc, container, api, changed, stage: container.find('outfit-stage'), image: container.find('outfit-image'), dots: container.all((node) => node.classList.contains('outfit-dot')), cue: container.find('outfit-cue'), status: container.find('outfit-status') };
+  return { doc, container, api, changed, stage: container.find('outfit-stage'), image: container.find('outfit-image'), dots: container.all((node) => node.classList.contains('outfit-dot')), rail: container.find('outfit-dots'), clover: container.find('outfit-rail-clover'), cue: container.find('outfit-cue'), status: container.find('outfit-status') };
 }
 
 async function settle() { for (let i = 0; i < 10; i += 1) await Promise.resolve(); }
@@ -165,6 +206,147 @@ test('stable silhouette masks use alpha, preserve source dimensions, and have di
   const group = a.container.all((node) => node.localName === 'g')[0];
   assert.equal(group.getAttribute('mask'), `url(#${masks[0].getAttribute('id')})`);
   assert.equal(group.getAttribute('opacity'), '.36');
+  const pattern = a.container.all((node) => node.localName === 'pattern')[0];
+  assert.equal(pattern.getAttribute('width'), '26');
+  assert.ok(Number(pattern.children[0].getAttribute('r')) * 2 > Number(pattern.getAttribute('width')), 'shadow dots slightly overlap before the one group opacity');
+});
+
+test('the indicator replaces the visible caption with one small clover and influenced passive circles', (t) => {
+  const f = fixture(t);
+  assert.equal(f.container.find('outfit-caption'), undefined);
+  assert.equal(f.container.find('outfit-count'), undefined);
+  assert.equal(f.container.find('outfit-name'), undefined);
+  assert.equal(f.container.all((node) => node.classList.contains('outfit-rail-clover')).length, 1);
+  const geometry = outfitRailGeometry(0);
+  assert.ok(geometry.dots[1].size > geometry.dots[2].size);
+  assert.ok(geometry.dots[1].opacity > geometry.dots[2].opacity);
+  assert.ok(geometry.dots.every((dot) => dot.size < geometry.cloverSize));
+  assert.ok(geometry.dots[1].influence > 0);
+  assert.equal(geometry.dots[2].influence, 0, 'influence extends slightly beyond one gap');
+  assert.ok(geometry.dots[1].x - geometry.dots[0].x > geometry.dots[3].x - geometry.dots[2].x, 'far circles are more tightly packed');
+  assert.equal(f.dots[0].getAttribute('aria-pressed'), 'true');
+  assert.ok(f.dots[0].getAttribute('aria-label').includes('深色水手服'));
+});
+
+test('pointer follows continuously between snap zones, snaps near a circle, and returns to selected on leave', (t) => {
+  const f = fixture(t);
+  const initial = outfitRailGeometry(0);
+  const middle = (initial.dots[1].x + initial.dots[2].x) / 2;
+  f.rail.emit('pointerenter', { pointerType: 'mouse', clientX: 10 + middle });
+  assert.ok(Math.abs(parseFloat(f.clover.style.left) - middle) < .001, 'the clover follows a coordinate between outfits');
+  assert.equal(f.api.index, 0, 'hover never changes the displayed outfit');
+  const secondDotX = parseFloat(f.dots[2].children[0].style.left) + 2 * 44;
+  f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + secondDotX + 2 });
+  assert.ok(Math.abs(parseFloat(f.clover.style.left) - outfitRailGeometry(2).cloverX) < .001, 'the circle hit zone snaps to that option');
+  f.rail.emit('pointerleave');
+  assert.equal(parseFloat(f.clover.style.left), outfitRailGeometry(0).cloverX);
+  assert.equal(f.dots[0].getAttribute('aria-pressed'), 'true');
+});
+
+test('pointer clicks use the moving visual position while keyboard activation uses its stable semantic button', async (t) => {
+  const f = fixture(t);
+  const geometry = outfitRailGeometry(0);
+  const lastX = geometry.dots[3].x;
+  assert.equal(nearestOutfitDot(lastX, geometry), 3);
+  f.dots[0].emit('click', { detail: 1, clientX: 10 + lastX });
+  await settle();
+  assert.equal(f.api.index, 3, 'even a different fixed hit element selects the visible circle under the pointer');
+  f.dots[1].emit('click', { detail: 0, clientX: 0 });
+  await settle();
+  assert.equal(f.api.index, 1, 'keyboard activation follows the focused accessible option');
+  const key = f.dots[1].emit('keydown', { key: 'ArrowRight' });
+  await settle();
+  assert.equal(f.api.index, 2);
+  assert.equal(f.doc.activeElement, f.dots[2]);
+  assert.equal(key.prevented, true);
+  assert.equal(key.stopped, true);
+});
+
+test('the rail accelerates, briefly overshoots, rolls by travelled arc length and settles at the target', async (t) => {
+  const f = fixture(t, { reducedMotion: () => false });
+  await f.api.goTo(1, { animate: false });
+  const initial = parseFloat(f.clover.style.left);
+  const target = outfitRailGeometry(1).cloverX;
+  const positions = [];
+  for (let i = 0; i < 45; i += 1) { f.doc.tick(16); positions.push(parseFloat(f.clover.style.left)); }
+  assert.ok(positions[0] > initial && positions[0] < positions[3]);
+  assert.ok(positions[1] - positions[0] > positions[0] - initial, 'movement initially accelerates');
+  assert.ok(Math.max(...positions) > target, 'the water-like motion briefly passes the target');
+  f.doc.tick(1200);
+  assert.equal(parseFloat(f.clover.style.left), target);
+  const angle = Number(f.clover.style.transform.match(/rotate\(([^)]+)deg\)/)[1]);
+  assert.ok(Math.abs(angle - (target - initial) / 8.5 * 180 / Math.PI) < .001, 'wheel rotation matches the visible travelled distance');
+});
+
+test('pointer press stays compressed indefinitely; cancel and release outside restore without activation', async (t) => {
+  const f = fixture(t);
+  f.stage.emit('pointerdown', { button: 0, pointerId: 7, clientX: 200, clientY: 300 });
+  assert.equal(f.stage.style.transform, 'scale(.94)');
+  assert.equal(f.stage.hasPointerCapture(7), true);
+  f.doc.tick(10000);
+  await settle();
+  assert.equal(f.stage.style.transform, 'scale(.94)');
+  assert.equal(f.api.index, 0);
+  f.stage.emit('pointercancel', { pointerId: 7 });
+  assert.equal(f.stage.style.transform, '');
+  assert.equal(f.stage.hasPointerCapture(7), false);
+  f.stage.emit('click', { detail: 1 });
+  await settle();
+  assert.equal(f.api.index, 0);
+  f.stage.emit('pointerdown', { button: 0, pointerId: 8, clientX: 200, clientY: 300 });
+  f.stage.emit('pointerup', { pointerId: 8, clientX: 600, clientY: 300 });
+  f.stage.emit('click', { detail: 1 });
+  await settle();
+  assert.equal(f.api.index, 0);
+  assert.equal(f.stage.style.transform, '');
+});
+
+test('release holds the compressed portrait during delayed decode, then rebounds concurrently with the flip', async (t) => {
+  let resolveImage;
+  const loading = new Promise((resolve) => { resolveImage = resolve; });
+  const f = fixture(t, { reducedMotion: () => false, docSetup: (doc) => doc.delayedImages.set(OUTFITS[1].front, loading) });
+  f.stage.emit('pointerdown', { button: 0, pointerId: 9, clientX: 200, clientY: 300 });
+  f.stage.emit('pointerup', { pointerId: 9, clientX: 200, clientY: 300 });
+  f.stage.emit('click', { detail: 1 });
+  f.doc.tick(1500);
+  await settle();
+  assert.equal(f.stage.style.transform, 'scale(.94)');
+  assert.equal(f.image.src, OUTFITS[0].front);
+  assert.equal(f.doc.animations.filter((animation) => animation.frames.some((frame) => frame.transform.includes('rotateY'))).length, 0);
+  resolveImage();
+  await settle();
+  const rebound = f.doc.animations.find((animation) => animation.frames.some((frame) => frame.transform === 'scale(1.06)'));
+  const flip = f.doc.animations.find((animation) => animation.frames.some((frame) => frame.transform.includes('rotateY')));
+  assert.ok(rebound);
+  assert.ok(flip);
+  assert.equal(rebound.stopped, false);
+  assert.equal(flip.stopped, false);
+  assert.ok(f.doc.animations.every((animation) => animation.frames.every((frame) => !frame.transform.includes('translateY'))), 'the previous vertical bounce is gone');
+  for (let step = 0; step < 3; step += 1) { f.doc.animations.filter((animation) => !animation.stopped).forEach((animation) => animation.finish()); await settle(); }
+  assert.equal(f.api.index, 1);
+  assert.equal(f.stage.style.transform, '');
+  assert.equal(f.stage.getAttribute('aria-busy'), 'false');
+});
+
+test('Space holds until keyup, and theme disabling cancels a held press or turn cleanly', async (t) => {
+  const f = fixture(t);
+  const maskId = f.container.all((node) => node.localName === 'mask')[0].getAttribute('id');
+  const down = f.stage.emit('keydown', { key: ' ', repeat: false });
+  f.doc.tick(5000);
+  assert.equal(down.prevented, true);
+  assert.equal(f.stage.style.transform, 'scale(.94)');
+  assert.equal(f.api.index, 0);
+  f.stage.emit('keyup', { key: ' ' });
+  await settle();
+  assert.equal(f.api.index, 1);
+  f.stage.emit('pointerdown', { button: 0, pointerId: 10 });
+  f.api.setEnabled(false);
+  assert.equal(f.stage.style.transform, '');
+  assert.equal(f.stage.hasPointerCapture(10), false);
+  assert.equal(f.stage.getAttribute('aria-busy'), 'false');
+  f.api.setEnabled(true);
+  assert.equal(await f.api.goTo(2), true);
+  assert.equal(f.container.all((node) => node.localName === 'mask')[0].getAttribute('id'), maskId);
 });
 
 test('destroy removes all handlers and prevents asynchronous changes', async (t) => {

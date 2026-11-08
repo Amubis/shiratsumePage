@@ -1,0 +1,63 @@
+:root {
+  --water-easing: cubic-bezier(.2, .65, .3, 1);
+  --water-settle: cubic-bezier(.2, .9, .3, 1.15);
+}
+
+/* A broad, soft vignette shares the dot field's elliptical opening. */
+.hero-edge-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: radial-gradient(ellipse var(--shade-rx, 49.4%) var(--shade-ry, 50%) at 50% 50%,
+    transparent 83%, rgba(24, 28, 16, .025) 92%, rgba(24, 28, 16, .11) 104%, rgba(24, 28, 16, .20) 128%);
+  transition: opacity .65s var(--water-easing);
+}
+body.theme-preview .hero-edge-shade { display: none; }
+[data-phase="video"] .hero-edge-shade,
+body.watch-mode .hero-edge-shade { opacity: 0; }
+body.watch-reveal-animating .hero-edge-shade { transition: none !important; }
+
+/* Individual translate is separate from the existing, shared rotation matrix. */
+body:not(.theme-preview) .scene-clover {
+  animation: cloverSway var(--duration, 5s) ease-in-out var(--delay, 0s) infinite alternate,
+    waterDrift var(--drift-duration, 11s) ease-in-out var(--drift-delay, -3s) infinite alternate;
+}
+@keyframes waterDrift {
+  from { translate: calc(var(--drift-x, 3px) * -.5) calc(var(--drift-y, -2px) * -.5); }
+  to { translate: calc(var(--drift-x, 3px) * .5) calc(var(--drift-y, -2px) * .5); }
+}
+body:not(.theme-preview) .section-clover {
+  animation: backgroundWind 5.5s ease-in-out infinite alternate,
+    waterDrift 12s ease-in-out -5s infinite alternate;
+}
+body.is-background .scene-clover,
+body.is-background .section-clover,
+body:not(.on-home) .hero .scene-clover,
+.page-section:not(.is-current) .section-clover { animation-play-state: paused; }
+
+/* The second chapter's decoration occupies both diagonal edges. */
+.intro-halftone-seam { opacity: .17; }
+
+.side-highlight {
+  transition: left .52s cubic-bezier(.3, 0, .25, 1.08),
+    top .52s cubic-bezier(.3, 0, .25, 1.08),
+    width .4s var(--water-easing), height .4s var(--water-easing);
+}
+.side-links > a { transition: top .32s var(--water-easing); }
+.side-links > a > span {
+  transition: font-size .22s var(--water-easing), opacity .22s var(--water-easing),
+    color .22s var(--water-easing);
+}
+.side-links.is-pointer-tracking > a { transition-duration: .2s; }
+.side-links.is-pointer-tracking > a > span { transition-duration: .18s; }
+
+@media (max-width: 760px) {
+  .side-links > a, .side-links > a > span { transition: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:not(.theme-preview) .scene-clover,
+  body:not(.theme-preview) .section-clover { animation: none !important; translate: none; }
+  .hero-edge-shade { transition: none; }
+}

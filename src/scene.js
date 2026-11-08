@@ -118,6 +118,7 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   function render() {
     elements.splice(0).forEach((element) => element.remove());
     const random = seededRandom(seed);
+    const driftRandom = seededRandom(`${visitSeed}:${seed}:drift`);
     const fragment = container.ownerDocument.createDocumentFragment();
     layoutFor(seed).forEach(({ id, x, y, size, rotation, variant, colorVariant }) => {
       const color = colorVariant === 'theme' ? theme : hslToHex(randomThemeColor(theme, random));
@@ -133,6 +134,14 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
         '--rotation': `${rotation}deg`, '--sway': `${(0.9 + random() * 1.8).toFixed(2)}deg`,
         '--duration': `${(4 + random() * 3).toFixed(2)}s`, '--delay': `${(-random() * 7).toFixed(2)}s`,
       };
+      if (seed !== 'preview') {
+        const driftAngle = driftRandom() * Math.PI * 2;
+        const driftDistance = 2 + driftRandom() * 3;
+        variables['--drift-x'] = `${(Math.cos(driftAngle) * driftDistance).toFixed(3)}px`;
+        variables['--drift-y'] = `${(Math.sin(driftAngle) * driftDistance).toFixed(3)}px`;
+        variables['--drift-duration'] = `${(8 + driftRandom() * 6).toFixed(2)}s`;
+        variables['--drift-delay'] = `${(-driftRandom() * 14).toFixed(2)}s`;
+      }
       Object.entries(variables).forEach(([name, value]) => element.style.setProperty(name, value));
       if (reducedMotion()) element.style.animation = 'none';
       element.innerHTML = cloverSVG({ className: 'clover-svg', color, variant });
@@ -159,7 +168,7 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
 
 // Ratios describe full ellipse diameters relative to the viewport. The lattice
 // rotates independently; the clear opening remains horizontal and centered.
-export const HALFTONE_GEOMETRY = Object.freeze({ innerWidth: 0.81, innerHeight: 0.78, innerScale: 0.84, angle: 8, featherSteps: 5 });
+export const HALFTONE_GEOMETRY = Object.freeze({ innerWidth: 0.83, innerHeight: 0.84, innerScale: 0.84, angle: 8, featherSteps: 5 });
 
 export function getHalftoneGeometry({ width = 1440, height = 900, spacing, maxRadius } = {}) {
   width = Math.max(1, Number(width) || 1440);
@@ -270,21 +279,27 @@ export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadi
   return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="${soft ? '.58' : '1'}" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="${soft ? 'soft' : 'solid'}">${dots.join('')}</svg>`;
 }
 
-/** A short continuation of the tilted lattice at the next chapter's top edge. */
-export function createHalftoneSeamSVG({ width = 1440, height = 900 } = {}) {
-  const metrics = getHalftoneGeometry({ width, height });
-  ({ width, height } = metrics);
-  const { spacing, maxRadius } = metrics;
-  const key = `halftone-seam-${++halftoneSequence}`;
-  const depth = Math.min(height * 0.25, 240);
+/** The chapter's two parallel clear boundaries share the lattice's slope. */
+export function getHalftoneSeamGeometry(options = {}) {
+  const geometry = getHalftoneGeometry(options);
   const slope = Math.tan(HALFTONE_GEOMETRY.angle * Math.PI / 180);
-  // Add the original central lattice points: the seam uses a linear size field
-  // instead of an ellipse, but retains the exact same grid origin and rotation.
+  return {
+    ...geometry,
+    slope,
+    normalLength: Math.hypot(1, slope),
+    topIntercept: geometry.height * 0.03,
+    bottomIntercept: geometry.height * 0.84,
+  };
+}
+
+/** Two broad edge bands, leaving the whole middle diagonal corridor clear. */
+export function generateHalftoneSeamDots(options = {}) {
+  const { width, height, spacing, maxRadius, featherWidth, slope, normalLength, topIntercept, bottomIntercept } = getHalftoneSeamGeometry(options);
   const angle = HALFTONE_GEOMETRY.angle * Math.PI / 180;
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
   const padding = maxRadius + spacing;
-  const corners = [[-padding, -padding], [width + padding, -padding], [-padding, depth + padding], [width + padding, depth + padding]]
+  const corners = [[-padding, -padding], [width + padding, -padding], [-padding, height + padding], [width + padding, height + padding]]
     .map(([x, y]) => ({ x: cosine * (x - width / 2) + sine * (y - height / 2), y: -sine * (x - width / 2) + cosine * (y - height / 2) }));
   const dots = [];
   const startX = Math.floor(Math.min(...corners.map(({ x }) => x)) / spacing);
@@ -295,17 +310,40 @@ export function createHalftoneSeamSVG({ width = 1440, height = 900 } = {}) {
     for (let gridX = startX; gridX <= endX; gridX += 1) {
       const x = width / 2 + cosine * gridX * spacing - sine * gridY * spacing;
       const y = height / 2 + sine * gridX * spacing + cosine * gridY * spacing;
-      if (x < -padding || x > width + padding || y < -padding || y > depth + padding) continue;
-      const distance = y + slope * Math.max(0, x) * 0.35;
-      const progress = clamp(1 - distance / depth, 0, 1);
-      const amount = progress * progress * (3 - 2 * progress);
-      const radius = maxRadius * amount;
-      if (radius < 0.18) continue;
-      dots.push(`<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(3)}"/>`);
+      if (x < -padding || x > width + padding || y < -padding || y > height + padding) continue;
+      const diagonalY = y - slope * x;
+      const distances = [['top', topIntercept - diagonalY], ['bottom', diagonalY - bottomIntercept]];
+      for (const [band, distance] of distances) {
+        const progress = clamp(distance / (normalLength * featherWidth), 0, 1);
+        const amount = progress * progress * (3 - 2 * progress);
+        const radius = maxRadius * amount;
+        if (radius < 0.18) continue;
+        dots.push({ x, y, radius, progress, band, gridX, gridY });
+      }
     }
   }
-  // A single linear alpha mask fades the already merged opaque lattice.
-  return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-seam-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin slice" aria-hidden="true" fill="currentColor" data-angle="${HALFTONE_GEOMETRY.angle}" data-dot-spacing="${spacing}"><defs><linearGradient id="${key}-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${depth * 0.35}" y2="${depth}"><stop offset="0" stop-color="white" stop-opacity="1"/><stop offset=".45" stop-color="white" stop-opacity=".5"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient><mask id="${key}-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}" style="mask-type:alpha"><rect width="${width}" height="${height}" fill="url(#${key}-gradient)"/></mask></defs><g mask="url(#${key}-mask)" data-composite="opaque-union">${dots.join('')}</g></svg>`;
+  return dots;
+}
+
+/** Top-right and bottom-left diagonal bands continue the opening's dot language. */
+export function createHalftoneSeamSVG(options = {}) {
+  const { width, height, spacing, featherWidth, slope, normalLength, topIntercept, bottomIntercept } = getHalftoneSeamGeometry(options);
+  const key = `halftone-seam-${++halftoneSequence}`;
+  const dots = generateHalftoneSeamDots(options);
+  const normalX = -slope / normalLength;
+  const normalY = 1 / normalLength;
+  const stops = (reverse) => Array.from({ length: 11 }, (_, index) => {
+    const t = index / 10;
+    const alpha = t * t * (3 - 2 * t);
+    return `<stop offset="${t.toFixed(1)}" stop-color="white" stop-opacity="${(reverse ? 1 - alpha : alpha).toFixed(6)}"/>`;
+  }).join('');
+  const fields = [
+    { band: 'top', x1: -normalX * featherWidth, y1: topIntercept - normalY * featherWidth, x2: 0, y2: topIntercept, reverse: true },
+    { band: 'bottom', x1: 0, y1: bottomIntercept, x2: normalX * featherWidth, y2: bottomIntercept + normalY * featherWidth, reverse: false },
+  ];
+  const definitions = fields.map(({ band, x1, y1, x2, y2, reverse }) => `<linearGradient id="${key}-${band}-gradient" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops(reverse)}</linearGradient><mask id="${key}-${band}-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}" style="mask-type:alpha"><rect width="${width}" height="${height}" fill="url(#${key}-${band}-gradient)"/></mask>`).join('');
+  const groups = fields.map(({ band }) => `<g mask="url(#${key}-${band}-mask)" data-composite="opaque-union" data-band="${band}">${dots.filter((dot) => dot.band === band).map(({ x, y, radius }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(3)}"/>`).join('')}</g>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-seam-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin slice" aria-hidden="true" fill="currentColor" data-angle="${HALFTONE_GEOMETRY.angle}" data-dot-spacing="${spacing}" data-top-intercept="${topIntercept}" data-bottom-intercept="${bottomIntercept}" data-layout="opposing-diagonal-bands"><defs>${definitions}</defs>${groups}</svg>`;
 }
 
 let shadowSequence = 0;

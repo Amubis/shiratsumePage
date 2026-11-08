@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { seededRandom, HALFTONE_GEOMETRY, getHalftoneGeometry, createHalftoneSeamSVG, generateSceneLayout, generateTiltedGridDots, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
+import { seededRandom, HALFTONE_GEOMETRY, getHalftoneGeometry, getHalftoneSeamGeometry, generateHalftoneSeamDots, createHalftoneSeamSVG, generateSceneLayout, generateTiltedGridDots, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -65,10 +65,10 @@ const halftoneViewports = [[1899, 973], [1440, 900], [390, 844], [320, 844], [32
 test('ellipse diameters explicitly define the larger clear opening and adaptive five-row feather', () => {
   for (const [width, height] of halftoneViewports) {
     const geometry = getHalftoneGeometry({ width, height });
-    assert.equal(geometry.innerX * 2, width * 0.81);
-    assert.equal(geometry.innerY * 2, height * 0.78);
-    assert.ok(Math.abs(geometry.outerX * 2 / width - 0.81 / 0.84) < 1e-12);
-    assert.ok(Math.abs(geometry.outerY * 2 / height - 0.78 / 0.84) < 1e-12);
+    assert.equal(geometry.innerX * 2, width * 0.83);
+    assert.equal(geometry.innerY * 2, height * 0.84);
+    assert.ok(Math.abs(geometry.outerX * 2 / width - 0.83 / 0.84) < 1e-12);
+    assert.ok(Math.abs(geometry.outerY * 2 / height - 0.84 / 0.84) < 1e-12);
     assert.ok(geometry.featherWidth / geometry.spacing >= 5 - 1e-10);
     const dots = generateTiltedGridDots({ width, height });
     assert.ok(dots.length > 100 && dots.length < 15000);
@@ -90,7 +90,7 @@ test('opaque circles merge before one continuous ellipse alpha mask, preventing 
     assert.ok(svg.includes('offset="0.840000" stop-color="white" stop-opacity="0.000000"'));
     assert.ok(svg.includes('offset="1.000000" stop-color="white" stop-opacity="1.000000"'));
     assert.ok(!svg.includes('<filter') && !svg.includes('data:image'));
-    assert.ok(svg.includes('data-inner-width="0.81" data-inner-height="0.78"'));
+    assert.ok(svg.includes('data-inner-width="0.83" data-inner-height="0.84"'));
     const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(ids).size, ids.length);
     for (const match of svg.matchAll(/url\(#([^)]*)\)/g)) assert.ok(ids.includes(match[1]));
@@ -183,7 +183,9 @@ test('discernibly small dots and plane-covering circles remain at least three ac
 
 test('merged outer circles cover all four viewport edges without clipped triangular corners', () => {
   for (const [width, height] of halftoneViewports) {
-    const dots = generateTiltedGridDots({ width, height }).filter(({ edgeRho }) => edgeRho >= 1);
+    // The expanded ellipse is tangent to the top/bottom edges; circles just
+    // inside its outer contour participate in the continuous frame as well.
+    const dots = generateTiltedGridDots({ width, height });
     const covered = (x, y) => dots.some((dot) => (dot.x - x) ** 2 + (dot.y - y) ** 2 <= dot.radius ** 2);
     for (let x = 0; x <= width; x += 4) {
       assert.ok(covered(x, 0));
@@ -196,7 +198,7 @@ test('merged outer circles cover all four viewport edges without clipped triangu
   }
 });
 
-test('chapter seam keeps the same tilted grid with a single diagonal alpha mask and unique stable resource IDs', () => {
+test('chapter seam keeps the same tilted grid with separate group alpha masks and unique stable resource IDs', () => {
   const svg = createHalftoneSeamSVG({ width: 1440, height: 900 });
   assert.ok(svg.includes('data-angle="8"'));
   assert.ok(svg.includes('<linearGradient'));
@@ -206,6 +208,37 @@ test('chapter seam keeps the same tilted grid with a single diagonal alpha mask 
   const firstIds = [...svg.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   const other = createHalftoneSVG({ width: 1440, height: 900 });
   assert.ok(firstIds.every((id) => !other.includes(`id="${id}"`)));
+});
+
+test('chapter bands grow toward the top right and bottom left with a wide transparent diagonal corridor', () => {
+  for (const [width, height] of halftoneViewports) {
+    const { topIntercept, bottomIntercept, slope, normalLength, spacing, featherWidth, maxRadius } = getHalftoneSeamGeometry({ width, height });
+    const dots = generateHalftoneSeamDots({ width, height });
+    const top = dots.filter(({ band }) => band === 'top');
+    const bottom = dots.filter(({ band }) => band === 'bottom');
+    assert.ok(top.length > 10 && bottom.length > 10);
+    assert.ok(top.some(({ x }) => x > width * 0.85));
+    assert.ok(bottom.some(({ x }) => x < width * 0.15));
+    assert.ok(top.some(({ radius }) => radius >= spacing / Math.SQRT2));
+    assert.ok(bottom.some(({ radius }) => radius >= spacing / Math.SQRT2));
+    assert.ok(featherWidth / spacing >= 5 - 1e-10);
+    assert.ok(bottomIntercept - topIntercept > height * 0.8);
+    dots.forEach(({ x, y, band, progress, radius }) => {
+      const distance = band === 'top' ? topIntercept - y + slope * x : y - slope * x - bottomIntercept;
+      assert.ok(distance > 0);
+      assert.ok(Math.abs(progress - Math.max(0, Math.min(1, distance / (normalLength * featherWidth)))) < 1e-10);
+      assert.ok(Math.abs(radius - maxRadius * progress * progress * (3 - 2 * progress)) < 1e-10);
+      // Check complete circle footprints, leaving an ample unpainted middle.
+      if (band === 'top') assert.ok(y - slope * x + radius * normalLength < topIntercept + spacing);
+      else assert.ok(y - slope * x - radius * normalLength > bottomIntercept - spacing);
+    });
+    const svg = createHalftoneSeamSVG({ width, height });
+    assert.equal((svg.match(/<g mask=/g) || []).length, 2);
+    assert.ok(svg.includes('data-band="top"') && svg.includes('data-band="bottom"'));
+    assert.ok(svg.includes('data-layout="opposing-diagonal-bands"'));
+    const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+    for (const match of svg.matchAll(/url\(#([^)]*)\)/g)) assert.ok(ids.includes(match[1]));
+  }
 });
 
 test('preview retains the original smaller, separated dot profile', () => {
@@ -269,6 +302,10 @@ test('scene instances expose their actual shape variants and rebuild without ext
     assert.ok(element.attributes['data-scene-id'].startsWith('scatter-'));
     const duration = parseFloat(element.style['--duration']);
     assert.ok(duration >= 4 && duration <= 7);
+    const driftDistance = Math.hypot(parseFloat(element.style['--drift-x']), parseFloat(element.style['--drift-y']));
+    assert.ok(driftDistance >= 1.999 && driftDistance <= 5.001);
+    assert.ok(parseFloat(element.style['--drift-duration']) >= 8 && parseFloat(element.style['--drift-duration']) <= 14);
+    assert.ok(parseFloat(element.style['--drift-delay']) <= 0 && parseFloat(element.style['--drift-delay']) >= -14);
     assert.ok(element.innerHTML.includes(SCENE_LAYOUT[index].variant === 'large' ? CLOVER_PATH : SMALL_CLOVER_PATH));
   });
   scene.setTheme('#B8A0C2', 'preview');
