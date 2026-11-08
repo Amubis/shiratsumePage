@@ -157,27 +157,39 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
-function halftoneGridMetrics(width, height, spacing, maxRadius) {
+// Ratios describe full ellipse diameters relative to the viewport. The lattice
+// rotates independently; the clear opening remains horizontal and centered.
+export const HALFTONE_GEOMETRY = Object.freeze({ innerWidth: 0.81, innerHeight: 0.78, innerScale: 0.84, angle: 8, featherSteps: 5 });
+
+export function getHalftoneGeometry({ width = 1440, height = 900, spacing, maxRadius } = {}) {
+  width = Math.max(1, Number(width) || 1440);
+  height = Math.max(1, Number(height) || 900);
+  const innerX = width * HALFTONE_GEOMETRY.innerWidth / 2;
+  const innerY = height * HALFTONE_GEOMETRY.innerHeight / 2;
+  const outerX = innerX / HALFTONE_GEOMETRY.innerScale;
+  const outerY = innerY / HALFTONE_GEOMETRY.innerScale;
+  const minimumAxis = Math.min(outerX, outerY);
+  const featherWidth = minimumAxis * (1 - HALFTONE_GEOMETRY.innerScale);
   const suppliedSpacing = Number(spacing);
-  spacing = Number.isFinite(suppliedSpacing) && suppliedSpacing > 0 ? suppliedSpacing : Math.min(width, height) <= 600 ? 16 : 32;
+  const preferredSpacing = Number.isFinite(suppliedSpacing) && suppliedSpacing > 0 ? suppliedSpacing : Math.min(width, height) <= 600 ? 16 : 32;
+  // The narrow edge band needs enough lattice rows on portrait screens too.
+  // Clamp explicit spacing as well: a coarse grid would erase the progression.
+  spacing = Math.min(preferredSpacing, featherWidth / HALFTONE_GEOMETRY.featherSteps);
   const suppliedRadius = Number(maxRadius);
-  maxRadius = Math.max(Number.isFinite(suppliedRadius) && suppliedRadius > 0 ? suppliedRadius : spacing * 0.75, spacing / Math.SQRT2 + 0.5);
-  return { spacing, maxRadius, featherWidth: spacing * 5 };
+  maxRadius = Math.max(Number.isFinite(suppliedRadius) && suppliedRadius > 0 ? suppliedRadius : spacing * 0.75, spacing / Math.SQRT2 + 0.05);
+  return { width, height, spacing, maxRadius, innerX, innerY, outerX, outerY, minimumAxis, featherWidth };
 }
 
 /** A rotated square lattice; only the positions rotate, not its ellipse field. */
 export function generateTiltedGridDots({ width = 1440, height = 900, spacing, maxRadius } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
-  const metrics = halftoneGridMetrics(width, height, spacing, maxRadius);
+  const metrics = getHalftoneGeometry({ width, height, spacing, maxRadius });
   ({ spacing, maxRadius } = metrics);
-  const { featherWidth } = metrics;
+  const { featherWidth, outerX: baseX, outerY: baseY, minimumAxis } = metrics;
   const cx = width / 2;
   const cy = height / 2;
-  const baseX = width * 0.45;
-  const baseY = height * 0.435;
-  const minimumAxis = Math.min(baseX, baseY);
-  const angle = 8 * Math.PI / 180;
+  const angle = HALFTONE_GEOMETRY.angle * Math.PI / 180;
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
   const padding = Math.max(spacing, maxRadius + 1);
@@ -200,10 +212,10 @@ export function generateTiltedGridDots({ width = 1440, height = 900, spacing, ma
       // feathering therefore spans at least five grid steps on either axis.
       const inwardDistance = (1 - edgeRho) * minimumAxis;
       const progress = clamp(1 - inwardDistance / featherWidth, 0, 1);
-      const alpha = progress * progress * (3 - 2 * progress);
-      const radius = maxRadius * alpha;
+      const amount = progress * progress * (3 - 2 * progress);
+      const radius = maxRadius * amount;
       if (radius < 0.18) continue;
-      dots.push({ x, y, radius, alpha, progress, inwardDistance, featherWidth, gridX, gridY, rho: edgeRho, edgeRho });
+      dots.push({ x, y, radius, alpha: 1, amount, progress, inwardDistance, featherWidth, gridX, gridY, rho: edgeRho, edgeRho });
     }
   }
   return dots;
@@ -218,17 +230,27 @@ export function generateRadialHalftoneDots(options) {
   return generateTiltedGridDots(options);
 }
 
-/** Large outer dots merge into one frame; soft retains the previous grid. */
+let halftoneSequence = 0;
+
+/** Large outer dots merge before one alpha field is applied to the union. */
 export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadius, profile = 'solid' } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
   const soft = profile === 'soft';
   if (!soft) {
-    const metrics = halftoneGridMetrics(width, height, spacing, maxRadius);
+    const metrics = getHalftoneGeometry({ width, height, spacing, maxRadius });
     ({ spacing, maxRadius } = metrics);
-    const { featherWidth } = metrics;
-    const dots = generateTiltedGridDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, alpha, progress, gridX, gridY, edgeRho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" opacity="${alpha.toFixed(6)}" data-progress="${progress.toFixed(6)}" data-grid-x="${gridX}" data-grid-y="${gridY}" data-rho="${edgeRho.toFixed(6)}"/>`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-feather-width="${featherWidth}" data-feather-steps="5" data-profile="solid" data-layout="tilted-grid" data-angle="8">${dots.join('')}</svg>`;
+    const { featherWidth, innerX, innerY, outerX, outerY } = metrics;
+    const key = `halftone-field-${++halftoneSequence}`;
+    const dots = generateTiltedGridDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, progress, gridX, gridY, edgeRho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(3)}" data-progress="${progress.toFixed(6)}" data-grid-x="${gridX}" data-grid-y="${gridY}" data-rho="${edgeRho.toFixed(6)}"/>`);
+    // Stops approximate smoothstep across the narrow ellipse band. This alpha
+    // is sampled once after the opaque circles have merged, never per circle.
+    const stops = Array.from({ length: 11 }, (_, index) => {
+      const t = index / 10;
+      const offset = HALFTONE_GEOMETRY.innerScale + (1 - HALFTONE_GEOMETRY.innerScale) * t;
+      return `<stop offset="${offset.toFixed(6)}" stop-color="white" stop-opacity="${(t * t * (3 - 2 * t)).toFixed(6)}"/>`;
+    }).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-feather-width="${featherWidth}" data-feather-steps="${HALFTONE_GEOMETRY.featherSteps}" data-inner-width="${HALFTONE_GEOMETRY.innerWidth}" data-inner-height="${HALFTONE_GEOMETRY.innerHeight}" data-profile="solid" data-layout="tilted-grid" data-angle="${HALFTONE_GEOMETRY.angle}"><defs><radialGradient id="${key}-gradient" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="translate(${width / 2} ${height / 2}) scale(${outerX} ${outerY})"><stop offset="0" stop-color="white" stop-opacity="0"/>${stops}</radialGradient><mask id="${key}-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}" style="mask-type:alpha"><rect width="${width}" height="${height}" fill="url(#${key}-gradient)"/></mask></defs><g mask="url(#${key}-mask)" data-composite="opaque-union" data-inner-rx="${innerX}" data-inner-ry="${innerY}">${dots.join('')}</g></svg>`;
   }
   spacing = clamp(Number(spacing) || 34, 32, 36);
   maxRadius = clamp(Number(maxRadius) || 17, 14, 18);
@@ -246,6 +268,44 @@ export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadi
     }
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="${soft ? '.58' : '1'}" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="${soft ? 'soft' : 'solid'}">${dots.join('')}</svg>`;
+}
+
+/** A short continuation of the tilted lattice at the next chapter's top edge. */
+export function createHalftoneSeamSVG({ width = 1440, height = 900 } = {}) {
+  const metrics = getHalftoneGeometry({ width, height });
+  ({ width, height } = metrics);
+  const { spacing, maxRadius } = metrics;
+  const key = `halftone-seam-${++halftoneSequence}`;
+  const depth = Math.min(height * 0.25, 240);
+  const slope = Math.tan(HALFTONE_GEOMETRY.angle * Math.PI / 180);
+  // Add the original central lattice points: the seam uses a linear size field
+  // instead of an ellipse, but retains the exact same grid origin and rotation.
+  const angle = HALFTONE_GEOMETRY.angle * Math.PI / 180;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const padding = maxRadius + spacing;
+  const corners = [[-padding, -padding], [width + padding, -padding], [-padding, depth + padding], [width + padding, depth + padding]]
+    .map(([x, y]) => ({ x: cosine * (x - width / 2) + sine * (y - height / 2), y: -sine * (x - width / 2) + cosine * (y - height / 2) }));
+  const dots = [];
+  const startX = Math.floor(Math.min(...corners.map(({ x }) => x)) / spacing);
+  const endX = Math.ceil(Math.max(...corners.map(({ x }) => x)) / spacing);
+  const startY = Math.floor(Math.min(...corners.map(({ y }) => y)) / spacing);
+  const endY = Math.ceil(Math.max(...corners.map(({ y }) => y)) / spacing);
+  for (let gridY = startY; gridY <= endY; gridY += 1) {
+    for (let gridX = startX; gridX <= endX; gridX += 1) {
+      const x = width / 2 + cosine * gridX * spacing - sine * gridY * spacing;
+      const y = height / 2 + sine * gridX * spacing + cosine * gridY * spacing;
+      if (x < -padding || x > width + padding || y < -padding || y > depth + padding) continue;
+      const distance = y + slope * Math.max(0, x) * 0.35;
+      const progress = clamp(1 - distance / depth, 0, 1);
+      const amount = progress * progress * (3 - 2 * progress);
+      const radius = maxRadius * amount;
+      if (radius < 0.18) continue;
+      dots.push(`<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(3)}"/>`);
+    }
+  }
+  // A single linear alpha mask fades the already merged opaque lattice.
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-seam-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin slice" aria-hidden="true" fill="currentColor" data-angle="${HALFTONE_GEOMETRY.angle}" data-dot-spacing="${spacing}"><defs><linearGradient id="${key}-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${depth * 0.35}" y2="${depth}"><stop offset="0" stop-color="white" stop-opacity="1"/><stop offset=".45" stop-color="white" stop-opacity=".5"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient><mask id="${key}-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}" style="mask-type:alpha"><rect width="${width}" height="${height}" fill="url(#${key}-gradient)"/></mask></defs><g mask="url(#${key}-mask)" data-composite="opaque-union">${dots.join('')}</g></svg>`;
 }
 
 let shadowSequence = 0;

@@ -1,4 +1,4 @@
-import { cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from './scene.js';
+import { cloverSVG, createCloverScene, createHalftoneSVG, createHalftoneSeamSVG, halftoneShadowSVG } from './scene.js';
 import { createSidebar } from './sidebar.js';
 import { createContrastLayer } from './contrast.js';
 import { coverScale, exploreGrowthFrames, EXPLORE_TIMING } from './motion.js';
@@ -8,6 +8,7 @@ import { createVideoReveal } from './video-reveal.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
+import { createOutfitShowcase, MODEL_PROFILE } from './outfits.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -33,6 +34,8 @@ let wipeAnimation;
 let wipeFade;
 let wipeSerial = 0;
 let pageReveal;
+let outfitShowcase;
+const languageControl = $('.language-control');
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
 
@@ -43,6 +46,7 @@ $$('[data-clover]').forEach((element) => {
 });
 function renderHalftone(){
   $('.halftone-vignette').innerHTML=createHalftoneSVG({width:innerWidth,height:innerHeight,profile:MODELS[modelId].preview?'soft':'connected'});
+  if (!MODELS[modelId].preview) $('.intro-halftone-seam').innerHTML=createHalftoneSeamSVG({width:innerWidth,height:innerHeight});
 }
 renderHalftone();
 const scene = createCloverScene({ container: $('.hero-clovers'), theme: MODELS[modelId].theme, seed: modelId, reducedMotion });
@@ -90,6 +94,12 @@ function applyLanguage() {
   updatePlaybackLabel();
   renderTitle();
   ownerProfile?.setLanguage(language);
+  outfitShowcase?.setLanguage(language);
+  const profile = MODEL_PROFILE[language];
+  $('.model-intro-eyebrow').textContent = profile.eyebrow;
+  $('#hello-heading').textContent = profile.heading;
+  $('.model-intro-lead').textContent = profile.lead;
+  $('.model-intro-description').textContent = profile.description;
   sidebar?.refresh();
   contrastLayer?.refresh();
 }
@@ -272,6 +282,7 @@ navigator = createSectionNavigator({
     if(index!==0){videoReveal?.cancel();ownerProfile?.close();}
     if(index!==0 && watching)setWatching(false);
     document.body.classList.toggle('on-home', index === 0);
+    (index === 0 ? $('.topbar') : $('.language-dock')).append(languageControl);
     $$('.page-section').forEach((section,i) => section.classList.toggle('is-current',i === index));
     $$('.top-links>a').forEach((link,i) => { if(i===index)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current'); });
     $('.topbar').inert = index !== 0 || watching;
@@ -280,7 +291,7 @@ navigator = createSectionNavigator({
     if (index !== 0) { finishIntro(); player.pause(); } else if (!userPaused) void player.resume();
     sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
   },
-  onProgress(progress) { finishIntro(); root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress)); },
+  onProgress(progress) { if(progress !== 0)finishIntro(); root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress)); },
   async onBeforeNavigate(index,{source,signal}) {
     ownerProfile?.close();
     if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');}
@@ -301,7 +312,7 @@ $('#explore').addEventListener('click', (event) => {
 });
 $('.skip-link').addEventListener('click', (event) => {
   event.preventDefault();
-  void navigator.goTo(1,{animate:false,source:'keyboard'}).then(() => { $('#hello-heading').tabIndex=-1; $('#hello-heading').focus({preventScroll:true}); });
+  void navigator.goTo(1,{animate:false,source:'keyboard'}).then(() => { const heading = $(MODELS[modelId].preview ? '#preview-hello-heading' : '#hello-heading'); heading.tabIndex=-1; heading.focus({preventScroll:true}); });
 });
 
 $('.mobile-menu-toggle').addEventListener('click', () => {
@@ -353,6 +364,10 @@ function applyTheme() {
   root.style.setProperty('--theme',model.theme);root.style.setProperty('--theme-rgb',model.rgb);root.style.setProperty('--theme-dark',model.dark);root.style.setProperty('--paper',model.paper);
   $('meta[name="theme-color"]').content=model.theme;
   document.body.classList.toggle('theme-preview',model.preview);
+  $('.primary-intro').hidden=model.preview;
+  $('.preview-intro').hidden=!model.preview;
+  $('#hello').setAttribute('aria-labelledby',model.preview?'preview-hello-heading':'hello-heading');
+  outfitShowcase?.setEnabled(!model.preview);
   $('#theme-status').hidden=!model.preview;
   $('#pause-toggle').disabled=model.preview;
   $('#watch-toggle').disabled=model.preview;
@@ -400,9 +415,10 @@ window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(loc
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
 contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
 ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
+outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
 videoReveal=createVideoReveal({
   hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
-  targets:[$('.hero-copy'),$('.topbar'),$('.language-control'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
+  targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
   onStart(){finishIntro();ownerProfile.close();userPaused=false;void player.resume();},
   onComplete(){setWatching(true);},
 });

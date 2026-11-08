@@ -93,36 +93,140 @@ test('scroll spy uses a stable upper-third boundary and handles tall final conte
   assert.equal(determineActiveIndex(0, [], 800), -1);
 });
 
-test('wheel input and inertia remain native without accumulating progress or starting navigation', async (t) => {
+test('wheel shows short resistance, then advances exactly one chapter per gesture', async (t) => {
   const f = browserFixture(t);
-  for (const deltaY of [1, 10, 60, 400, 800, 2000, -300]) {
-    assert.equal(f.fire('wheel', { deltaY }).defaultPrevented, false);
-    await f.step(30);
+  assert.equal(f.fire('wheel', { deltaY: 24 }).defaultPrevented, true);
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.progress.at(-1), 24 / 64);
+  await f.step(40);
+  assert.equal(f.fire('wheel', { deltaY: 44 }).defaultPrevented, true);
+  assert.equal(f.progress.at(-1), 1);
+  assert.equal(f.writes.length, 0, 'resistance has a visible preview before moving');
+  await f.step(40);
+  assert.equal(f.nav.transitioning, true);
+  for (let i = 0; i < 10; i += 1) {
+    await f.step(90);
+    assert.equal(f.fire('wheel', { deltaY: 20 }).defaultPrevented, true);
   }
-  assert.equal(f.writes.length, 0, 'wheel events never create a programmatic scroll');
-  assert.equal(f.nav.transitioning, false);
-  assert.equal(f.settled.length, 0);
-  assert.ok(f.progress.every((amount) => amount === 0));
-  f.win.scrollTo({ top: 1234 }); // Emulate the browser's native scroll effect.
   await f.drain();
   assert.equal(f.nav.activeIndex, 1);
-  assert.equal(f.win.scrollY, 1234, 'scroll spy must not snap or pull back a native position');
+  assert.equal(f.win.scrollY, 800);
+  assert.deepEqual(f.settled, [[1, 'wheel']], 'inertial wheel tail cannot start another turn');
+  await f.step(240);
+  f.fire('wheel', { deltaY: 120 });
+  await f.drain();
+  assert.equal(f.win.scrollY, 1600, 'a fresh gesture starts the next chapter');
 });
 
-test('Arrow, Page, Space, Home, End and repeats are left to the browser', async (t) => {
+test('incomplete resistance releases without moving and reverses direction cleanly', async (t) => {
+  const f = browserFixture(t, {}, { initialY: 800 });
+  f.fire('wheel', { deltaY: 20 });
+  await f.step(30);
+  f.fire('wheel', { deltaY: -20 });
+  assert.equal(f.progress.at(-1), -20 / 64);
+  await f.drain();
+  assert.equal(f.win.scrollY, 800);
+  assert.equal(f.progress.at(-1), 0);
+  assert.equal(f.settled.length, 0);
+});
+
+test('keyboard chapter controls ignore repeats and preserve interactive controls', async (t) => {
   const f = browserFixture(t);
   const input = { closest: () => ({}) };
   for (const key of ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' ', 'Home', 'End']) {
-    assert.equal(f.fire('keydown', { key }).defaultPrevented, false);
-    assert.equal(f.fire('keydown', { key, repeat: true }).defaultPrevented, false);
     assert.equal(f.fire('keydown', { key, target: input }).defaultPrevented, false);
   }
+  assert.equal(f.fire('keydown', { key: 'PageDown' }).defaultPrevented, true);
+  for (let i = 0; i < 6; i += 1) f.fire('keydown', { key: 'PageDown', repeat: true });
   await f.drain();
-  assert.equal(f.writes.length, 0);
-  assert.equal(f.nav.transitioning, false);
-  f.win.scrollTo({ top: 3400 });
+  assert.equal(f.win.scrollY, 800);
+  f.fire('keydown', { key: 'End' });
   await f.drain();
   assert.equal(f.nav.activeIndex, 3);
+  assert.equal(f.fire('keydown', { key: 'End' }).defaultPrevented, false, 'End can reach the actual document bottom from the final chapter');
+  f.fire('keydown', { key: 'Home' });
+  await f.drain();
+  assert.equal(f.win.scrollY, 0);
+  f.fire('keydown', { key: ' ', shiftKey: false });
+  await f.drain();
+  f.fire('keydown', { key: ' ', shiftKey: true });
+  await f.drain();
+  assert.equal(f.win.scrollY, 0);
+});
+
+test('coarse pointers, forms and nested scrollers retain native wheel movement', async (t) => {
+  const f = browserFixture(t);
+  f.win.matchMedia = () => ({ matches: false });
+  assert.equal(f.fire('wheel', { deltaY: 120 }).defaultPrevented, false);
+  f.win.matchMedia = () => ({ matches: true });
+  assert.equal(f.fire('wheel', { deltaY: 120, cancelable: false }).defaultPrevented, false);
+  const input = { closest: () => ({}) };
+  assert.equal(f.fire('wheel', { deltaY: 120, target: input }).defaultPrevented, false);
+  f.win.getComputedStyle = () => ({ overflowY: 'auto' });
+  const nested = { closest: () => null, scrollHeight: 800, clientHeight: 200, parentElement: f.body };
+  assert.equal(f.fire('wheel', { deltaY: 120, target: nested }).defaultPrevented, false);
+  await f.drain();
+  assert.equal(f.writes.length, 0);
+});
+
+test('tall and final chapters stay readable before an upward chapter turn', async (t) => {
+  const f = browserFixture(t, {}, { tops: [0, 1200, 2000, 2800], documentHeight: 4600 });
+  assert.equal(f.fire('wheel', { deltaY: 120 }).defaultPrevented, false, 'tall first chapter reads naturally');
+  f.win.scrollTo({ top: 320 });
+  assert.equal(f.fire('wheel', { deltaY: -120 }).defaultPrevented, false, 'tall first chapter can scroll back to its top');
+  f.win.scrollTo({ top: 400 });
+  assert.equal(f.fire('wheel', { deltaY: 120 }).defaultPrevented, true, 'after tall content, the next chapter has a clear turn');
+  await f.drain();
+  assert.equal(f.win.scrollY, 1200);
+  f.win.scrollTo({ top: 3500 });
+  assert.equal(f.fire('wheel', { deltaY: 120 }).defaultPrevented, false);
+  assert.equal(f.fire('wheel', { deltaY: -120 }).defaultPrevented, false, 'final content reads upward too');
+  f.win.scrollTo({ top: 2800 });
+  assert.equal(f.fire('wheel', { deltaY: -120 }).defaultPrevented, true);
+  await f.drain();
+  assert.equal(f.win.scrollY, 2000);
+});
+
+test('an oversized upward wheel from final content stops at its own chapter start', async (t) => {
+  const f = browserFixture(t, {}, { initialY: 3000 });
+  assert.equal(f.fire('wheel', { deltaY: -1800 }).defaultPrevented, true);
+  assert.equal(f.win.scrollY, 2400);
+  for (let i = 0; i < 5; i += 1) {
+    await f.step(70);
+    assert.equal(f.fire('wheel', { deltaY: -100 }).defaultPrevented, true);
+  }
+  assert.equal(f.win.scrollY, 2400, 'inertia cannot escape the boundary clamp');
+  await f.step(240);
+  f.fire('wheel', { deltaY: -120 });
+  await f.drain();
+  assert.equal(f.win.scrollY, 1600, 'a fresh gesture turns to the previous chapter');
+  f.win.scrollTo({ top: 3000 });
+  await f.step(240);
+  assert.equal(f.fire('wheel', { deltaY: 5000 }).defaultPrevented, false, 'final downward scrolling remains native to the document end');
+});
+
+test('oversized reading input stops at both edges of a tall intermediate chapter', async (t) => {
+  const f = browserFixture(t, {}, { tops: [0, 800, 2200, 3000], documentHeight: 4800, initialY: 950 });
+  assert.equal(f.fire('wheel', { deltaY: 200 }).defaultPrevented, false, 'interior reading stays native');
+  assert.equal(f.fire('wheel', { deltaY: 2000 }).defaultPrevented, true);
+  assert.equal(f.win.scrollY, 1400, 'the last viewport of the same chapter is fully visible');
+  await f.step(80);
+  f.fire('wheel', { deltaY: 300 });
+  assert.equal(f.win.scrollY, 1400);
+  await f.step(240);
+  f.fire('wheel', { deltaY: -2000 });
+  assert.equal(f.win.scrollY, 800, 'oversized reverse reading stops at the chapter start');
+  await f.step(240);
+  f.fire('wheel', { deltaY: -120 });
+  await f.drain();
+  assert.equal(f.win.scrollY, 0);
+  f.win.scrollTo({ top: 950 });
+  await f.step(240);
+  f.fire('wheel', { deltaY: 2000 });
+  await f.step(240);
+  f.fire('wheel', { deltaY: 120 });
+  await f.drain();
+  assert.equal(f.win.scrollY, 2200, 'after the bottom edge, a fresh gesture turns forward');
 });
 
 test('touch movement stays exactly where the browser puts it, including tall content', async (t) => {
@@ -212,7 +316,7 @@ test('touchstart and scrollbar pointer input cancel programmatic movement withou
   assert.equal(programmatic(f), false);
 });
 
-test('Escape works from focused buttons while ordinary scroll keys keep their native defaults', async (t) => {
+test('Escape cancels navigation even while a button is focused', async (t) => {
   const f = browserFixture(t);
   const button = { closest: () => ({}) };
   const pending = f.nav.goTo(3);
@@ -220,10 +324,6 @@ test('Escape works from focused buttons while ordinary scroll keys keep their na
   assert.equal(f.fire('keydown', { key: 'Escape', target: button }).defaultPrevented, false);
   assert.equal(await pending, false);
   assert.equal(programmatic(f), false);
-  const next = f.nav.goTo(2);
-  await f.step(100);
-  assert.equal(f.fire('keydown', { key: 'PageDown' }).defaultPrevented, false);
-  assert.equal(await next, false);
   const stopped = f.win.scrollY;
   await f.drain();
   assert.equal(f.win.scrollY, stopped);

@@ -20,7 +20,7 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#B7BB5A">
-  <meta name="demo-version" content="0.3.4">
+  <meta name="demo-version" content="0.4.0">
   <meta name="description" content="しらつめ的小小庭院。把可爱，藏进每一个日常。">
   <title>しらつめ · little clover garden</title>
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
@@ -29,6 +29,8 @@
   <link rel="stylesheet" href="./src/refinements.css">
   <link rel="stylesheet" href="./src/owner-profile.css">
   <link rel="stylesheet" href="./src/video-reveal.css">
+  <link rel="stylesheet" href="./src/outfits.css">
+  <link rel="stylesheet" href="./src/model-intro.css">
   <script type="module" src="./src/main.js"></script>
 </head>
 <body class="on-home">
@@ -52,9 +54,10 @@
       <a href="#moments" data-go="2" data-contrast style="--entry-x:.62"><span data-i18n="navMoments">可爱瞬间</span><small>MOMENTS</small></a>
       <a href="#collection" data-go="3" data-contrast style="--entry-x:.81"><span data-i18n="navCollection">日常收藏</span><small>COLLECTION</small></a>
     </nav>
+    <div class="language-control"><button id="language-toggle" aria-label="切换至日本語"><svg class="icon"><use href="#icon-globe"/></svg><span id="language-label">中文</span><span class="language-other">JP</span></button></div>
   </header>
 
-  <div class="language-control"><button id="language-toggle" data-contrast aria-label="切换至日本語"><svg class="icon"><use href="#icon-globe"/></svg><span id="language-label">中文</span><span class="language-other">JP</span></button></div>
+  <div class="language-dock"></div>
 
   <aside class="side-nav" aria-label="章节导航">
     <button class="mobile-menu-toggle" aria-expanded="false" aria-controls="side-links"><span data-clover></span><span id="mobile-current">认识一下</span><span>＋</span></button>
@@ -84,18 +87,38 @@
           <button class="explore-button" id="explore" data-contrast><span data-i18n="explore">开始探索</span><svg class="icon"><use href="#icon-arrow"/></svg></button>
         </div>
       </div>
-      <button class="scroll-cue" data-go="1" data-contrast aria-label="向下探索"><span>SCROLL TO EXPLORE</span><svg class="icon"><use href="#icon-down"/></svg></button>
+      <button class="scroll-cue" data-go="1" data-contrast aria-label="向下探索"><span data-i18n="scrollHint">轻滚一下，翻开下一页</span><svg class="icon"><use href="#icon-down"/></svg></button>
       <div class="hero-coordinate" aria-hidden="true">SHIRATSUME'S LITTLE GARDEN <span>01 — 04</span></div>
       <div id="video-fallback" class="video-fallback" role="status" hidden><p id="video-message"></p><div><button id="video-retry" type="button" data-i18n="play">播放视频</button><a id="video-open" href="./assets/clip-01.mp4" target="_blank" rel="noopener" data-i18n="openVideo">单独打开视频</a></div></div>
     </section>
 
     <section id="hello" class="page-section hello-section" aria-labelledby="hello-heading">
+      <div class="primary-intro">
+        <div class="intro-halftone-seam" aria-hidden="true"></div>
+        <div class="section-inner model-intro-inner">
+          <div id="outfit-showcase" class="outfit-showcase"></div>
+          <div class="model-intro-copy">
+            <p class="section-number">01 <span class="model-intro-eyebrow">MEET SHIRATSUME.</span></p>
+            <div class="model-intro-title"><span data-clover aria-hidden="true"></span><h2 id="hello-heading">しらつめ</h2><span class="model-intro-reading">SHIRATSUME</span></div>
+            <div class="model-intro-quote">
+              <span class="intro-quote-mark quote-open" aria-hidden="true">“</span>
+              <p class="model-intro-lead"></p>
+              <p class="model-intro-description"></p>
+              <span class="intro-quote-mark quote-close" aria-hidden="true">”</span>
+            </div>
+            <button class="text-link" data-go="2"><span data-i18n="seeMoments">去看看那些瞬间</span><svg class="icon"><use href="#icon-arrow"/></svg></button>
+          </div>
+        </div>
+        <div class="section-footer"><span>A LITTLE CLOVER, MANY LITTLE SIDES.</span><span>01 / 03</span></div>
+      </div>
+      <div class="preview-intro" hidden>
       <div class="section-clover clover-a" data-clover data-clover-variant="large" aria-hidden="true"></div>
       <div class="section-inner hello-inner">
         <div class="hello-image-wrap"><figure class="hello-photo"><img src="./assets/frame-01.jpg" alt="" loading="lazy" data-model-image><figcaption><span data-i18n="frameLabel">影像摘帧</span><span>01 / LITTLE MOMENTS</span></figcaption></figure><span class="photo-stamp" data-clover data-clover-shadow="photo-stamp-shadow" data-clover-variant="large" aria-hidden="true"></span><span class="hand-note" data-i18n="handNote">今天也，要开心呀。</span></div>
-        <div class="hello-text"><p class="section-number">01 <span>HELLO, LITTLE ONE.</span></p><h2 id="hello-heading" data-i18n="helloHeading">你好呀，<br>又见面了。</h2><div class="mini-rule"></div><p class="section-lead" data-i18n="helloLead">一蹦一跳的日常，<br>都想好好留下。</p><p class="section-description" data-i18n="helloDescription">这里是一座小小的庭院。收集微笑、目光，还有那些不经意间，让人心软的瞬间。</p><button class="text-link" data-go="2"><span data-i18n="seeMoments">去看看那些瞬间</span><svg class="icon"><use href="#icon-arrow"/></svg></button></div>
+        <div class="hello-text"><p class="section-number">01 <span>HELLO, LITTLE ONE.</span></p><h2 id="preview-hello-heading" data-i18n="helloHeading">你好呀，<br>又见面了。</h2><div class="mini-rule"></div><p class="section-lead" data-i18n="helloLead">一蹦一跳的日常，<br>都想好好留下。</p><p class="section-description" data-i18n="helloDescription">这里是一座小小的庭院。收集微笑、目光，还有那些不经意间，让人心软的瞬间。</p><button class="text-link" data-go="2"><span data-i18n="seeMoments">去看看那些瞬间</span><svg class="icon"><use href="#icon-arrow"/></svg></button></div>
       </div>
       <div class="section-footer"><span>THE LITTLE THINGS MATTER.</span><span>01 / 03</span></div>
+      </div>
     </section>
 
     <section id="moments" class="page-section moments-section" aria-labelledby="moments-heading">
