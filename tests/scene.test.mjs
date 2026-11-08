@@ -53,29 +53,45 @@ test('clover is one joined path with reusable exact geometry and escaped attribu
 });
 
 function svgDots(svg) {
-  return [...svg.matchAll(/<circle cx="(-?[\d.]+)" cy="(-?[\d.]+)" r="([\d.]+)"/g)]
-    .map((match) => ({ x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]) }));
+  return [...svg.matchAll(/<circle cx="(-?[\d.]+)" cy="(-?[\d.]+)" r="([\d.]+)"([^>]*)>/g)]
+    .map((match) => ({
+      x: Number(match[1]), y: Number(match[2]), radius: Number(match[3]),
+      alpha: Number(match[4].match(/\bopacity="([\d.]+)"/)?.[1] ?? 1),
+      progress: Number(match[4].match(/\bdata-progress="([\d.]+)"/)?.[1] ?? 1),
+    }));
 }
 
-test('tilted grid uses 32px spacing, 35px maximum circles and a clear center', () => {
-  const svg = createHalftoneSVG();
-  assert.ok(!svg.includes('<filter'));
-  const dots = svgDots(svg);
-  assert.ok(dots.length > 100 && dots.length < 3000);
-  assert.ok(!dots.some(({ x, y }) => Math.abs(x - 720) < 150 && Math.abs(y - 450) < 90));
-  assert.equal(Math.max(...dots.map(({ radius }) => radius)), 35);
-  assert.ok(dots.some(({ radius }) => radius < 1));
-  assert.equal((svg.match(/opacity=/g) || []).length, 1);
-  assert.ok(svg.includes('opacity="1"'));
-  assert.ok(svg.includes('data-layout="tilted-grid"'));
-  assert.ok(svg.includes('data-angle="8"'));
-  assert.ok(svg.includes('data-dot-spacing="32"'));
-  assert.ok(svg.includes('data-grid-x='));
-  assert.ok(createHalftoneSVG({ width: 390, height: 844 }).includes('viewBox="0 0 390 844"'));
+const halftoneViewports = [[1899, 973], [1440, 900], [390, 844], [320, 844], [320, 568]];
+const defaultDotSpacing = (width, height) => Math.min(width, height) <= 600 ? 16 : 32;
+
+test('tilted grid responds with 16/32px spacing, proportional radii and individual feather opacity', () => {
+  for (const [width, height] of halftoneViewports) {
+    const spacing = defaultDotSpacing(width, height);
+    const svg = createHalftoneSVG({ width, height });
+    const dots = svgDots(svg);
+    assert.ok(!svg.includes('<filter'));
+    assert.ok(dots.length > 100 && dots.length < 3000);
+    assert.equal(Math.max(...dots.map(({ radius }) => radius)), spacing * 0.75);
+    assert.ok(dots.some(({ radius }) => radius < 1));
+    assert.equal((svg.match(/\bopacity=/g) || []).length, dots.length + 1);
+    assert.ok(svg.startsWith('<svg') && svg.includes('fill="currentColor" opacity="1"'));
+    assert.ok(svg.includes('data-layout="tilted-grid"'));
+    assert.ok(svg.includes('data-angle="8"'));
+    assert.ok(svg.includes(`data-dot-spacing="${spacing}"`));
+    assert.ok(svg.includes(`data-max-radius="${spacing * 0.75}"`));
+    assert.ok(svg.includes(`data-feather-width="${spacing * 5}"`));
+    assert.ok(svg.includes('data-feather-steps="5"'));
+    assert.ok(svg.includes(`viewBox="0 0 ${width} ${height}"`));
+    assert.ok(dots.every(({ alpha, progress }) => alpha > 0 && alpha <= 1 && progress > 0 && progress <= 1));
+    assert.ok(dots.some(({ alpha }) => alpha < 0.15));
+    assert.ok(dots.some(({ alpha }) => alpha > 0.2 && alpha < 0.6));
+    assert.ok(dots.some(({ alpha }) => alpha > 0.7 && alpha < 0.95));
+  }
 });
 
-test('grid has equal orthogonal 32px steps rotated clockwise 8 degrees around the viewport center', () => {
-  for (const [width, height] of [[1440, 900], [390, 844]]) {
+test('responsive grid keeps equal orthogonal steps rotated clockwise 8 degrees around the viewport center', () => {
+  for (const [width, height] of halftoneViewports) {
+    const spacing = defaultDotSpacing(width, height);
     const dots = generateTiltedGridDots({ width, height });
     assert.deepEqual(dots, generateTiltedGridDots({ width, height }));
     assert.deepEqual(dots, generateEllipticalHalftoneDots({ width, height }));
@@ -89,15 +105,15 @@ test('grid has equal orthogonal 32px steps rotated clockwise 8 degrees around th
     dots.forEach((dot) => {
       const x = dot.x - width / 2;
       const y = dot.y - height / 2;
-      assert.ok(Math.abs((cosine * x + sine * y) / 32 - dot.gridX) < 1e-8);
-      assert.ok(Math.abs((-sine * x + cosine * y) / 32 - dot.gridY) < 1e-8);
+      assert.ok(Math.abs((cosine * x + sine * y) / spacing - dot.gridX) < 1e-8);
+      assert.ok(Math.abs((-sine * x + cosine * y) / spacing - dot.gridY) < 1e-8);
       const right = byIndex.get(`${dot.gridX + 1},${dot.gridY}`);
       const down = byIndex.get(`${dot.gridX},${dot.gridY + 1}`);
       if (right && down) {
         const u = [right.x - dot.x, right.y - dot.y];
         const v = [down.x - dot.x, down.y - dot.y];
-        assert.ok(Math.abs(Math.hypot(...u) - 32) < 1e-8);
-        assert.ok(Math.abs(Math.hypot(...v) - 32) < 1e-8);
+        assert.ok(Math.abs(Math.hypot(...u) - spacing) < 1e-8);
+        assert.ok(Math.abs(Math.hypot(...v) - spacing) < 1e-8);
         assert.ok(Math.abs(u[0] * v[0] + u[1] * v[1]) < 1e-8);
         assert.ok(Math.abs(Math.atan2(u[1], u[0]) - angle) < 1e-8);
         neighborPairs += 1;
@@ -109,14 +125,28 @@ test('grid has equal orthogonal 32px steps rotated clockwise 8 degrees around th
   }
 });
 
+test('explicit grid spacing is preserved and a supplied small radius still closes the outer grid', () => {
+  const svg = createHalftoneSVG({ width: 390, height: 844, spacing: 24 });
+  assert.ok(svg.includes('data-dot-spacing="24"'));
+  assert.ok(svg.includes('data-max-radius="18"'));
+  assert.ok(svg.includes('data-feather-width="120"'));
+  const dots = generateTiltedGridDots({ width: 1440, height: 900, spacing: 40, maxRadius: 1 });
+  assert.equal(Math.max(...dots.map(({ radius }) => radius)), 40 / Math.SQRT2 + 0.5);
+  const byIndex = new Map(dots.map((dot) => [`${dot.gridX},${dot.gridY}`, dot]));
+  const start = dots.find(({ gridX, gridY }) => byIndex.has(`${gridX + 1},${gridY}`));
+  const next = byIndex.get(`${start.gridX + 1},${start.gridY}`);
+  assert.ok(Math.abs(Math.hypot(next.x - start.x, next.y - start.y) - 40) < 1e-8);
+});
+
 test('only the square lattice rotates while the ellipse size field remains horizontal', () => {
-  for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
+  for (const [width, height] of halftoneViewports) {
+    const spacing = defaultDotSpacing(width, height);
     const dots = generateTiltedGridDots({ width, height });
     let differsFromRotatedEllipse = 0;
     dots.forEach((dot) => {
       const horizontalRho = Math.hypot((dot.x - width / 2) / (width * 0.45), (dot.y - height / 2) / (height * 0.435));
       assert.ok(Math.abs(dot.edgeRho - horizontalRho) < 1e-10);
-      const rotatedRho = Math.hypot(dot.gridX * 32 / (width * 0.45), dot.gridY * 32 / (height * 0.435));
+      const rotatedRho = Math.hypot(dot.gridX * spacing / (width * 0.45), dot.gridY * spacing / (height * 0.435));
       if (Math.abs(horizontalRho - rotatedRho) > 0.02) differsFromRotatedEllipse += 1;
     });
     assert.ok(differsFromRotatedEllipse > 10);
@@ -124,43 +154,90 @@ test('only the square lattice rotates while the ellipse size field remains horiz
   }
 });
 
-test('dot size grows only across the narrow outer ellipse band and joins outside the reference', () => {
-  for (const [width, height] of [[1440, 900], [390, 844]]) {
+test('dot radius and opacity grow together across a physical smooth feather and become solid outside the ellipse', () => {
+  for (const [width, height] of halftoneViewports) {
+    const spacing = defaultDotSpacing(width, height);
+    const maximum = spacing * 0.75;
+    const minimumAxis = Math.min(width * 0.45, height * 0.435);
     const dots = generateTiltedGridDots({ width, height });
     const ordered = [...dots].sort((a, b) => a.edgeRho - b.edgeRho);
-    for (let index = 1; index < ordered.length; index += 1) assert.ok(ordered[index].radius + 1e-9 >= ordered[index - 1].radius);
-    assert.ok(dots.every(({ edgeRho }) => edgeRho > 0.78));
-    assert.ok(dots.filter(({ edgeRho }) => edgeRho <= 0.85).every(({ radius }) => radius <= 4));
-    assert.ok(dots.some(({ edgeRho, radius }) => edgeRho >= 1 && radius === 35));
-    assert.ok(dots.filter(({ edgeRho }) => edgeRho >= 1).every(({ radius }) => radius === 35));
-    assert.ok(dots.some(({ radius }) => radius > 4 && radius < 35));
+    for (let index = 1; index < ordered.length; index += 1) {
+      assert.ok(ordered[index].radius + 1e-9 >= ordered[index - 1].radius);
+      assert.ok(ordered[index].alpha + 1e-9 >= ordered[index - 1].alpha);
+    }
+    dots.forEach(({ edgeRho, radius, alpha, progress, inwardDistance, featherWidth }) => {
+      assert.equal(featherWidth, spacing * 5);
+      assert.ok(Math.abs(inwardDistance - (1 - edgeRho) * minimumAxis) < 1e-10);
+      assert.ok(Math.abs(progress - Math.max(0, Math.min(1, 1 - inwardDistance / featherWidth))) < 1e-10);
+      assert.ok(Math.abs(alpha - progress * progress * (3 - 2 * progress)) < 1e-10);
+      assert.ok(Math.abs(radius - maximum * alpha) < 1e-10);
+      assert.ok(radius >= 0.18 && inwardDistance < featherWidth);
+    });
+    assert.ok(dots.some(({ edgeRho }) => edgeRho < 0.78));
+    assert.ok(dots.filter(({ edgeRho }) => edgeRho >= 1).every(({ radius, alpha }) => radius === maximum && alpha === 1));
+    assert.ok(dots.some(({ alpha }) => alpha === 1));
     assert.ok(dots.every(({ x, y, radius }) => Math.hypot(x - width / 2, y - height / 2) > radius));
   }
 });
 
-test('dot footprints preserve the large central ellipse, including the circular radii', () => {
-  for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
+test('small discernible dots to plane-covering circles span at least three actual grid steps', () => {
+  const inverseSmoothstep = (value) => {
+    let low = 0;
+    let high = 1;
+    for (let index = 0; index < 60; index += 1) {
+      const middle = (low + high) / 2;
+      if (middle * middle * (3 - 2 * middle) < value) low = middle;
+      else high = middle;
+    }
+    return (low + high) / 2;
+  };
+  for (const [width, height] of halftoneViewports) {
+    const spacing = defaultDotSpacing(width, height);
+    const maximum = spacing * 0.75;
+    const physicalTransition = 5 * spacing * (inverseSmoothstep(spacing / Math.SQRT2 / maximum) - inverseSmoothstep(0.1 * spacing / maximum));
+    assert.ok(physicalTransition >= 3 * spacing);
+    const rows = new Map();
+    generateTiltedGridDots({ width, height }).forEach((dot) => {
+      if (!rows.has(dot.gridY)) rows.set(dot.gridY, []);
+      rows.get(dot.gridY).push(dot);
+    });
+    const transitions = [];
+    rows.forEach((row) => {
+      const small = row.filter(({ radius }) => radius <= 0.1 * spacing);
+      const covering = row.filter(({ radius }) => radius >= spacing / Math.SQRT2);
+      small.forEach((start) => covering.forEach((end) => {
+        if (end.gridX > start.gridX) transitions.push(end.gridX - start.gridX);
+      }));
+    });
+    assert.ok(transitions.length > 5);
+    assert.ok(Math.min(...transitions) >= 3);
+  }
+});
+
+test('circular dot footprints leave the physical inner ellipse fully clear', () => {
+  for (const [width, height] of halftoneViewports) {
     const dots = svgDots(createHalftoneSVG({ width, height }));
     const axisX = width * 0.45;
     const axisY = height * 0.435;
     const minimumAxis = Math.min(axisX, axisY);
-    const safeRho = Math.min(0.78, 1 - 35 / minimumAxis) - 0.0001;
+    const safeRho = 1 - defaultDotSpacing(width, height) * 5 / minimumAxis - 0.0001;
     dots.forEach(({ x, y, radius }) => {
       const centerRho = Math.hypot((x - width / 2) / axisX, (y - height / 2) / axisY);
       // Normalized ellipse distance is 1/minimumAxis-Lipschitz. This bounds the
       // entire rendered circle, rather than checking its center alone.
       assert.ok(centerRho - radius / minimumAxis >= safeRho);
     });
-    assert.ok(safeRho * 0.9 >= 0.68);
-    assert.ok(safeRho * 0.87 >= 0.65);
+    assert.ok(safeRho > 0.44);
+    assert.ok(!dots.some(({ x, y, radius }) => Math.hypot(x - width / 2, y - height / 2) <= radius));
   }
 });
 
-test('the rotated grid keeps all four edges and corners filled without clipped triangles', () => {
-  for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
-    const dots = svgDots(createHalftoneSVG({ width, height }));
+test('fully opaque outer circles cover all four viewport edges without clipped triangles', () => {
+  for (const [width, height] of halftoneViewports) {
+    const dots = svgDots(createHalftoneSVG({ width, height })).filter(({ alpha }) => alpha === 1);
     const covered = (x, y) => dots.some((dot) => (dot.x - x) ** 2 + (dot.y - y) ** 2 <= dot.radius ** 2);
-    for (const depth of [0, 10, 20]) {
+    const depths = Math.min(width, height) <= 600 ? [0] : [0, 10, 20];
+    for (const depth of depths) {
       for (let x = 0; x <= width; x += 4) {
         assert.ok(covered(x, depth));
         assert.ok(covered(x, height - depth));
@@ -169,6 +246,7 @@ test('the rotated grid keeps all four edges and corners filled without clipped t
         assert.ok(covered(depth, y));
         assert.ok(covered(width - depth, y));
       }
+      assert.ok(covered(width - depth, height - depth));
     }
   }
 });

@@ -157,20 +157,30 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
   };
 }
 
+function halftoneGridMetrics(width, height, spacing, maxRadius) {
+  const suppliedSpacing = Number(spacing);
+  spacing = Number.isFinite(suppliedSpacing) && suppliedSpacing > 0 ? suppliedSpacing : Math.min(width, height) <= 600 ? 16 : 32;
+  const suppliedRadius = Number(maxRadius);
+  maxRadius = Math.max(Number.isFinite(suppliedRadius) && suppliedRadius > 0 ? suppliedRadius : spacing * 0.75, spacing / Math.SQRT2 + 0.5);
+  return { spacing, maxRadius, featherWidth: spacing * 5 };
+}
+
 /** A rotated square lattice; only the positions rotate, not its ellipse field. */
-export function generateTiltedGridDots({ width = 1440, height = 900, spacing = 32, maxRadius = 35 } = {}) {
+export function generateTiltedGridDots({ width = 1440, height = 900, spacing, maxRadius } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
-  spacing = clamp(Number(spacing) || 32, 24, 48);
-  maxRadius = Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
+  const metrics = halftoneGridMetrics(width, height, spacing, maxRadius);
+  ({ spacing, maxRadius } = metrics);
+  const { featherWidth } = metrics;
   const cx = width / 2;
   const cy = height / 2;
   const baseX = width * 0.45;
   const baseY = height * 0.435;
+  const minimumAxis = Math.min(baseX, baseY);
   const angle = 8 * Math.PI / 180;
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
-  const padding = Math.max(36, maxRadius + 1);
+  const padding = Math.max(spacing, maxRadius + 1);
   // Inverse-transform the expanded screen, rather than rotating a grid clipped
   // to the original rectangle: that would leave bare triangles at its corners.
   const corners = [[-padding, -padding], [width + padding, -padding], [-padding, height + padding], [width + padding, height + padding]]
@@ -186,10 +196,14 @@ export function generateTiltedGridDots({ width = 1440, height = 900, spacing = 3
       const y = cy + sine * gridX * spacing + cosine * gridY * spacing;
       if (x < -padding || x > width + padding || y < -padding || y > height + padding) continue;
       const edgeRho = Math.hypot((x - cx) / baseX, (y - cy) / baseY);
-      const amount = clamp((edgeRho - 0.78) / 0.22, 0, 1);
-      const radius = edgeRho >= 1 ? maxRadius : maxRadius * amount ** 2;
+      // This conservative physical distance has a gradient of at most one:
+      // feathering therefore spans at least five grid steps on either axis.
+      const inwardDistance = (1 - edgeRho) * minimumAxis;
+      const progress = clamp(1 - inwardDistance / featherWidth, 0, 1);
+      const alpha = progress * progress * (3 - 2 * progress);
+      const radius = maxRadius * alpha;
       if (radius < 0.18) continue;
-      dots.push({ x, y, radius, gridX, gridY, rho: edgeRho, edgeRho });
+      dots.push({ x, y, radius, alpha, progress, inwardDistance, featherWidth, gridX, gridY, rho: edgeRho, edgeRho });
     }
   }
   return dots;
@@ -209,12 +223,15 @@ export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadi
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
   const soft = profile === 'soft';
-  spacing = clamp(Number(spacing) || (soft ? 34 : 32), soft ? 32 : 24, soft ? 36 : 48);
-  maxRadius = soft ? clamp(Number(maxRadius) || 17, 14, 18) : Math.max(Number(maxRadius) || 35, spacing / Math.SQRT2 + 1);
   if (!soft) {
-    const dots = generateTiltedGridDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, gridX, gridY, edgeRho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" data-grid-x="${gridX}" data-grid-y="${gridY}" data-rho="${edgeRho.toFixed(6)}"/>`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-profile="solid" data-layout="tilted-grid" data-angle="8">${dots.join('')}</svg>`;
+    const metrics = halftoneGridMetrics(width, height, spacing, maxRadius);
+    ({ spacing, maxRadius } = metrics);
+    const { featherWidth } = metrics;
+    const dots = generateTiltedGridDots({ width, height, spacing, maxRadius }).map(({ x, y, radius, alpha, progress, gridX, gridY, edgeRho }) => `<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${radius.toFixed(2)}" opacity="${alpha.toFixed(6)}" data-progress="${progress.toFixed(6)}" data-grid-x="${gridX}" data-grid-y="${gridY}" data-rho="${edgeRho.toFixed(6)}"/>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="halftone-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="currentColor" opacity="1" data-dot-spacing="${spacing}" data-max-radius="${maxRadius}" data-feather-width="${featherWidth}" data-feather-steps="5" data-profile="solid" data-layout="tilted-grid" data-angle="8">${dots.join('')}</svg>`;
   }
+  spacing = clamp(Number(spacing) || 34, 32, 36);
+  maxRadius = clamp(Number(maxRadius) || 17, 14, 18);
   const dots = [];
   const first = soft ? 0 : -spacing;
   for (let y = first; y <= height + spacing; y += spacing) {
