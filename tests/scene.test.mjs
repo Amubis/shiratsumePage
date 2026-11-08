@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { seededRandom, HALFTONE_GEOMETRY, halftoneRadiusAt, halftoneOpacityAt, getHalftoneGeometry, getHalftoneSeamGeometry, generateHalftoneSeamDots, createHalftoneSeamSVG, generateSceneLayout, generateTiltedGridDots, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
+import { seededRandom, HALFTONE_GEOMETRY, halftoneRadiusAt, halftoneOpacityAt, halftoneToneAt, halftoneCellCoverage, getHalftoneGeometry, getHalftoneSeamGeometry, generateHalftoneSeamDots, createHalftoneSeamSVG, generateSceneLayout, generateTiltedGridDots, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -156,7 +156,8 @@ test('radii grow smoothly outside the inner ellipse and become contiguous outsid
       assert.equal(alpha, 1);
       assert.ok(Math.abs(progress - Math.max(0, Math.min(1, 1 - inwardDistance / featherWidth))) < 1e-10);
       assert.ok(amount > 0 && amount <= 1);
-      if (progress <= .86) assert.ok(radius <= spacing * .4 + 1e-10);
+      const tone = halftoneCellCoverage(radius, spacing) * halftoneOpacityAt(progress);
+      assert.ok(Math.abs(tone - halftoneToneAt(progress)) < .009);
       assert.ok(Math.abs(radius - maxRadius * amount) < 1e-10);
     });
     assert.ok(dots.filter(({ edgeRho }) => edgeRho >= 1).every(({ radius }) => radius === maxRadius));
@@ -186,33 +187,39 @@ test('discernibly small dots and plane-covering circles remain at least three ac
 });
 
 
-test('at least four clearly separated shrinking dots remain visible before the merged edge', () => {
-  for (const [width, height] of halftoneViewports) {
-    const geometry = getHalftoneGeometry({ width, height });
-    const visible = generateTiltedGridDots({ width, height }).filter((dot) =>
-      dot.gridX === 0 && dot.gridY < 0 && dot.radius >= .06 * geometry.spacing
-      && dot.radius <= .49 * geometry.spacing && halftoneOpacityAt(dot.progress) >= .15);
-    assert.ok(visible.length >= 4, `${width}x${height}: ${visible.length} clearly separated dots`);
-    const ordered = visible.sort((a, b) => a.gridY - b.gridY);
-    for (let index = 1; index < ordered.length; index++) {
-      const first = ordered[index - 1];
-      const next = ordered[index];
-      assert.ok(Math.hypot(first.x - next.x, first.y - next.y) > first.radius + next.radius);
-      assert.ok(first.radius > next.radius);
+test('round-dot coverage agrees with independent cell rasterization through contact and closure', () => {
+  const pixels = 360;
+  for (const radius of [0, .1, .28, .5, .55, .6, .67, Math.SQRT1_2, .9]) {
+    let covered = 0;
+    for (let y = 0; y < pixels; y++) for (let x = 0; x < pixels; x++) {
+      if (((x + .5) / pixels - .5) ** 2 + ((y + .5) / pixels - .5) ** 2 <= radius ** 2) covered++;
     }
+    assert.ok(Math.abs(halftoneCellCoverage(radius) - covered / (pixels * pixels)) < .002);
   }
+  assert.equal(halftoneCellCoverage(.5), Math.PI / 4);
+  assert.equal(halftoneCellCoverage(Math.SQRT1_2), 1);
 });
 
-test('late radius growth keeps round gaps while earlier group alpha makes small dots legible', () => {
-  const spacing = 18;
-  const maxRadius = spacing * .9;
-  const radii = [.2, .4, .6, .8, .9].map((progress) => halftoneRadiusAt(progress, spacing, maxRadius));
-  assert.ok(radii.every((radius) => radius * 2 < spacing));
-  assert.ok(radii.every((radius, index) => !index || radius > radii[index - 1]));
-  assert.ok(halftoneOpacityAt(.2) > .28 && halftoneOpacityAt(.4) > .8);
+test('area and whole-field alpha jointly follow an even tone instead of a late half-to-solid jump', () => {
+  let previous = 0;
+  for (let index = 0; index <= 200; index++) {
+    const progress = index / 200;
+    const radius = halftoneRadiusAt(progress, 18, 16.2);
+    const tone = halftoneCellCoverage(radius, 18) * halftoneOpacityAt(progress);
+    assert.ok(tone >= previous - 1e-7);
+    assert.ok(tone - previous < .008, `${progress}: abrupt tone step ${tone - previous}`);
+    assert.ok(Math.abs(tone - progress * progress * (3 - 2 * progress)) < .009);
+    previous = tone;
+  }
+  const expected = [[.25, .25632949075, .15625], [.5, .42023025377, .5], [.675, .49976282382, .75178125], [.8, .56523584245, .896]];
+  for (const [progress, radius, tone] of expected) {
+    const actualRadius = halftoneRadiusAt(progress, 18, 16.2);
+    assert.ok(Math.abs(actualRadius / 18 - radius) < 1e-7);
+    assert.ok(Math.abs(halftoneCellCoverage(actualRadius, 18) * halftoneOpacityAt(progress) - tone) < 1e-7);
+  }
   assert.equal(halftoneOpacityAt(0), 0);
   assert.equal(halftoneOpacityAt(1), 1);
-  assert.ok(halftoneRadiusAt(1, spacing, maxRadius) >= spacing / Math.SQRT2);
+  assert.equal(halftoneRadiusAt(1, 18, 16.2), 16.2);
 });
 
 test('merged outer circles cover all four viewport edges without clipped triangular corners', () => {
@@ -262,7 +269,8 @@ test('chapter bands grow toward the top right and bottom left with a wide transp
       assert.ok(distance > 0);
       assert.ok(Math.abs(progress - Math.max(0, Math.min(1, distance / (normalLength * featherWidth)))) < 1e-10);
       assert.ok(radius <= maxRadius);
-      if (progress <= .86) assert.ok(radius <= spacing * .4 + 1e-10);
+      const tone = halftoneCellCoverage(radius, spacing) * halftoneOpacityAt(progress);
+      assert.ok(Math.abs(tone - halftoneToneAt(progress)) < .009);
       // Check complete circle footprints, leaving an ample unpainted middle.
       if (band === 'top') assert.ok(y - slope * x + radius * normalLength < topIntercept + spacing);
       else assert.ok(y - slope * x - radius * normalLength > bottomIntercept - spacing);

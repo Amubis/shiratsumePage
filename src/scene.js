@@ -177,20 +177,47 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
 // rotates independently; the clear opening remains horizontal and centered.
 export const HALFTONE_GEOMETRY = Object.freeze({ innerWidth: (0.83 / 0.84) * 0.8, innerHeight: 0.8, innerScale: 0.8, angle: 8, featherSteps: 5 });
 
-/** Keep individual circles apart through most of the feather, then join its edge. */
-export function halftoneRadiusAt(progress, spacing, maxRadius) {
-  const t = clamp(progress, 0, 1);
-  const separatedEnd = 0.86;
-  const separatedRadius = spacing * 0.4;
-  if (t <= separatedEnd) return separatedRadius * t / separatedEnd;
-  const merge = (t - separatedEnd) / (1 - separatedEnd);
-  return separatedRadius + (maxRadius - separatedRadius) * merge * merge * (3 - 2 * merge);
+/** Exact ink coverage of equal round dots on a square lattice, including overlap. */
+export function halftoneCellCoverage(radius, spacing = 1) {
+  const u = clamp(radius / spacing, 0, Math.SQRT1_2);
+  if (u <= 0.5) return Math.PI * u * u;
+  if (u >= Math.SQRT1_2) return 1;
+  const segment = u * u * Math.acos(0.5 / u) - 0.5 * Math.sqrt(u * u - 0.25);
+  return clamp(Math.PI * u * u - 4 * segment, 0, 1);
 }
 
-/** Alpha belongs to the composed field; reveal small circles before they merge. */
-export function halftoneOpacityAt(progress) {
-  const t = clamp(progress / 0.55, 0, 1);
+/** Invert covered area rather than interpolating radius through the contact point. */
+function radiusForCoverage(coverage) {
+  if (coverage <= Math.PI / 4) return Math.sqrt(Math.max(0, coverage) / Math.PI);
+  if (coverage >= 1) return Math.SQRT1_2;
+  let low = 0.5;
+  let high = Math.SQRT1_2;
+  for (let step = 0; step < 26; step += 1) {
+    const middle = (low + high) / 2;
+    if (halftoneCellCoverage(middle) < coverage) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
+}
+
+/** A continuous tone ramp, with gentle entry and exit into the clear/solid areas. */
+export function halftoneToneAt(progress) {
+  const t = clamp(progress, 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+export function halftoneRadiusAt(progress, spacing, maxRadius) {
+  const t = clamp(progress, 0, 1);
+  const radius = spacing * radiusForCoverage(halftoneToneAt(t) ** 0.85);
+  // At 92% of the band the intended tone is already above 98%. A smooth
+  // margin here closes perimeter gaps without a new visible density jump.
+  const margin = Math.max(0, maxRadius - spacing * Math.SQRT1_2) * halftoneToneAt((t - 0.92) / 0.08);
+  return Math.min(maxRadius, radius + margin);
+}
+
+/** Applied once to the opaque union. Area × alpha follows the same tone ramp. */
+export function halftoneOpacityAt(progress) {
+  return halftoneToneAt(progress) ** 0.15;
 }
 
 export function getHalftoneGeometry({ width = 1440, height = 900, spacing, maxRadius } = {}) {
@@ -208,7 +235,7 @@ export function getHalftoneGeometry({ width = 1440, height = 900, spacing, maxRa
   // Clamp explicit spacing as well: a coarse grid would erase the progression.
   spacing = Math.min(preferredSpacing, featherWidth / HALFTONE_GEOMETRY.featherSteps);
   const suppliedRadius = Number(maxRadius);
-  maxRadius = Math.max(Number.isFinite(suppliedRadius) && suppliedRadius > 0 ? suppliedRadius : spacing * 0.9, spacing / Math.SQRT2 + 0.05);
+  maxRadius = Math.max(Number.isFinite(suppliedRadius) && suppliedRadius > 0 ? suppliedRadius : spacing * 0.75, spacing / Math.SQRT2 + 0.05);
   return { width, height, spacing, maxRadius, innerX, innerY, outerX, outerY, minimumAxis, featherWidth };
 }
 
