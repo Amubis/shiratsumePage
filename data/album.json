@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "media": [
+    {
+      "id": "still-01",
+      "url": "./assets/frame-01.jpg",
+      "thumbnail": "./assets/frame-01.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 1 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した1枚目の画像"
+      },
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "sourceKind": "video-still"
+    },
+    {
+      "id": "still-02",
+      "url": "./assets/frame-02.jpg",
+      "thumbnail": "./assets/frame-02.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 2 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した2枚目の画像"
+      },
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "sourceKind": "video-still"
+    },
+    {
+      "id": "still-03",
+      "url": "./assets/frame-03.jpg",
+      "thumbnail": "./assets/frame-03.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 3 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した3枚目の画像"
+      },
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "sourceKind": "video-still"
+    },
+    {
+      "id": "still-04",
+      "url": "./assets/frame-04.jpg",
+      "thumbnail": "./assets/frame-04.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 4 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した4枚目の画像"
+      },
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "sourceKind": "video-still"
+    }
+  ]
+}

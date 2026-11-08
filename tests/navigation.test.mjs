@@ -378,6 +378,56 @@ test('reduced motion and animate:false locate immediately after the hook', async
   assert.equal(f.nav.transitioning, false);
 });
 
+test('a completed covering transition skips scrolling even when the caller requests animation', async (t) => {
+  let release;
+  let preparationDetails;
+  const f = browserFixture(t, {
+    onBeforeNavigate: (_, details) => {
+      preparationDetails = details;
+      return new Promise((resolve) => { release = resolve; });
+    },
+  });
+  const pending = f.nav.goTo(2, { animate: true, source: 'album-cover' });
+  assert.equal(programmatic(f), true);
+  assert.deepEqual(f.writes, [], 'the current page stays in place while the cover is preparing');
+  assert.equal(preparationDetails.from, 0);
+  assert.equal(preparationDetails.signal.aborted, false);
+
+  release({ animate: false });
+  await Promise.resolve();
+  assert.deepEqual(f.writes, [1600], 'the covered page jumps to its destination without an animation frame');
+  assert.equal(await pending, true);
+  assert.equal(f.nav.activeIndex, 2);
+  assert.equal(f.nav.transitioning, false);
+  assert.equal(programmatic(f), false);
+  assert.deepEqual(f.settled, [[2, 'album-cover']]);
+  await f.drain();
+  assert.deepEqual(f.writes, [1600], 'no delayed scroll animation may run after the cover hands off');
+});
+
+test('an aborted covering transition cannot jump when its hook later returns animate:false', async (t) => {
+  let release;
+  let signal;
+  const f = browserFixture(t, {
+    onBeforeNavigate: (_, details) => {
+      signal = details.signal;
+      return new Promise((resolve) => { release = resolve; });
+    },
+  });
+  const pending = f.nav.goTo(2, { animate: true });
+  assert.equal(f.fire('wheel', { deltaY: 45 }).defaultPrevented, false);
+  assert.equal(await pending, false);
+  assert.equal(signal.aborted, true);
+  assert.equal(programmatic(f), false);
+  assert.equal(f.nav.transitioning, false);
+
+  release({ animate: false });
+  await f.drain();
+  assert.deepEqual(f.writes, [], 'the obsolete cover result must not write a destination or consume native input');
+  assert.equal(f.nav.activeIndex, 0);
+  assert.deepEqual(f.settled, []);
+});
+
 test('refresh and initial restored positions update selection without forcing scroll offsets', async (t) => {
   const f = browserFixture(t, {}, { initialY: 1700 });
   await f.drain();

@@ -1,0 +1,32 @@
+.primary-album.album-inner {
+  min-height: 100svh;
+  padding-block: 145px 90px;
+  padding-right: 50px;
+}
+.primary-album .album-photo-image { object-fit: cover; }
+body.on-album .side-highlight { color: var(--paper); }
+/* The first-use cue sits on the character, inside a familiar clover. */
+.outfit-cue {
+  left: 50%; right: auto; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 86px; height: 86px;
+  justify-content: center; gap: 0;
+}
+.outfit-cue-art { width: 86px; height: 86px; opacity: .96; }
+.outfit-cue-arrow { left: 30px; top: 21px; }
+.outfit-cue-label {
+  position: absolute; top: 54px; left: 50%;
+  transform: translateX(-50%); white-space: nowrap;
+  color: var(--ink); font-size: 9px; line-height: 1.4;
+}
+@media (max-width: 760px) {
+  /* WebKit mandatory snapping can skip the lower controls of a tall chapter. */
+  html { scroll-snap-type: y proximity; }
+  .primary-album.album-inner { padding: 150px 35px 90px 25px; }
+  .outfit-cue { left: 50%; right: auto; }
+  .outfit-cue-art { width: 86px; height: 86px; }
+  .outfit-cue-arrow { left: 30px; top: 21px; }
+}
+@media (max-height: 700px) and (min-width: 761px) {
+  .primary-album.album-inner { padding-top: 125px; padding-bottom: 65px; }
+}

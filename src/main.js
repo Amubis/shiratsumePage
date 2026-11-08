@@ -10,6 +10,9 @@ import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
 import { createOutfitShowcase, MODEL_PROFILE } from './outfits.js';
 import { createHeroInteractions } from './hero-interactions.js';
+import { createIntroEntrance } from './intro-entrance.js';
+import { createAlbum, ALBUM_MEDIA } from './album.js';
+import { createAlbumTransition } from './album-transition.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -37,6 +40,13 @@ let wipeSerial = 0;
 let pageReveal;
 let outfitShowcase;
 let heroInteractions;
+let introEntrance;
+let album;
+let albumTransition;
+let detachIntroSnapshot;
+let introInWipe = false;
+let pendingAlbumNavigation = null;
+let pendingAlbumMedia;
 const languageControl = $('.language-control');
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
@@ -51,6 +61,7 @@ function renderHalftone(){
   root.style.setProperty('--shade-rx',`${HALFTONE_GEOMETRY.innerWidth / HALFTONE_GEOMETRY.innerScale * 50}%`);
   root.style.setProperty('--shade-ry',`${HALFTONE_GEOMETRY.innerHeight / HALFTONE_GEOMETRY.innerScale * 50}%`);
   if (!MODELS[modelId].preview) $('.intro-halftone-seam').innerHTML=createHalftoneSeamSVG({width:innerWidth,height:innerHeight});
+  introEntrance?.refresh();
 }
 renderHalftone();
 const scene = createCloverScene({ container: $('.hero-clovers'), theme: MODELS[modelId].theme, seed: modelId, reducedMotion });
@@ -99,11 +110,14 @@ function applyLanguage() {
   renderTitle();
   ownerProfile?.setLanguage(language);
   outfitShowcase?.setLanguage(language);
+  album?.setLanguage(language);
   const profile = MODEL_PROFILE[language];
   $('.model-intro-eyebrow').textContent = profile.eyebrow;
   $('#hello-heading').textContent = profile.heading;
   $('.model-intro-lead').textContent = profile.lead;
   $('.model-intro-description').textContent = profile.description;
+  introEntrance?.refresh();
+  prepareIntroOffscreen();
   sidebar?.refresh();
   contrastLayer?.refresh();
 }
@@ -197,7 +211,10 @@ async function runExploreWipe(signal) {
   const serial=++wipeSerial;
   wipeFade?.cancel();
   wipeAnimation?.cancel();
+  detachIntroSnapshot?.(); detachIntroSnapshot = null;
   pageReveal?.destroy();
+  introInWipe = !MODELS[modelId].preview;
+  if (introInWipe) introEntrance?.prepare();
   const wipe = $('.transition-wipe');
   wipe.classList.remove('is-active');
   const shape = $('.wipe-flower');
@@ -224,6 +241,9 @@ async function runExploreWipe(signal) {
   let reveal;
   const clean = () => {
     if(serial===wipeSerial){wipeAnimation?.cancel();wipe.classList.remove('is-active');}
+    detachIntroSnapshot?.(); detachIntroSnapshot = null;
+    introInWipe = false;
+    introEntrance?.finish();
     reveal?.destroy();
     animations.forEach((animation)=>animation.cancel());
   };
@@ -252,6 +272,10 @@ async function runExploreWipe(signal) {
   wipeAnimation=shape.animate(exploreGrowthFrames(scale),{duration:EXPLORE_TIMING.grow,easing:'linear',fill:'forwards'});
   reveal=createPageReveal({container:wipe,shape,section:$('#hello')});
   pageReveal=reveal;
+  if (introInWipe) {
+    detachIntroSnapshot = introEntrance?.attach(reveal.element.querySelector('.page-section'));
+    void introEntrance?.enter();
+  }
   reveal.start();
   animations.push(reveal.element.animate([
     {opacity:0,offset:0},{opacity:.8,offset:.5},{opacity:1,offset:.78},{opacity:1,offset:1},
@@ -272,22 +296,51 @@ async function runExploreWipe(signal) {
 function finishWipe() {
   const wipe = $('.transition-wipe');
   if (!wipe.classList.contains('is-active')) return;
-  if (reducedMotion()) { wipe.classList.remove('is-active'); wipeAnimation?.cancel();pageReveal?.destroy();return; }
+  const release = () => { detachIntroSnapshot?.();detachIntroSnapshot=null;introInWipe=false;pageReveal?.destroy(); };
+  if (reducedMotion()) { wipe.classList.remove('is-active'); wipeAnimation?.cancel();release();return; }
   const serial=wipeSerial;
   wipeFade = wipe.animate([{opacity:1},{opacity:0}], {duration:EXPLORE_TIMING.reveal,easing:'cubic-bezier(.4,0,.2,1)'});
-  wipeFade.finished.then(() => {if(serial===wipeSerial){wipe.classList.remove('is-active');wipeAnimation?.cancel();pageReveal?.destroy();}}).catch(() => {});
+  wipeFade.finished.then(() => {if(serial===wipeSerial){wipe.classList.remove('is-active');wipeAnimation?.cancel();release();}}).catch(() => {});
+}
+
+function flushAlbumMedia() {
+  if (!pendingAlbumMedia || !album || albumTransition?.busy || pendingAlbumNavigation) return;
+  const media = pendingAlbumMedia; pendingAlbumMedia = null;
+  album.setMedia(media);
+}
+
+function enterAlbum() {
+  void albumTransition?.enter().then(flushAlbumMedia);
+}
+
+function prepareIntroOffscreen() {
+  if (!introEntrance || currentIndex === 1 || introInWipe || MODELS[modelId].preview) return;
+  const rect = $('#hello').getBoundingClientRect();
+  if (rect.bottom <= 0 || rect.top >= innerHeight) introEntrance.prepare();
 }
 
 
 let navigator;
 navigator = createSectionNavigator({
   sections: $$('.page-section'), reducedMotion,
-  onActive(index) {
+  onActive(index,{source}) {
+    const previousIndex = currentIndex;
     currentIndex = index;
+    if (index !== 1 && previousIndex === 1) introEntrance?.finish();
+    else if (index === 1 && previousIndex !== 1 && !introInWipe && !MODELS[modelId].preview) {
+      introEntrance?.prepare(); void introEntrance?.enter();
+    }
+    // Native touch scrolling has no intercepted navigation preparation. It
+    // starts the same paper choreography after the chapter becomes current.
+    if (!MODELS[modelId].preview && !pendingAlbumNavigation) {
+      if (index === 2 && previousIndex !== 2) enterAlbum();
+      else if (previousIndex === 2 && index !== 2) albumTransition?.reset({prepare:true});
+    }
     heroInteractions?.refresh();
     if(index!==0){videoReveal?.cancel();ownerProfile?.close();}
     if(index!==0 && watching)setWatching(false);
     document.body.classList.toggle('on-home', index === 0);
+    document.body.classList.toggle('on-album', index === 2 && !MODELS[modelId].preview);
     (index === 0 ? $('.topbar') : $('.language-dock')).append(languageControl);
     $$('.page-section').forEach((section,i) => section.classList.toggle('is-current',i === index));
     $$('.top-links>a').forEach((link,i) => { if(i===index)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current'); });
@@ -297,14 +350,50 @@ navigator = createSectionNavigator({
     if (index !== 0) { finishIntro(); player.pause(); } else if (!userPaused) void player.resume();
     sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
   },
-  onProgress(progress) { if(progress !== 0)finishIntro(); root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress)); },
-  async onBeforeNavigate(index,{source,signal}) {
+  onProgress(progress) {
+    if(progress !== 0)finishIntro();
+    root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress));
+    if (currentIndex === 1 && !MODELS[modelId].preview) albumTransition?.setProgress(Math.max(0,progress) * .3);
+  },
+  async onBeforeNavigate(index,{source,from,signal}) {
     ownerProfile?.close();
     if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');}
     finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
+    pendingAlbumNavigation = null;
+    if (!MODELS[modelId].preview && from !== index && (index === 2 || from === 2)) {
+      const operation = {kind:index === 2 ? 'enter' : 'reveal',index};
+      pendingAlbumNavigation = operation;
+      signal.addEventListener('abort', () => {
+        if (pendingAlbumNavigation === operation) pendingAlbumNavigation = null;
+        albumTransition?.cancel();
+      }, {once:true});
+      introEntrance?.finish();
+      const completed = index === 2
+        ? await albumTransition.cover({signal,outgoing:$('#' + SECTION_IDS[from])})
+        : await albumTransition.leave({signal});
+      if (!completed || signal.aborted) {
+        if (pendingAlbumNavigation === operation) pendingAlbumNavigation = null;
+        // If a language or motion change settles the decorative controller,
+        // finish the requested navigation immediately instead of resuming an
+        // unrelated animated scroll beneath an absent cover.
+        return {animate:false};
+      }
+      return {animate:false};
+    }
+    albumTransition?.reset({prepare:index !== 2});
+    if (index === 1 && from !== index && source !== 'explore' && !MODELS[modelId].preview) introEntrance?.prepare();
     if(source === 'explore') await runExploreWipe(signal);
   },
-  onSettled() { finishWipe(); },
+  onSettled(index) {
+    finishWipe();
+    if (index !== 1 && !MODELS[modelId].preview) introEntrance?.prepare();
+    const pending = pendingAlbumNavigation;
+    pendingAlbumNavigation = null;
+    if (pending?.index === index) {
+      if (pending.kind === 'enter') enterAlbum();
+      else void albumTransition?.reveal().then(flushAlbumMedia);
+    } else flushAlbumMedia();
+  },
 });
 let explorePoint = null;
 
@@ -367,6 +456,9 @@ $$('[data-model]').forEach((button) => button.addEventListener('click', () => { 
 
 function applyTheme() {
   const model=MODELS[modelId];
+  introEntrance?.finish();
+  pendingAlbumNavigation = null;
+  albumTransition?.cancel();
   root.style.setProperty('--theme',model.theme);root.style.setProperty('--theme-rgb',model.rgb);root.style.setProperty('--theme-dark',model.dark);root.style.setProperty('--paper',model.paper);
   $('meta[name="theme-color"]').content=model.theme;
   document.body.classList.toggle('theme-preview',model.preview);
@@ -374,6 +466,12 @@ function applyTheme() {
   $('.preview-intro').hidden=!model.preview;
   $('#hello').setAttribute('aria-labelledby',model.preview?'preview-hello-heading':'hello-heading');
   outfitShowcase?.setEnabled(!model.preview);
+  $('.primary-album').hidden=model.preview;
+  $('.preview-album').hidden=!model.preview;
+  $('#moments').setAttribute('aria-labelledby',model.preview?'moments-heading':'album-heading');
+  album?.setModel(modelId);
+  album?.setEnabled(!model.preview);
+  albumTransition?.setEnabled(!model.preview);
   $('#theme-status').hidden=!model.preview;
   $('#pause-toggle').disabled=model.preview;
   $('#watch-toggle').disabled=model.preview;
@@ -393,10 +491,11 @@ function applyTheme() {
     element.innerHTML=halftoneShadowSVG({id:element.dataset.cloverShadow,profile:model.preview?'soft':'connected'});
   });
   applyLanguage();applyURL();
+  if (!model.preview && currentIndex !== 1) introEntrance?.prepare();
 }
 
 $('#language-toggle').addEventListener('click', () => {
-  finishIntro();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();
+  finishIntro();introEntrance?.finish();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();
 });
 $$('[data-lightbox]').forEach((button) => button.addEventListener('click', () => {
   finishIntro();
@@ -407,22 +506,42 @@ $$('[data-lightbox]').forEach((button) => button.addEventListener('click', () =>
 $('#lightbox').addEventListener('close', () => document.body.classList.remove('modal-open'));
 $('#lightbox-close').addEventListener('click', () => $('#lightbox').close());
 $('#lightbox').addEventListener('click', (event) => {if(event.target===$('#lightbox'))$('#lightbox').close();});
-document.addEventListener('keydown', (event) => {
+// The navigator's window listener must abort its pending handoff before Escape
+// resolves a decorative controller's promise in this later listener.
+window.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
-  if(event.key==='Escape') {videoReveal?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
+  if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
-document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);contrastLayer?.refresh();});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();};
+document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);contrastLayer?.refresh();queueMicrotask(prepareIntroOffscreen);});
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
-window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();});
-window.addEventListener('scroll',()=>{if(root.dataset.phase!=='ready')finishIntro();},{passive:true});
+window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
+window.addEventListener('scroll',()=>{
+  if(root.dataset.phase!=='ready')finishIntro();
+  if(introEntrance?.state==='complete')prepareIntroOffscreen();
+},{passive:true});
 window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(location.hash.slice(1));if(index>=0)void navigator.goTo(index,{source:'history'});});
 
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
 contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
 ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
 outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
+introEntrance=createIntroEntrance({section:$('#hello'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview});
+album=createAlbum({container:$('#album-showcase'),language,modelId,media:ALBUM_MEDIA,reducedMotion,onReady(){
+  $('.album-title').id='album-heading';
+  if (albumTransition) albumTransition.reset({prepare:currentIndex !== 2});
+}});
+albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
+// The public manifest is the content boundary for a future authenticated CMS.
+// Relative media URLs resolve against this page on project GitHub Pages too.
+if (location.protocol !== 'file:') fetch('./data/album.json').then(response=>{
+  if(!response.ok)throw new Error('Album manifest unavailable');
+  return response.json();
+}).then(manifest=>{
+  if(manifest.schemaVersion!==1 || !Array.isArray(manifest.media))return;
+  pendingAlbumMedia=manifest.media;flushAlbumMedia();
+}).catch(()=>{/* The bundled four-still preview also works offline. */});
 videoReveal=createVideoReveal({
   hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
   targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.hero-edge-shade'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],

@@ -123,11 +123,11 @@ export function createSectionNavigator({
       };
       const start = async () => {
         try {
-          await onBeforeNavigate(index, { source, from, signal: controller.signal });
+          const preparation = await onBeforeNavigate(index, { source, from, signal: controller.signal });
           if (!isCurrent()) return;
           measure();
           const startY = scrollY();
-          if (!animate || reducedMotion() || Math.abs(destination() - startY) < 1) {
+          if (!animate || preparation?.animate === false || reducedMotion() || Math.abs(destination() - startY) < 1) {
             finish();
             return;
           }
