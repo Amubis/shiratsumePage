@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { seededRandom, HALFTONE_GEOMETRY, getHalftoneGeometry, getHalftoneSeamGeometry, generateHalftoneSeamDots, createHalftoneSeamSVG, generateSceneLayout, generateTiltedGridDots, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
+import { seededRandom, HALFTONE_GEOMETRY, halftoneRadiusAt, halftoneOpacityAt, getHalftoneGeometry, getHalftoneSeamGeometry, generateHalftoneSeamDots, createHalftoneSeamSVG, generateSceneLayout, generateTiltedGridDots, generateRadialHalftoneDots, generateEllipticalHalftoneDots, hexToHsl, hslToHex, randomThemeColor, SMALL_CLOVER_PATH, CLOVER_PATH, SCENE_LAYOUT, cloverSVG, createCloverScene, createHalftoneSVG, halftoneShadowSVG } from '../src/scene.js';
 import { createVideoPlayer } from '../src/media.js';
 
 test('seeded colors/poses remain stable across language renders but differ by model', () => {
@@ -62,14 +62,17 @@ function svgDots(svg) {
 }
 
 const halftoneViewports = [[1899, 973], [1440, 900], [390, 844], [320, 844], [320, 568]];
-test('ellipse diameters explicitly define the larger clear opening and adaptive five-row feather', () => {
+test('coarser pitch and wider feather preserve the approved outer ellipse and large clear opening', () => {
   for (const [width, height] of halftoneViewports) {
     const geometry = getHalftoneGeometry({ width, height });
-    assert.equal(geometry.innerX * 2, width * 0.83);
-    assert.equal(geometry.innerY * 2, height * 0.84);
+    assert.equal(geometry.innerX * 2, width * HALFTONE_GEOMETRY.innerWidth);
+    assert.equal(geometry.innerY * 2, height * HALFTONE_GEOMETRY.innerHeight);
     assert.ok(Math.abs(geometry.outerX * 2 / width - 0.83 / 0.84) < 1e-12);
-    assert.ok(Math.abs(geometry.outerY * 2 / height - 0.84 / 0.84) < 1e-12);
+    assert.ok(Math.abs(geometry.outerY * 2 / height - 1) < 1e-12);
     assert.ok(geometry.featherWidth / geometry.spacing >= 5 - 1e-10);
+    const oldSpacing = Math.min(width * (0.83 / 0.84) / 2, height / 2) * .16 / 5;
+    assert.ok(geometry.spacing >= oldSpacing * 1.24);
+    assert.ok(geometry.innerX * 2 / width > .78 && geometry.innerY * 2 / height >= .8);
     const dots = generateTiltedGridDots({ width, height });
     assert.ok(dots.length > 100 && dots.length < 15000);
     assert.ok(dots.some(({ radius }) => radius < 1));
@@ -87,10 +90,10 @@ test('opaque circles merge before one continuous ellipse alpha mask, preventing 
     assert.equal((svg.match(/<g mask=/g) || []).length, 1);
     assert.ok(svg.includes('data-composite="opaque-union"'));
     assert.ok(svg.includes('style="mask-type:alpha"'));
-    assert.ok(svg.includes('offset="0.840000" stop-color="white" stop-opacity="0.000000"'));
+    assert.ok(svg.includes('offset="0.800000" stop-color="white" stop-opacity="0.000000"'));
     assert.ok(svg.includes('offset="1.000000" stop-color="white" stop-opacity="1.000000"'));
     assert.ok(!svg.includes('<filter') && !svg.includes('data:image'));
-    assert.ok(svg.includes('data-inner-width="0.83" data-inner-height="0.84"'));
+    assert.ok(svg.includes(`data-inner-width="${HALFTONE_GEOMETRY.innerWidth}" data-inner-height="${HALFTONE_GEOMETRY.innerHeight}"`));
     const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(ids).size, ids.length);
     for (const match of svg.matchAll(/url\(#([^)]*)\)/g)) assert.ok(ids.includes(match[1]));
@@ -152,7 +155,8 @@ test('radii grow smoothly outside the inner ellipse and become contiguous outsid
       assert.ok(edgeRho > HALFTONE_GEOMETRY.innerScale);
       assert.equal(alpha, 1);
       assert.ok(Math.abs(progress - Math.max(0, Math.min(1, 1 - inwardDistance / featherWidth))) < 1e-10);
-      assert.ok(Math.abs(amount - progress * progress * (3 - 2 * progress)) < 1e-10);
+      assert.ok(amount > 0 && amount <= 1);
+      if (progress <= .86) assert.ok(radius <= spacing * .4 + 1e-10);
       assert.ok(Math.abs(radius - maxRadius * amount) < 1e-10);
     });
     assert.ok(dots.filter(({ edgeRho }) => edgeRho >= 1).every(({ radius }) => radius === maxRadius));
@@ -179,6 +183,36 @@ test('discernibly small dots and plane-covering circles remain at least three ac
     assert.ok(transitions.length > 5);
     assert.ok(Math.min(...transitions) >= 3);
   }
+});
+
+
+test('at least four clearly separated shrinking dots remain visible before the merged edge', () => {
+  for (const [width, height] of halftoneViewports) {
+    const geometry = getHalftoneGeometry({ width, height });
+    const visible = generateTiltedGridDots({ width, height }).filter((dot) =>
+      dot.gridX === 0 && dot.gridY < 0 && dot.radius >= .06 * geometry.spacing
+      && dot.radius <= .49 * geometry.spacing && halftoneOpacityAt(dot.progress) >= .15);
+    assert.ok(visible.length >= 4, `${width}x${height}: ${visible.length} clearly separated dots`);
+    const ordered = visible.sort((a, b) => a.gridY - b.gridY);
+    for (let index = 1; index < ordered.length; index++) {
+      const first = ordered[index - 1];
+      const next = ordered[index];
+      assert.ok(Math.hypot(first.x - next.x, first.y - next.y) > first.radius + next.radius);
+      assert.ok(first.radius > next.radius);
+    }
+  }
+});
+
+test('late radius growth keeps round gaps while earlier group alpha makes small dots legible', () => {
+  const spacing = 18;
+  const maxRadius = spacing * .9;
+  const radii = [.2, .4, .6, .8, .9].map((progress) => halftoneRadiusAt(progress, spacing, maxRadius));
+  assert.ok(radii.every((radius) => radius * 2 < spacing));
+  assert.ok(radii.every((radius, index) => !index || radius > radii[index - 1]));
+  assert.ok(halftoneOpacityAt(.2) > .28 && halftoneOpacityAt(.4) > .8);
+  assert.equal(halftoneOpacityAt(0), 0);
+  assert.equal(halftoneOpacityAt(1), 1);
+  assert.ok(halftoneRadiusAt(1, spacing, maxRadius) >= spacing / Math.SQRT2);
 });
 
 test('merged outer circles cover all four viewport edges without clipped triangular corners', () => {
@@ -227,7 +261,8 @@ test('chapter bands grow toward the top right and bottom left with a wide transp
       const distance = band === 'top' ? topIntercept - y + slope * x : y - slope * x - bottomIntercept;
       assert.ok(distance > 0);
       assert.ok(Math.abs(progress - Math.max(0, Math.min(1, distance / (normalLength * featherWidth)))) < 1e-10);
-      assert.ok(Math.abs(radius - maxRadius * progress * progress * (3 - 2 * progress)) < 1e-10);
+      assert.ok(radius <= maxRadius);
+      if (progress <= .86) assert.ok(radius <= spacing * .4 + 1e-10);
       // Check complete circle footprints, leaving an ample unpainted middle.
       if (band === 'top') assert.ok(y - slope * x + radius * normalLength < topIntercept + spacing);
       else assert.ok(y - slope * x - radius * normalLength > bottomIntercept - spacing);
@@ -270,14 +305,19 @@ test('generated layouts are reproducible, dispersed across sides, and clear the 
     assert.equal(layout.length, 3);
     assert.ok(layout.some(({ x }) => x < 32));
     assert.ok(layout.some(({ x }) => x > 68));
+    const hierarchy = layout.map(({ size }) => size).sort((a, b) => a - b);
+    assert.ok(hierarchy[0] >= 14 && hierarchy[0] <= 22);
+    assert.ok(hierarchy[1] >= 28 && hierarchy[1] <= 36);
+    assert.ok(hierarchy[2] >= 44 && hierarchy[2] <= 54);
+    assert.ok(hierarchy[2] / hierarchy[0] >= 2);
     layout.forEach((shape, index) => {
-      assert.ok(shape.size >= 28 && shape.size <= 46);
+      assert.ok(shape.size >= 14 && shape.size <= 54);
       const half = shape.size / 2;
       const overlapsTitle = shape.x + half > 32 && shape.x - half < 68 && shape.y + half > 25 && shape.y - half < 65;
       assert.equal(overlapsTitle, false);
       layout.slice(index + 1).forEach((other) => assert.ok(Math.hypot(shape.x - other.x, shape.y - other.y) >= 38));
     });
-    assert.ok(Math.abs(layout[0].y - layout[1].y) >= 18);
+    assert.ok(Math.abs(layout[0].y - layout[1].y) >= 24);
   }
 });
 

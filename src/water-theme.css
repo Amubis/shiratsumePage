@@ -52,6 +52,10 @@ body:not(.on-home) .hero .scene-clover,
 .side-links.is-pointer-tracking > a { transition-duration: .2s; }
 .side-links.is-pointer-tracking > a > span { transition-duration: .18s; }
 
+@media (min-width: 761px) {
+  .side-links { height: min(360px, calc(100svh - 80px)); }
+}
+
 @media (max-width: 760px) {
   .side-links > a, .side-links > a > span { transition: none; }
 }

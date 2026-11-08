@@ -1,0 +1,35 @@
+/* The pseudo-element belongs to the native button: one click, one focus target. */
+.hero #explore::before {
+  content: '';
+  position: absolute;
+  inset: -72px -38px -72px;
+  clip-path: ellipse(50% 50%);
+  pointer-events: auto;
+}
+.hero #explore:hover, .hero #explore:active { transform: none; }
+body:not(.theme-preview) .explore-flower {
+  transition: transform .28s var(--water-settle, var(--easing)), color .25s var(--easing), opacity .25s var(--easing);
+}
+body:not(.theme-preview) .explore-wrap.is-explore-hovered .flower-one {
+  transform: translate(-61%, -54%) rotate(-18deg) scale(1.065);
+  color: color-mix(in srgb, var(--theme) 86%, var(--theme-dark));
+  opacity: 1;
+}
+body:not(.theme-preview) .explore-wrap.is-explore-hovered .flower-two {
+  transform: translate(-36%, -42%) rotate(18deg) scale(1.065);
+  color: color-mix(in srgb, var(--theme) 91%, var(--theme-dark));
+  opacity: .98;
+}
+body:not(.theme-preview) .scene-clover {
+  left: calc(var(--x) + var(--pointer-push-x, 0px));
+  top: calc(var(--y) + var(--pointer-push-y, 0px));
+}
+.contrast-copy::before { pointer-events: none !important; }
+@media (max-width: 760px) {
+  .hero #explore::before { inset: -55px -32px -54px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not(.theme-preview) .explore-flower { transition: none; }
+  body:not(.theme-preview) .explore-wrap.is-explore-hovered .flower-one { transform: translate(-61%, -54%) rotate(-18deg); }
+  body:not(.theme-preview) .explore-wrap.is-explore-hovered .flower-two { transform: translate(-36%, -42%) rotate(18deg); }
+}

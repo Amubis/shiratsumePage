@@ -145,8 +145,8 @@
   left: 44px;
   z-index: 2;
   display: block;
-  width: 17px;
-  height: 17px;
+  width: 26px;
+  height: 26px;
   color: var(--theme);
   pointer-events: none;
   transform: translate(-50%, -50%);

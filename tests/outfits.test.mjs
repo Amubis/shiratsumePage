@@ -207,8 +207,10 @@ test('stable silhouette masks use alpha, preserve source dimensions, and have di
   assert.equal(group.getAttribute('mask'), `url(#${masks[0].getAttribute('id')})`);
   assert.equal(group.getAttribute('opacity'), '.36');
   const pattern = a.container.all((node) => node.localName === 'pattern')[0];
-  assert.equal(pattern.getAttribute('width'), '26');
-  assert.ok(Number(pattern.children[0].getAttribute('r')) * 2 > Number(pattern.getAttribute('width')), 'shadow dots slightly overlap before the one group opacity');
+  assert.equal(pattern.getAttribute('width'), '34');
+  const diameter = Number(pattern.children[0].getAttribute('r')) * 2;
+  assert.ok(diameter >= 24, 'shadow circles remain about twice the original prototype diameter');
+  assert.ok(Number(pattern.getAttribute('width')) - diameter >= 8, 'visible round circles have a clear gap rather than forming a solid silhouette');
 });
 
 test('the indicator replaces the visible caption with one small clover and influenced passive circles', (t) => {
@@ -218,6 +220,8 @@ test('the indicator replaces the visible caption with one small clover and influ
   assert.equal(f.container.find('outfit-name'), undefined);
   assert.equal(f.container.all((node) => node.classList.contains('outfit-rail-clover')).length, 1);
   const geometry = outfitRailGeometry(0);
+  assert.equal(geometry.cloverSize, 26);
+  assert.ok(geometry.dots.every((dot) => dot.size >= 5 && dot.size <= 10));
   assert.ok(geometry.dots[1].size > geometry.dots[2].size);
   assert.ok(geometry.dots[1].opacity > geometry.dots[2].opacity);
   assert.ok(geometry.dots.every((dot) => dot.size < geometry.cloverSize));
@@ -228,19 +232,20 @@ test('the indicator replaces the visible caption with one small clover and influ
   assert.ok(f.dots[0].getAttribute('aria-label').includes('深色水手服'));
 });
 
-test('pointer follows continuously between snap zones, snaps near a circle, and returns to selected on leave', (t) => {
+test('pointer follows continuously between snap zones, snaps near a circle, and returns to selected on leave', async (t) => {
   const f = fixture(t);
-  const initial = outfitRailGeometry(0);
+  await f.api.goTo(1, { animate: false });
+  const initial = outfitRailGeometry(1);
   const middle = (initial.dots[1].x + initial.dots[2].x) / 2;
   f.rail.emit('pointerenter', { pointerType: 'mouse', clientX: 10 + middle });
   assert.ok(Math.abs(parseFloat(f.clover.style.left) - middle) < .001, 'the clover follows a coordinate between outfits');
-  assert.equal(f.api.index, 0, 'hover never changes the displayed outfit');
+  assert.equal(f.api.index, 1, 'hover never changes the displayed outfit');
   const secondDotX = parseFloat(f.dots[2].children[0].style.left) + 2 * 44;
   f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + secondDotX + 2 });
   assert.ok(Math.abs(parseFloat(f.clover.style.left) - outfitRailGeometry(2).cloverX) < .001, 'the circle hit zone snaps to that option');
   f.rail.emit('pointerleave');
-  assert.equal(parseFloat(f.clover.style.left), outfitRailGeometry(0).cloverX);
-  assert.equal(f.dots[0].getAttribute('aria-pressed'), 'true');
+  assert.equal(parseFloat(f.clover.style.left), outfitRailGeometry(1).cloverX);
+  assert.equal(f.dots[1].getAttribute('aria-pressed'), 'true');
 });
 
 test('pointer clicks use the moving visual position while keyboard activation uses its stable semantic button', async (t) => {
@@ -275,7 +280,53 @@ test('the rail accelerates, briefly overshoots, rolls by travelled arc length an
   f.doc.tick(1200);
   assert.equal(parseFloat(f.clover.style.left), target);
   const angle = Number(f.clover.style.transform.match(/rotate\(([^)]+)deg\)/)[1]);
-  assert.ok(Math.abs(angle - (target - initial) / 8.5 * 180 / Math.PI) < .001, 'wheel rotation matches the visible travelled distance');
+  assert.ok(Math.abs(angle - (target - initial) / 13 * 180 / Math.PI) < .001, 'wheel rotation matches the visible travelled distance and enlarged clover radius');
+});
+
+test('stronger magnets acquire beyond the old snap zone and release with hysteresis into a free interval', (t) => {
+  const f = fixture(t);
+  const initial = outfitRailGeometry(0);
+  f.rail.emit('pointerenter', { pointerType: 'mouse', clientX: 10 + initial.dots[1].x + 11 });
+  const snapped = outfitRailGeometry(1);
+  assert.equal(parseFloat(f.clover.style.left), snapped.cloverX, '11px from a circle now snaps');
+  f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + snapped.dots[1].x + 16 });
+  assert.equal(parseFloat(f.clover.style.left), snapped.cloverX, '16px remains held by the acquired magnet');
+  const releasedX = snapped.dots[1].x + 19;
+  f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + releasedX });
+  assert.ok(Math.abs(parseFloat(f.clover.style.left) - releasedX) < .001, 'outside18px the gap permits continuous tracking');
+});
+
+test('both outer rail zones snap to their endpoints including far margins without extrapolating past a marker', (t) => {
+  const f = fixture(t);
+  const initial = outfitRailGeometry(0);
+  for (const x of [-1000, 0, initial.dots[0].x + 13.5]) {
+    f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + x });
+    assert.equal(parseFloat(f.clover.style.left), outfitRailGeometry(0).cloverX);
+  }
+  for (const x of [initial.dots[3].x - 13.5, 176, 1000]) {
+    f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + x });
+    assert.equal(parseFloat(f.clover.style.left), outfitRailGeometry(3).cloverX);
+  }
+  assert.equal(f.api.index, 0, 'outer hover remains a preview rather than selecting an outfit');
+});
+
+test('fast pointer reversals remain inside end stops while programmatic end turns retain a small settling overshoot', async (t) => {
+  const f = fixture(t, { reducedMotion: () => false });
+  await f.api.goTo(3, { animate: false });
+  const selectedEnd = outfitRailGeometry(3).cloverX;
+  let furthest = 0;
+  for (let step = 0; step < 50; step += 1) { f.doc.tick(16); furthest = Math.max(furthest, parseFloat(f.clover.style.left)); }
+  assert.ok(furthest > selectedEnd, 'programmatic end selection keeps its light overshoot');
+  for (const x of [0, 176, 0, 176]) {
+    f.rail.emit('pointermove', { pointerType: 'mouse', clientX: 10 + x });
+    for (let step = 0; step < 40; step += 1) {
+      f.doc.tick(16);
+      const center = parseFloat(f.clover.style.left);
+      const first = parseFloat(f.dots[0].children[0].style.left);
+      const last = parseFloat(f.dots[3].children[0].style.left) + 132;
+      assert.ok(center >= first - .0001 && center <= last + .0001, 'pointer spring never carries the clover beyond an endpoint');
+    }
+  }
 });
 
 test('pointer press stays compressed indefinitely; cancel and release outside restore without activation', async (t) => {

@@ -9,6 +9,7 @@ import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
 import { createOutfitShowcase, MODEL_PROFILE } from './outfits.js';
+import { createHeroInteractions } from './hero-interactions.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -35,6 +36,7 @@ let wipeFade;
 let wipeSerial = 0;
 let pageReveal;
 let outfitShowcase;
+let heroInteractions;
 const languageControl = $('.language-control');
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
@@ -148,7 +150,7 @@ const player = createVideoPlayer({
 });
 
 function clearIntro() { introTimers.forEach(clearTimeout); introTimers = []; }
-function finishIntro() { const changed=root.dataset.phase!=='ready';introWaiting=false;clearTimeout(introFallbackTimer);clearIntro();root.dataset.phase='ready';root.classList.remove('is-booting');if(changed)contrastLayer?.refresh(); }
+function finishIntro() { const changed=root.dataset.phase!=='ready';introWaiting=false;clearTimeout(introFallbackTimer);clearIntro();root.dataset.phase='ready';root.classList.remove('is-booting');if(changed){contrastLayer?.refresh();heroInteractions?.refresh();} }
 function startIntro() {
   introWaiting=false;clearTimeout(introFallbackTimer);
   clearIntro();
@@ -156,7 +158,7 @@ function startIntro() {
   root.dataset.phase = 'video';
   root.classList.remove('is-booting');
   [[1500,'veil'],[1950,'text'],[2700,'controls'],[3350,'ready']].forEach(([time, phase]) => {
-    introTimers.push(setTimeout(() => { root.dataset.phase=phase;contrastLayer?.refresh(); },time));
+    introTimers.push(setTimeout(() => { root.dataset.phase=phase;contrastLayer?.refresh();if(phase==='ready')heroInteractions?.refresh(); },time));
   });
 }
 
@@ -165,6 +167,7 @@ function setWatching(next) {
   finishIntro();
   watching = next;
   document.body.classList.toggle('watch-mode', next);
+  heroInteractions?.refresh();
   $('#watch-toggle').setAttribute('aria-pressed', String(next));
   [$('.hero-copy'),$('.scroll-cue'),$('.model-control'),$('.language-control')].forEach((node) => { node.inert = next; });
   $('.topbar').inert = next || currentIndex !== 0;
@@ -281,6 +284,7 @@ navigator = createSectionNavigator({
   sections: $$('.page-section'), reducedMotion,
   onActive(index) {
     currentIndex = index;
+    heroInteractions?.refresh();
     if(index!==0){videoReveal?.cancel();ownerProfile?.close();}
     if(index!==0 && watching)setWatching(false);
     document.body.classList.toggle('on-home', index === 0);
@@ -383,6 +387,7 @@ function applyTheme() {
   lightboxSources.forEach((original,button) => {button.dataset.lightbox=model.preview?model.poster:original;});
   $$('[data-model]').forEach((button) => button.setAttribute('aria-pressed',String(button.dataset.model===modelId)));
   scene.setTheme(model.theme,modelId);
+  heroInteractions?.refresh();
   renderHalftone();
   $$('[data-clover-shadow]').forEach(element=>{
     element.innerHTML=halftoneShadowSVG({id:element.dataset.cloverShadow,profile:model.preview?'soft':'connected'});
@@ -407,7 +412,7 @@ document.addEventListener('keydown', (event) => {
   if(event.key==='Escape') {videoReveal?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
 document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);contrastLayer?.refresh();});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();};
+const onMotionPreferenceChange=() => {videoReveal?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();});
@@ -423,6 +428,11 @@ videoReveal=createVideoReveal({
   targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.hero-edge-shade'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
   onStart(){finishIntro();ownerProfile.close();userPaused=false;void player.resume();},
   onComplete(){setWatching(true);},
+});
+heroInteractions=createHeroInteractions({
+  hero:$('.hero'),exploreButton:$('#explore'),exploreWrap:$('.explore-wrap'),reducedMotion,
+  isActive:()=>currentIndex===0 && !watching && !MODELS[modelId].preview && root.dataset.phase==='ready'
+    && !document.body.classList.contains('watch-reveal-animating') && !$('.transition-wipe').classList.contains('is-active'),
 });
 applyTheme();
 if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {

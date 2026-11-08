@@ -30,19 +30,19 @@ export function wrapOutfitIndex(index, length = OUTFITS.length) {
 
 /** Visual spacing is independent from the fixed, accessible 44px button slots. */
 export function outfitRailGeometry(position, count = OUTFITS.length, slot = 44) {
-  const focus = Math.max(-.45, Math.min(count - .55, Number(position) || 0));
+  const focus = Math.max(-.12, Math.min(count - .88, Number(position) || 0));
   const influence = (distance) => Math.max(0, 1 - Math.abs(distance) / 1.3);
-  const gaps = Array.from({ length: Math.max(0, count - 1) }, (_, index) => 21 + 15 * influence(index + .5 - focus));
+  const gaps = Array.from({ length: Math.max(0, count - 1) }, (_, index) => 24 + 16 * influence(index + .5 - focus));
   let x = count * slot / 2 - gaps.reduce((sum, gap) => sum + gap, 0) / 2;
   const dots = Array.from({ length: count }, (_, index) => {
     if (index) x += gaps[index - 1];
     const distance = Math.abs(index - focus);
     const amount = influence(distance);
-    return { index, x, size: 3.5 + 4 * amount, opacity: (.25 + .65 * amount) * Math.min(1, distance / .24), influence: amount };
+    return { index, x, size: 5 + 5 * amount, opacity: (.25 + .65 * amount) * Math.min(1, distance / .24), influence: amount };
   });
   const lower = Math.max(0, Math.min(count - 2, Math.floor(focus)));
   const cloverX = count === 1 ? dots[0].x : dots[lower].x + (dots[lower + 1].x - dots[lower].x) * (focus - lower);
-  return { position: focus, width: count * slot, dots, cloverX, cloverSize: 17 };
+  return { position: focus, width: count * slot, dots, cloverX, cloverSize: 26 };
 }
 
 /** Pointer clicks resolve against what is actually painted, including moving gaps. */
@@ -51,8 +51,8 @@ export function nearestOutfitDot(x, geometry) {
 }
 
 function railPositionAtX(x, count) {
-  let lower = -.45;
-  let upper = count - .55;
+  let lower = 0;
+  let upper = count - 1;
   for (let step = 0; step < 18; step += 1) {
     const middle = (lower + upper) / 2;
     if (outfitRailGeometry(middle, count).cloverX < x) lower = middle;
@@ -92,6 +92,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   let railTime = null;
   let railHovered = false;
   let railPointerX = null;
+  let railMagnet = null;
 
   function element(tag, className) {
     const node = doc.createElement(tag);
@@ -117,8 +118,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   const mask = svgElement('mask', { id: `${uid}-mask`, maskUnits: 'userSpaceOnUse', x: '0', y: '0', width: '941', height: '1672', 'mask-type': 'alpha', style: 'mask-type:alpha' });
   const shadowSource = svgElement('image', { x: '0', y: '0', width: '941', height: '1672', preserveAspectRatio: 'xMidYMid meet', href: OUTFITS[0].front });
   mask.append(shadowSource);
-  const pattern = svgElement('pattern', { id: `${uid}-dots`, width: '26', height: '26', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
-  pattern.append(svgElement('circle', { cx: '13', cy: '13', r: '14', fill: 'currentColor' }));
+  const pattern = svgElement('pattern', { id: `${uid}-dots`, width: '34', height: '34', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
+  pattern.append(svgElement('circle', { cx: '17', cy: '17', r: '12.5', fill: 'currentColor' }));
   defs.append(mask, pattern);
   const shadowGroup = svgElement('g', { mask: `url(#${uid}-mask)`, opacity: '.36' });
   shadowGroup.append(svgElement('rect', { width: '941', height: '1672', fill: `url(#${uid}-dots)` }));
@@ -226,7 +227,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
 
   function targetRail(target, immediate = false) {
     if (destroyed) return;
-    railTarget = Math.max(-.45, Math.min(OUTFITS.length - .55, target));
+    railTarget = Math.max(0, Math.min(OUTFITS.length - 1, target));
     if (immediate || reducedMotion() || !win?.requestAnimationFrame) {
       stopRail();
       railRotation += rollBetween(railPosition, railTarget);
@@ -246,6 +247,12 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       const damping = railHovered ? 32 : 21;
       railVelocity += (stiffness * (railTarget - railPosition) - damping * railVelocity) * dt;
       railPosition += railVelocity * dt;
+      // Pointer travel has firm end stops. Programmatic turns retain their
+      // small water-like settling overshoot at either end of the rail.
+      if (railHovered && (railPosition < 0 || railPosition > OUTFITS.length - 1)) {
+        railPosition = Math.max(0, Math.min(OUTFITS.length - 1, railPosition));
+        railVelocity = 0;
+      }
       railRotation += rollBetween(before, railPosition);
       paintRail();
       if (Math.abs(railPosition - railTarget) < .0015 && Math.abs(railVelocity) < .012) {
@@ -273,10 +280,27 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   function followRailPointer(event) {
     if (!enabled || event.pointerType === 'touch' || !Number.isFinite(event.clientX)) return;
     railHovered = true;
+    if (railPosition < 0 || railPosition > OUTFITS.length - 1) {
+      const edge = Math.max(0, Math.min(OUTFITS.length - 1, railPosition));
+      railRotation += rollBetween(railPosition, edge);
+      railPosition = edge;
+      railVelocity = 0;
+      paintRail();
+    }
     railPointerX = localRailX(event.clientX);
     const geometry = outfitRailGeometry(railPosition);
+    const first = geometry.dots[0];
+    const last = geometry.dots.at(-1);
+    if (railPointerX <= first.x + 14) railMagnet = first.index;
+    else if (railPointerX >= last.x - 14) railMagnet = last.index;
+    else if (railMagnet !== null && Math.abs(railPointerX - geometry.dots[railMagnet].x) <= 18) {
+      targetRail(railMagnet);
+      return;
+    } else railMagnet = null;
+    if (railMagnet !== null) { targetRail(railMagnet); return; }
     const nearest = geometry.dots[nearestOutfitDot(railPointerX, geometry)];
-    targetRail(Math.abs(railPointerX - nearest.x) <= 9 ? nearest.index : railPositionAtX(railPointerX, OUTFITS.length));
+    if (Math.abs(railPointerX - nearest.x) <= 14) railMagnet = nearest.index;
+    targetRail(railMagnet ?? railPositionAtX(railPointerX, OUTFITS.length));
   }
 
   bind(dots, 'pointerenter', followRailPointer);
@@ -284,6 +308,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   bind(dots, 'pointerleave', () => {
     railHovered = false;
     railPointerX = null;
+    railMagnet = null;
     targetRail(currentIndex);
   });
   bind(dots, 'click', (event) => {
@@ -503,6 +528,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
         stopRail();
         railHovered = false;
         railPointerX = null;
+        railMagnet = null;
         targetRail(currentIndex, true);
       }
       renderLabels();

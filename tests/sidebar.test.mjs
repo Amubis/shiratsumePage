@@ -106,11 +106,15 @@ function sidebarFixture(t, { motionReduced = false } = {}) {
     const row = new FakeNode();
     const label = new FakeNode();
     label.textContent = ['庭院入口', '认识一下', '可爱瞬间', '日常收藏'][index];
-    label.getBoundingClientRect = () => ({
-      left: 16, top: 0,
-      width: label.textContent.length * parseFloat(row.style.getPropertyValue('--nav-font-size') || '27'),
-      height: 32,
-    });
+    label.getBoundingClientRect = () => {
+      const font = parseFloat(row.style.getPropertyValue('--nav-font-size') || '27');
+      const height = font * 1.2;
+      return {
+        left: 16,
+        top: 140 + (row.paintedY ?? parseFloat(row.style.getPropertyValue('--nav-y') || '0')) - height / 2,
+        width: label.textContent.length * font, height,
+      };
+    };
     row.queries.set('span', label);
     row.append(label);
     list.append(row);
@@ -186,12 +190,14 @@ test('fractional pointer proximity smoothly changes neighboring type and gaps', 
   assert.notEqual(drifting[2].y - drifting[1].y, resting[2].y - resting[1].y);
   assert.equal(getSidebarPointerPosition(34, anchors), 1.5);
   assert.equal(getSidebarPointerIndex(80, anchors, 3), 3, 'small boundary jitter keeps the last target');
-  assert.equal(getSidebarPointerIndex(77, anchors, 3), 2);
+  assert.equal(getSidebarPointerIndex(75, anchors, 3), 3, 'the stronger magnet retains nearby movement');
+  assert.equal(getSidebarPointerIndex(74, anchors, 3), 2);
   assert.equal(getSidebarPointerIndex(80, anchors, 2), 2);
-  assert.equal(getSidebarPointerIndex(85, anchors, 2), 3);
+  assert.equal(getSidebarPointerIndex(87, anchors, 2), 2);
+  assert.equal(getSidebarPointerIndex(88, anchors, 2), 3);
 });
 
-test('stable panel mapping ignores animated row entry and the clover snaps to a label', (t) => {
+test('painted labels own the next magnetic target and layout movement alone cannot reselect', (t) => {
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
   f.list.emit('pointerenter', { clientY: 234 });
@@ -204,13 +210,47 @@ test('stable panel mapping ignores animated row entry and the clover snaps to a 
   assert.equal(f.selected.length, lastSelection, 'moving rows cannot feed a selection loop');
   f.list.emit('pointermove', { clientY: 220 });
   assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px', 'the clover never follows a fractional pointer coordinate');
-  f.list.emit('pointermove', { clientY: 217 });
+  const secondY = parseFloat(f.links[2].style.getPropertyValue('--nav-y'));
+  f.list.emit('pointermove', { clientY: 140 + secondY }); // Item 2 has moved from its original slot.
   assert.equal(f.links[2].classList.contains('is-highlighted'), true);
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '68px');
+  assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-y')), secondY);
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), secondY, 'the newly selected glyph remains exactly where it was painted');
   assert.equal(f.links[1].getAttribute('aria-current'), 'page');
   f.list.emit('pointerleave');
   assert.equal(f.links[1].classList.contains('is-highlighted'), true);
   assert.equal(f.list.classList.contains('is-pointer-tracking'), false);
+});
+
+test('a strongly latched item permits small movement without freely drifting neighboring type', (t) => {
+  const f = sidebarFixture(t);
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  const count = f.selected.length;
+  for (const offset of [-6, -2, 3, -7, 0]) {
+    f.list.emit('pointermove', { clientY: 234 + offset });
+    assert.equal(f.links[3].classList.contains('is-highlighted'), true);
+    assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px');
+    assert.equal(f.links[3].style.getPropertyValue('--nav-font-size'), '27px');
+    assert.ok(Math.abs(parseFloat(f.links[2].style.getPropertyValue('--nav-font-size')) - 15.5) <= 11.5 * .12 + 1e-8);
+  }
+  assert.equal(f.selected.length, count);
+});
+
+test('repeated painted-label switches remain inside the panel despite asymmetric near gaps', (t) => {
+  const f = sidebarFixture(t);
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  for (let cycle = 0; cycle < 30; cycle += 1) {
+    for (const index of [2, 3]) {
+      const rect = f.links[index].querySelector('span').getBoundingClientRect();
+      f.list.emit('pointermove', { clientY: rect.top + rect.height / 2 });
+      assert.equal(f.links[index].classList.contains('is-highlighted'), true);
+      assert.ok(f.links.every((row) => {
+        const y = parseFloat(row.style.getPropertyValue('--nav-y'));
+        return y >= -122 && y <= 122;
+      }), 'all label centers stay inside the magnetic panel with padding');
+    }
+  }
 });
 
 test('pointer clicks activate the logical highlighted link while keyboard clicks stay native', (t) => {
@@ -244,10 +284,25 @@ test('a rapid click resolves its own coordinate before a queued pointer frame', 
   f.list.emit('pointermove', { clientY: 208 });
   assert.ok(queued);
   assert.equal(f.links[3].classList.contains('is-highlighted'), true);
-  f.list.emit('click', { detail: 1, button: 0, clientY: 140, preventDefault() {}, stopPropagation() {} });
+  f.list.emit('click', { detail: 1, button: 0, clientY: 148, preventDefault() {}, stopPropagation() {} });
   assert.deepEqual(clicked, [1]);
   assert.equal(queued, null);
   assert.equal(f.links[1].classList.contains('is-highlighted'), true);
+});
+
+test('a quick click chooses the actually painted second label after hovering the fourth', (t) => {
+  const f = sidebarFixture(t);
+  const clicked = [];
+  f.links.forEach((row, index) => { row.click = () => clicked.push(index); });
+  f.sidebar.setCurrent(1);
+  f.list.emit('pointerenter', { clientY: 234 });
+  const rect = f.links[2].querySelector('span').getBoundingClientRect();
+  f.list.emit('click', { detail: 1, button: 0, clientY: rect.top + rect.height / 2,
+    preventDefault() {}, stopPropagation() {},
+  });
+  assert.deepEqual(clicked, [2]);
+  assert.equal(f.links[2].classList.contains('is-highlighted'), true);
+  assert.equal(f.links[1].getAttribute('aria-current'), 'page');
 });
 
 test('keyboard focus can take priority over hover and touch never redirects its click', (t) => {
@@ -303,7 +358,7 @@ test('bubble slots retain their coordinates after sibling removal and continuous
   assert.equal(f.timers.size, 0);
 });
 
-test('entry and exit spin fully while switching targets rolls from the visible pose', (t) => {
+test('entry, inter-item changes and exit spin visibly from the interrupted pose', (t) => {
   const f = sidebarFixture(t);
   f.links[0].emit('pointerenter');
   assert.match(f.animations[0].frames.at(-1).transform, /rotate\(-360deg\)/);
@@ -311,13 +366,42 @@ test('entry and exit spin fully while switching targets rolls from the visible p
   f.links[2].emit('pointerenter');
   assert.equal(f.animations[0].cancelled, true);
   assert.match(f.animations[1].frames[0].transform, /rotate\(-90deg\)/);
-  assert.match(f.animations[1].frames.at(-1).transform, /rotate\(-50deg\)/);
-  assert.match(f.animations[1].frames[1].transform, /rotate\(-44deg\)/, 'the small roll overshoots before settling');
+  assert.match(f.animations[1].frames.at(-1).transform, /rotate\(270deg\)/);
+  assert.match(f.animations[1].frames[1].transform, /rotate\(280deg\)/, 'the full turn slightly overshoots before settling');
   f.list.emit('pointerleave');
   assert.equal(f.animations[1].cancelled, true);
   assert.match(f.animations[2].frames.at(-1).transform, /rotate\(270deg\)/);
   assert.deepEqual(f.animations.map((animation) => animation.options.duration), [450, 520, 450]);
   assert.equal(f.animations.filter((animation) => !animation.cancelled).length, 1);
+});
+
+test('rapid inter-item reversals start at the visible angle and keep only one full turn active', (t) => {
+  const f = sidebarFixture(t);
+  f.list.emit('pointerenter', { clientY: 140 });
+  f.shape.visibleTransform = 'rotate(-72deg) scale(1.035)';
+  f.list.emit('pointermove', { clientY: 208 });
+  const downward = f.animations.at(-1);
+  const downStart = getTransformPose(downward.frames[0].transform);
+  const downEnd = getTransformPose(downward.frames.at(-1).transform);
+  assert.equal(downStart.rotation, -72);
+  assert.equal(downStart.scale, 1.035);
+  assert.equal(downEnd.rotation - downStart.rotation, 360);
+  assert.equal(downward.options.duration, 520);
+  f.shape.visibleTransform = 'matrix(0.7212489168,0.7212489168,-0.7212489168,0.7212489168,0,0)';
+  const previousLabel = f.links[0].querySelector('span').getBoundingClientRect();
+  const previousCenter = previousLabel.top + previousLabel.height / 2;
+  f.list.emit('pointermove', { clientY: previousCenter });
+  const upward = f.animations.at(-1);
+  const upStart = getTransformPose(upward.frames[0].transform);
+  const upEnd = getTransformPose(upward.frames.at(-1).transform);
+  assert.equal(downward.cancelled, true);
+  assert.equal(upStart.rotation, 45);
+  assert.ok(Math.abs(upStart.scale - 1.02) < 1e-8, 'reversal preserves the currently visible scale');
+  assert.equal(upEnd.rotation - upStart.rotation, -360);
+  assert.equal(f.animations.filter((animation) => !animation.cancelled).length, 1);
+  const count = f.animations.length;
+  f.list.emit('pointermove', { clientY: previousCenter + 1 });
+  assert.equal(f.animations.length, count, 'pointer movement within one label does not restart rotation');
 });
 
 test('focus takes over visually while touch focus and reduced motion avoid decorative loops', (t) => {

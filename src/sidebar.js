@@ -15,14 +15,22 @@ const interpolateFalloff = (distance, values) => {
 };
 
 /** Size and spacing share one visual focus; aria-current is managed separately. */
-export function getSidebarLayout(count, currentIndex, selectedIndex = currentIndex, { focusPosition = selectedIndex, anchors } = {}) {
+export function getSidebarLayout(count, currentIndex, selectedIndex = currentIndex, { focusPosition = selectedIndex, anchors, range } = {}) {
   count = Math.max(0, count);
   const selected = clamp(Math.round(selectedIndex), 0, count - 1);
   const focus = clamp(focusPosition, 0, count - 1);
-  const anchor = anchors?.[selected] ?? offsetFromFocus(selected - currentIndex);
+  let anchor = anchors?.[selected] ?? offsetFromFocus(selected - currentIndex);
   const focusedOffset = offsetFromFocus(selected - focus);
+  const offsets = Array.from({ length: count }, (_, index) => offsetFromFocus(index - focus) - focusedOffset);
+  if (range && offsets.length) {
+    // Asymmetric near gaps must not accumulate into off-panel drift when a
+    // visitor repeatedly moves between the same two painted labels.
+    const lower = range.min - Math.min(...offsets);
+    const upper = range.max - Math.max(...offsets);
+    anchor = lower <= upper ? clamp(anchor, lower, upper) : (lower + upper) / 2;
+  }
   return Array.from({ length: count }, (_, index) => {
-    const y = anchor + offsetFromFocus(index - focus) - focusedOffset;
+    const y = anchor + offsets[index];
     const distance = Math.abs(index - focus);
     const fontSize = index === selected ? 27 : interpolateFalloff(distance, [27, 15.5, 10.5, 9.5]);
     const opacity = index === selected ? 1 : interpolateFalloff(distance, [1, .85, .68, .55]);
@@ -30,7 +38,7 @@ export function getSidebarLayout(count, currentIndex, selectedIndex = currentInd
   });
 }
 
-/** Input anchors are frozen on entry; animated labels never feed hit testing. */
+/** Fractional proximity between the currently painted label centers. */
 export function getSidebarPointerPosition(y, anchors) {
   if (anchors.length < 2 || y <= anchors[0]) return 0;
   const last = anchors.length - 1;
@@ -40,11 +48,13 @@ export function getSidebarPointerPosition(y, anchors) {
   return lower + (y - anchors[lower]) / (anchors[upper] - anchors[lower]);
 }
 
-export function getSidebarPointerIndex(y, anchors, previousIndex = null, hysteresis = 3) {
+export function getSidebarPointerIndex(y, anchors, previousIndex = null, hysteresis = 7) {
   if (!anchors.length) return -1;
   if (Number.isInteger(previousIndex) && previousIndex >= 0 && previousIndex < anchors.length) {
-    const lower = previousIndex ? (anchors[previousIndex - 1] + anchors[previousIndex]) / 2 - hysteresis : -Infinity;
-    const upper = previousIndex < anchors.length - 1 ? (anchors[previousIndex] + anchors[previousIndex + 1]) / 2 + hysteresis : Infinity;
+    const lowerGap = anchors[previousIndex] - anchors[previousIndex - 1];
+    const upperGap = anchors[previousIndex + 1] - anchors[previousIndex];
+    const lower = previousIndex ? (anchors[previousIndex - 1] + anchors[previousIndex]) / 2 - Math.min(hysteresis, lowerGap / 4) : -Infinity;
+    const upper = previousIndex < anchors.length - 1 ? (anchors[previousIndex] + anchors[previousIndex + 1]) / 2 + Math.min(hysteresis, upperGap / 4) : Infinity;
     if (y >= lower && y <= upper) return previousIndex;
   }
   return Math.round(getSidebarPointerPosition(y, anchors));
@@ -103,6 +113,7 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
   let pendingPointer = null;
   let forwardingClick = false;
   let touchPointer = false;
+  let lastPointerY = null;
 
   const selectedIndex = () => modality === 'keyboard' && focusIndex !== null ? focusIndex : pointerIndex ?? focusIndex ?? currentIndex;
   const hoverAllowed = () => win.matchMedia?.('(hover: hover)').matches ?? true;
@@ -129,9 +140,11 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
   function render(source) {
     if (destroyed) return;
     const selected = selectedIndex();
+    const panelHeight = list.getBoundingClientRect().height;
     const layout = getSidebarLayout(rows.length, currentIndex, selected, {
       focusPosition: pointerIndex !== null && modality === 'pointer' ? pointerPosition ?? selected : selected,
       anchors: pointerIndex !== null && modality === 'pointer' ? pointerAnchors : undefined,
+      range: panelHeight > 36 ? { min: -panelHeight / 2 + 18, max: panelHeight / 2 - 18 } : undefined,
     });
     lastLayout = layout;
     rows.forEach((row, index) => {
@@ -197,7 +210,9 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     const serial = ++spinSerial;
     spinAnimation?.cancel();
     spinAnimation = null;
-    const turn = clamp((selected - previous) * 20, -60, 60);
+    // One visible turn per target change, independent of skipped label count.
+    // Read the in-flight pose above so rapid reversals never snap or queue spins.
+    const turn = Math.sign(selected - previous) * 360;
     const end = pose.rotation + turn;
     shape.style.transform = `rotate(${pose.rotation}deg) scale(${pose.scale})`;
     if (reducedMotion() || !shape.animate) {
@@ -206,8 +221,8 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     }
     const animation = shape.animate([
       { transform: `rotate(${pose.rotation}deg) scale(${pose.scale})` },
-      { transform: `rotate(${end + Math.sign(turn) * 6}deg) scale(1.045)`, offset: .68 },
-      { transform: `rotate(${end - Math.sign(turn)}deg) scale(.995)`, offset: .86 },
+      { transform: `rotate(${end + Math.sign(turn) * 10}deg) scale(1.065)`, offset: .68 },
+      { transform: `rotate(${end - Math.sign(turn) * 2}deg) scale(.995)`, offset: .86 },
       { transform: `rotate(${end}deg) scale(1)` },
     ], { duration: 520, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
     spinAnimation = animation;
@@ -255,10 +270,18 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     schedule(() => spawn(1), 1400);
   }
 
+  const paintedLabels = () => {
+    const bounds = list.getBoundingClientRect();
+    const center = bounds.top + bounds.height / 2;
+    const rects = rows.map((row) => (row.querySelector('span') || row).getBoundingClientRect());
+    const anchors = rects.map((rect, index) => Number.isFinite(rect.top) && rect.height > 0
+      ? rect.top + rect.height / 2 - center : lastLayout[index].y);
+    return { center, rects, anchors };
+  };
   const enterPointer = (index, event) => {
     if (event.pointerType === 'touch' || !hoverAllowed()) return;
     const previous = pointerIndex;
-    if (!pointerAnchors) pointerAnchors = lastLayout.map((item) => item.y);
+    if (!pointerAnchors || previous !== index) pointerAnchors = paintedLabels().anchors;
     touchPointer = false;
     modality = 'pointer';
     pointerIndex = index;
@@ -274,6 +297,7 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     pointerIndex = null;
     pointerAnchors = null;
     pointerPosition = null;
+    lastPointerY = null;
     pendingPointer = null;
     if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
     pointerFrame = null;
@@ -282,17 +306,30 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     spin(false);
     startBubbles();
   };
-  const paintPointer = (event) => {
+  const paintPointer = (event, { force = false } = {}) => {
     if (destroyed || event.pointerType === 'touch' || !hoverAllowed() || !Number.isFinite(event.clientY)) return;
+    // CSS can move a label under a stationary cursor. Only real vertical input
+    // or an explicit click is allowed to reconsider the latched selection.
+    if (!force && pointerIndex !== null && modality === 'pointer' && lastPointerY !== null
+      && Math.abs(event.clientY - lastPointerY) < .5) return;
+    lastPointerY = event.clientY;
     touchPointer = false;
-    if (!pointerAnchors) pointerAnchors = lastLayout.map((item) => item.y);
-    const bounds = list.getBoundingClientRect();
-    const y = event.clientY - bounds.top - bounds.height / 2;
+    const { center, rects, anchors } = paintedLabels();
+    const y = event.clientY - center;
     const previous = pointerIndex;
-    const index = getSidebarPointerIndex(y, pointerAnchors, previous);
+    let index = getSidebarPointerIndex(y, anchors, previous);
+    // A visible neighboring label is an unambiguous target, even near a
+    // magnetic boundary. Prefer the nearest actual glyph box over its old slot.
+    const direct = rects.map((rect, item) => ({ rect, item }))
+      .filter(({ rect }) => event.clientY >= rect.top - 2 && event.clientY <= rect.top + rect.height + 2)
+      .sort((a, b) => Math.abs(anchors[a.item] - y) - Math.abs(anchors[b.item] - y))[0]?.item;
+    if (direct !== undefined && (previous === null || Math.abs(anchors[direct] - y) < Math.abs(anchors[previous] - y))) index = direct;
+    if (!pointerAnchors || previous !== index) pointerAnchors = anchors;
     modality = 'pointer';
     pointerIndex = index;
-    pointerPosition = getSidebarPointerPosition(y, pointerAnchors);
+    // Keep the continuous water-like response subtle around a firm item snap.
+    pointerPosition = previous === index
+      ? index + clamp(getSidebarPointerPosition(y, anchors) - index, -.12, .12) : index;
     list.classList.toggle('is-pointer-tracking', true);
     render('hover');
     if (previous === null) spin(true);
@@ -332,7 +369,7 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     pointerFrame = null;
     const latest = Number.isFinite(event.clientY) ? event : pendingPointer;
     pendingPointer = null;
-    if (latest) paintPointer(latest);
+    if (latest) paintPointer(latest, { force: true });
     if (pointerIndex === null || !rows[selectedIndex()].click) return;
     // The panel owns pointer hit testing. Forward to the same logical link that
     // owns the clover, even while its visual label is springing to its new gap.
@@ -386,6 +423,7 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
         focusIndex = null;
         pointerAnchors = null;
         pointerPosition = null;
+        lastPointerY = null;
         pendingPointer = null;
         if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
         pointerFrame = null;
