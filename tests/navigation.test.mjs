@@ -127,6 +127,27 @@ test('reading stays native before a tall chapter reaches the next boundary', asy
   assert.equal(interrupted,1);
 });
 
+test('a previous chapter gesture cannot start the album hook with its remaining inertia', async(t)=>{
+  const arrivals=[];
+  const f=browserFixture(t,{
+    onChapterWheel({from},{allowStart}){
+      if(from===1){arrivals.push(allowStart);return allowStart;}
+      return false;
+    },
+  });
+  f.fire('wheel',{deltaY:120});
+  for(let i=0;i<12;i++){
+    await f.step(70);
+    f.fire('wheel',{deltaY:20});
+  }
+  assert.equal(f.nav.activeIndex,1);
+  assert.ok(arrivals.length>0);
+  assert.ok(arrivals.every(allowed=>!allowed),'the inherited gesture remains locked');
+  await f.step(240);
+  f.fire('wheel',{deltaY:100});
+  assert.equal(arrivals.at(-1),true,'a fresh gesture can start the album buffer');
+});
+
 test('wheel shows short resistance, then advances exactly one chapter per gesture', async (t) => {
   const f = browserFixture(t);
   assert.equal(f.fire('wheel', { deltaY: 24 }).defaultPrevented, true);

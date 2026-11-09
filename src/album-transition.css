@@ -24,7 +24,8 @@
 .album-entry-prepared :is(.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-filter-tab, .album-group-heading, .album-page-status, .album-source-note) { opacity: 0; }
 .album-entry-prepared .album-desk,
 .album-entry-playing .album-desk,
-.album-exit-playing .album-desk { pointer-events: none; }
+.album-exit-playing .album-desk,
+.album-boundary-seeking .album-desk { pointer-events: none; }
 .album-entry-playing :is(.album-paper, .album-cover, .album-photo),
 .album-exit-playing :is(.album-paper, .album-cover, .album-photo) { will-change: transform, opacity; }
 @media (prefers-reduced-motion: reduce) {

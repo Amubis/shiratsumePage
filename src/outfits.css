@@ -45,8 +45,8 @@
   translate: var(--back-rest-x, -42%) var(--back-rest-y, 3%);
   scale: var(--back-rest-scale, .93);
   z-index: 1;
-  opacity: .65;
-  transition: translate .5s var(--water-easing, var(--easing)), scale .5s var(--water-easing, var(--easing)), opacity .45s var(--water-easing, var(--easing));
+  opacity: 1;
+  transition: translate .5s var(--water-easing, var(--easing)), scale .5s var(--water-easing, var(--easing));
 }
 .outfit-pair.is-back-inspected .outfit-stage { translate: -70% 0; }
 .outfit-pair.is-back-inspected .outfit-back-stage {
@@ -73,8 +73,8 @@
   transform-style: preserve-3d;
 }
 
-/* Rear photo and shadow form one flat print. Keeping nested 3D layers under
-   the animated filter/scale can crash WebKit's compositor during inspection. */
+/* The rear photo flips as one flat print. Its shared shadow is a sibling,
+   outside both portrait buttons and their filtered bitmap surfaces. */
 .outfit-back-art { transform-style: flat; }
 
 /* Filter the bitmap itself, keeping the SVG projection out of the filter's
@@ -84,6 +84,8 @@
   transition: filter .45s var(--water-easing, var(--easing));
 }
 .outfit-pair.is-back-inspected .outfit-back-image { filter: none; }
+.outfit-image { filter: none; transition: filter .45s var(--water-easing, var(--easing)); }
+.outfit-pair.is-back-inspected .outfit-image { filter: saturate(.25) contrast(.55) brightness(1.13); }
 
 .outfit-image,
 .outfit-back-image,
@@ -105,7 +107,10 @@
   transform: translate(16px, 18px);
   z-index: 0;
   overflow: visible;
+  opacity: 1;
+  transition: opacity .12s ease-out;
 }
+.outfit-pair.is-outfit-turning .outfit-shared-shadow { opacity: 0; }
 
 .outfit-cue {
   position: absolute;
@@ -238,7 +243,9 @@ body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
 @media (prefers-reduced-motion: reduce) {
   .outfit-stage,
   .outfit-back-stage,
+  .outfit-image,
   .outfit-back-image,
+  .outfit-shadow,
   .outfit-cue-art,
   .outfit-dot-circle { transition: none; }
   .outfit-cue-art { animation: none !important; }

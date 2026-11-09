@@ -91,6 +91,7 @@ function fixture(t, { docSetup, ...options } = {}) {
       batch.forEach(([, callback]) => callback(clock));
     }
   };
+  doc.pendingFrames = () => frames.size;
   docSetup?.(doc);
   doc.createElement = (tag) => new Element(tag, doc);
   doc.createElementNS = (_, tag) => new Element(tag, doc);
@@ -223,6 +224,7 @@ test('both views decode before either displayed image or its shadow switches', a
   await settle();
   assert.equal(f.image.src,OUTFITS[0].front);
   assert.equal(f.backImage.src,OUTFITS[0].back);
+  assert.deepEqual(f.container.all(node=>node.localName==='image').map(node=>node.getAttribute('href')),[OUTFITS[0].front,OUTFITS[0].back]);
   assert.equal(f.stage.getAttribute('aria-busy'),'true');
   assert.equal(f.backStage.getAttribute('aria-busy'),'true');
   completeBack();
@@ -233,7 +235,7 @@ test('both views decode before either displayed image or its shadow switches', a
 
 test('rear inspection has its own native button, hover and keyboard focus without advancing the outfit', (t) => {
   const f = fixture(t);
-  assert.deepEqual(f.pair.children.map(node=>node.localName),['button','button']);
+  assert.deepEqual(f.pair.children.map(node=>node.localName),['svg','button','button']);
   assert.equal(f.stage.children.some(node=>node.localName==='button'),false);
   assert.equal(f.backStage.getAttribute('aria-pressed'),'false');
   assert.ok(f.backStage.getAttribute('aria-label').includes('背面'));
@@ -269,6 +271,20 @@ test('touch can pin the rear view and the front still selects the next matching 
   assert.equal(f.backStage.getAttribute('aria-pressed'),'false');
 });
 
+test('delayed touch focus does not keep the rear pinned after a second tap', async (t) => {
+  const f = fixture(t);
+  f.backStage.emit('pointerdown', { pointerType: 'touch' });
+  f.backStage.emit('pointerup', { pointerType: 'touch' });
+  await settle();
+  f.backStage.emit('focus');
+  f.backStage.emit('click', { detail: 1 });
+  assert.equal(f.pair.classList.contains('is-back-inspected'), true);
+  f.backStage.emit('pointerdown', { pointerType: 'touch' });
+  f.backStage.emit('pointerup', { pointerType: 'touch' });
+  f.backStage.emit('click', { detail: 1 });
+  assert.equal(f.pair.classList.contains('is-back-inspected'), false);
+});
+
 test('concurrent requests do not race or leave the stage busy; disabling blocks interactions', async (t) => {
   const f = fixture(t);
   const first = f.api.goTo(1);
@@ -283,12 +299,20 @@ test('concurrent requests do not race or leave the stage busy; disabling blocks 
   assert.equal(f.api.index, 0);
 });
 
-test('stable silhouette masks use alpha, preserve source dimensions, and have distinct resource IDs', (t) => {
+test('one shared projection composes both silhouettes behind the portraits with a single opacity', (t) => {
   const a = fixture(t);
   const b = fixture(t);
   const masks = [a, b].map((f) => f.container.all((node) => node.localName === 'mask')[0]);
   assert.notEqual(masks[0].getAttribute('id'), masks[1].getAttribute('id'));
   assert.equal(masks[0].getAttribute('mask-type'), 'alpha');
+  assert.equal(a.container.all(node=>node.localName==='mask').length,1);
+  assert.equal(a.container.all(node=>node.localName==='pattern').length,1);
+  assert.equal(a.container.all(node=>node.classList.contains('outfit-shadow')).length,1);
+  assert.equal(masks[0].children.length,2);
+  assert.deepEqual(masks[0].children.map(node=>node.getAttribute('href')),[OUTFITS[0].front,OUTFITS[0].back]);
+  assert.equal(a.pair.children[0].classList.contains('outfit-shared-shadow'),true);
+  assert.equal(a.stage.all(node=>node.localName==='mask').length,0);
+  assert.equal(a.backStage.all(node=>node.localName==='mask').length,0);
   const source = masks[0].children[0];
   assert.equal(source.getAttribute('width'), '1440');
   assert.equal(source.getAttribute('height'), '2560');
@@ -296,11 +320,44 @@ test('stable silhouette masks use alpha, preserve source dimensions, and have di
   const group = a.container.all((node) => node.localName === 'g')[0];
   assert.equal(group.getAttribute('mask'), `url(#${masks[0].getAttribute('id')})`);
   assert.equal(group.getAttribute('opacity'), '.36');
+  assert.equal(masks[0].children.every(node=>node.getAttribute('opacity')===null),true,'the union has no per-portrait opacity multiplication');
   const pattern = a.container.all((node) => node.localName === 'pattern')[0];
   assert.equal(pattern.getAttribute('width'), '52');
   const diameter = Number(pattern.children[0].getAttribute('r')) * 2;
   assert.ok(diameter >= 24, 'shadow circles remain about twice the original prototype diameter');
   assert.ok(Number(pattern.getAttribute('width')) - diameter >= 8, 'visible round circles have a clear gap rather than forming a solid silhouette');
+});
+
+test('the shared mask follows calibrated rear inspection, press and cancellation without replacing its nodes', (t) => {
+  const f=fixture(t);
+  const mask=f.container.all(node=>node.localName==='mask')[0];
+  const sources=mask.children.slice();
+  const matrix=node=>node.getAttribute('transform').match(/[\d.e+-]+/g).map(Number);
+  const initial=sources.map(matrix);
+  assert.ok(initial[1][0]<1);
+  f.backStage.emit('pointerenter',{pointerType:'mouse'});
+  const preview=sources.map(matrix);
+  assert.ok(preview[1][0]>initial[1][0]);
+  assert.ok(Math.abs((OUTFITS[0].backBounds[3]-OUTFITS[0].backBounds[1])*preview[1][3]-(OUTFITS[0].frontBounds[3]-OUTFITS[0].frontBounds[1]))<.002);
+  f.backStage.emit('pointerleave');
+  assert.deepEqual(sources.map(matrix),initial);
+  f.stage.emit('pointerdown',{pointerId:1,button:0});
+  assert.ok(Math.abs(matrix(sources[0])[0]-.94)<1e-6);
+  f.stage.emit('pointercancel');
+  assert.deepEqual(sources.map(matrix),initial);
+  assert.equal(mask.children[0],sources[0]);assert.equal(mask.children[1],sources[1]);
+});
+
+test('projection synchronization stops after a short transition and destruction cancels pending work', (t) => {
+  const f=fixture(t,{reducedMotion:()=>false});
+  f.backStage.emit('pointerenter',{pointerType:'mouse'});
+  assert.ok(f.doc.pendingFrames()>0);
+  f.doc.tick(900);
+  assert.equal(f.doc.pendingFrames(),0,'resting artwork must not retain a permanent projection frame loop');
+  f.backStage.emit('pointerleave');
+  assert.ok(f.doc.pendingFrames()>0);
+  f.api.destroy();
+  assert.equal(f.doc.pendingFrames(),0);
 });
 
 test('the indicator replaces the visible caption with one small clover and influenced passive circles', (t) => {

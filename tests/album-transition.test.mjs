@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition, ALBUM_STATIC_RADIUS_RATIO } from '../src/album-transition.js';
+import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition, ALBUM_STATIC_RADIUS_RATIO, ALBUM_BOUNDARY_HANDOFF } from '../src/album-transition.js';
 
 test('large circles retain fixed square-grid centers and fully cover desktop/mobile corners', () => {
   for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
@@ -31,6 +31,15 @@ test('each row grows from its own center bottom-to-top, crests, then settles wit
     assert.equal(albumCircleScale(1, row, rows, 'shrink'), 0);
   }
   assert.ok(albumCircleScale(.4, rows - 1, rows, 'shrink') < albumCircleScale(.4, 0, rows, 'shrink'));
+});
+
+test('upward and downward travel mirror the row order during both growth and shrinkage', () => {
+  const rows = 8;
+  for (const mode of ['grow', 'shrink']) for (const progress of [0, .12, .3, .6, .85, 1]) for (let row = 0; row < rows; row++) {
+    assert.equal(albumCircleScale(progress, row, rows, mode, 1), albumCircleScale(progress, rows - 1 - row, rows, mode, -1));
+  }
+  assert.ok(albumCircleScale(.18, 0, rows, 'grow', -1) > albumCircleScale(.18, rows - 1, rows, 'grow', -1));
+  assert.ok(albumCircleScale(.18, 0, rows, 'shrink', -1) < albumCircleScale(.18, rows - 1, rows, 'shrink', -1));
 });
 
 test('papers stop back-to-front before the cover, with row-major photos and reversed exit', () => {
@@ -236,10 +245,28 @@ test('resting dots slightly overlap along rows while preserving openings at squa
   const circles=f.field.children[0].children;
   const pitch=Number(circles[1].getAttribute('cx'))-Number(circles[0].getAttribute('cx'));
   const radius=Number(circles[0].getAttribute('r'));
-  assert.ok(pitch<createAlbumCircleGrid().pitch,'resting dots use a smaller scale than the covering transition');
+  assert.equal(pitch,createAlbumCircleGrid().pitch,'resting dots match the reference scale and transition lattice');
+  assert.equal(pitch,180,'1440px desktop uses a much wider 180px pitch');
   assert.ok(radius*2>pitch,'the diameter exceeds the center distance');
   assert.ok(radius*2/pitch<1.1,'the overlap stays slight');
   assert.ok(radius<pitch/Math.SQRT2,'four-corner openings remain between circles');
+});
+
+test('actual canvas dimensions keep both wave and resting circles round beside a reserved scrollbar gutter',(t)=>{
+  const f=fixture(t);
+  f.overlay.getBoundingClientRect=()=>({width:1425,height:900});
+  f.field.getBoundingClientRect=()=>({width:1425,height:900});
+  f.win.emit('resize');
+  assert.equal(f.overlay.children[0].getAttribute('viewBox'),'0 0 1425 900');
+  assert.equal(f.field.children[0].getAttribute('viewBox'),'0 0 1425 900');
+});
+
+test('decorative paper overflow does not change the background grid aspect ratio', (t)=>{
+  const f=fixture(t);
+  f.section.scrollHeight=1350;f.section.clientHeight=900;f.win.emit('resize');
+  assert.equal(f.field.children[0].getAttribute('viewBox'),'0 0 1440 900');
+  f.section.clientHeight=1200;f.win.emit('resize');
+  assert.equal(f.field.children[0].getAttribute('viewBox'),'0 0 1440 1200','a truly tall chapter retains its whole background');
 });
 
 test('scroll entrance pauses exactly at input and rewinds the same actor timelines', (t)=>{
@@ -269,4 +296,79 @@ test('scroll exit can reverse across a held cover and cancellation restores read
   f.controller.seekExit(.4);assert.equal(f.controller.phase,'leave-seek');assert.equal(f.overlay.hidden,true);
   f.controller.cancel();assert.equal(f.desk.inert,false);assert.equal(f.overlay.hidden,true);assert.equal(f.controller.busy,false);
   assert.equal(f.section.classList.contains('album-exit-playing'),false);
+});
+
+test('boundary scrolling only seeks circles and chapter opacity, preserving autonomous actor states', (t)=>{
+  const f=fixture(t);
+  const prepared=f.section.classList.contains('album-entry-prepared');
+  const inert=f.desk.inert;
+  assert.equal(ALBUM_BOUNDARY_HANDOFF,.5);
+  f.controller.seekBoundary(.25,{kind:'enter',direction:-1,outgoing:f.previous,incoming:f.section});
+  assert.equal(f.controller.phase,'boundary-cover');
+  assert.equal(f.overlay.hidden,false);
+  assert.equal(f.content.style.opacity,'0.5');
+  assert.equal(f.section.style.opacity,'0');
+  assert.equal(f.animations.length,0,'paper and photo timelines must not be attached to wheel progress');
+  const circles=f.overlay.children[0].children;
+  assert.ok(Number(circles[0].getAttribute('r'))>Number(circles.at(-1).getAttribute('r')));
+  f.controller.seekBoundary(.75,{kind:'enter',direction:-1,outgoing:f.previous,incoming:f.section});
+  const radii=circles.map(c=>c.getAttribute('r'));
+  assert.equal(f.controller.phase,'boundary-reveal');
+  assert.equal(f.content.style.opacity,'0');
+  assert.equal(f.section.style.opacity,'0.5');
+  assert.ok(Number(circles[0].getAttribute('r'))<Number(circles.at(-1).getAttribute('r')));
+  f.step(5000);
+  assert.deepEqual(circles.map(c=>c.getAttribute('r')),radii,'a seek has no autonomous clock');
+  f.controller.seekBoundary(0);
+  assert.equal(f.overlay.hidden,true);
+  assert.equal(f.content.style.opacity,'');assert.equal(f.section.style.opacity,'');
+  assert.equal(f.section.classList.contains('album-entry-prepared'),prepared);
+  assert.equal(f.desk.inert,inert);
+  assert.equal(f.controller.busy,false);
+});
+
+test('boundary handoff fully covers the viewport and cleanup restores original opacity and active controls', (t)=>{
+  const f=fixture(t);
+  f.controller.cancel();
+  f.section.style.opacity='.8';
+  f.content.style.opacity='.6';
+  f.controller.seekBoundary(.5,{kind:'exit',direction:1,outgoing:f.section,incoming:f.previous});
+  const grid=createAlbumCircleGrid();
+  const circles=f.overlay.children[0].children;
+  circles.forEach((circle,index)=>assert.equal(Number(circle.getAttribute('r')),Number(grid.circles[index].maxRadius.toFixed(3))));
+  assert.equal(f.desk.inert,true);
+  f.controller.seekBoundary(.75,{kind:'exit',direction:1,outgoing:f.section,incoming:f.previous});
+  assert.equal(f.content.style.opacity,'0.3','incoming content fades toward its own original opacity');
+  f.controller.seekBoundary(1,{kind:'exit',direction:1,outgoing:f.section,incoming:f.previous});
+  assert.equal(f.section.style.opacity,'.8');assert.equal(f.content.style.opacity,'.6');
+  assert.equal(f.desk.inert,false);assert.equal(f.overlay.hidden,true);
+  assert.equal(f.section.classList.contains('album-entry-prepared'),false,'finished scroll exit must not scrub/hide the actors');
+});
+
+test('boundary resize preserves travel direction and hidden-page cancellation releases all owned state', (t)=>{
+  const f=fixture(t);
+  f.controller.cancel();
+  const options={kind:'exit',direction:-1,outgoing:f.section,incoming:f.previous};
+  f.controller.seekBoundary(.8,options);
+  f.win.innerWidth=390;f.win.innerHeight=844;f.win.emit('resize');
+  assert.equal(f.controller.phase,'boundary-reveal');
+  assert.equal(f.overlay.children[0].getAttribute('viewBox'),'0 0 390 844');
+  const circles=f.overlay.children[0].children;
+  assert.ok(Number(circles[0].getAttribute('r'))<Number(circles.at(-1).getAttribute('r')));
+  f.doc.hidden=true;f.doc.emit('visibilitychange');
+  assert.equal(f.overlay.hidden,true);assert.equal(f.controller.busy,false);assert.equal(f.desk.inert,false);
+  assert.equal(f.section.style.opacity,'');assert.equal(f.content.style.opacity,'');
+});
+
+test('click cover and reveal use the requested upward direction too', async(t)=>{
+  const f=fixture(t);
+  const covering=f.controller.cover({direction:-1});f.step(120);
+  let circles=f.overlay.children[0].children;
+  assert.ok(Number(circles[0].getAttribute('r'))>Number(circles.at(-1).getAttribute('r')));
+  f.controller.cancel();assert.equal(await covering,false);
+  await f.controller.cover({direction:-1,animate:false});
+  const revealing=f.controller.reveal({direction:-1});f.step(240);
+  circles=f.overlay.children[0].children;
+  assert.ok(Number(circles[0].getAttribute('r'))<Number(circles.at(-1).getAttribute('r')));
+  f.controller.cancel();assert.equal(await revealing,false);
 });

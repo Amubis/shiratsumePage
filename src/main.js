@@ -357,10 +357,12 @@ navigator = createSectionNavigator({
     root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress));
     if (currentIndex === 1 && !MODELS[modelId].preview && !albumScroll?.busy) albumTransition?.setProgress(Math.max(0,progress) * .3);
   },
-  onChapterWheel(details) {
+  onChapterWheel(details,{allowStart=true}={}) {
     if (MODELS[modelId].preview) return false;
+    if(!allowStart && !albumScroll?.busy)return false;
+    const wasBusy = albumScroll?.busy;
     const handled=albumScroll?.wheel(details) || false;
-    if(handled){finishIntro();introEntrance?.finish();}
+    if(handled){finishIntro();if(!wasBusy && albumScroll?.busy)introEntrance?.finish();}
     return handled;
   },
   onInterrupt() {
@@ -374,7 +376,7 @@ navigator = createSectionNavigator({
     finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
     pendingAlbumNavigation = null;
     if (!MODELS[modelId].preview && from !== index && (index === 2 || from === 2)) {
-      const operation = {kind:index === 2 ? 'enter' : 'reveal',index};
+      const operation = {kind:index === 2 ? 'enter' : 'reveal',index,direction:Math.sign(index-from)};
       pendingAlbumNavigation = operation;
       signal.addEventListener('abort', () => {
         if (pendingAlbumNavigation === operation) pendingAlbumNavigation = null;
@@ -382,7 +384,7 @@ navigator = createSectionNavigator({
       }, {once:true});
       introEntrance?.finish();
       const completed = index === 2
-        ? await albumTransition.cover({signal,outgoing:$('#' + SECTION_IDS[from])})
+        ? await albumTransition.cover({signal,outgoing:$('#' + SECTION_IDS[from]),direction:operation.direction})
         : await albumTransition.leave({signal});
       if (!completed || signal.aborted) {
         if (pendingAlbumNavigation === operation) pendingAlbumNavigation = null;
@@ -405,7 +407,7 @@ navigator = createSectionNavigator({
     pendingAlbumNavigation = null;
     if (pending?.index === index) {
       if (pending.kind === 'enter') enterAlbum();
-      else void albumTransition?.reveal().then(flushAlbumMedia);
+      else void albumTransition?.reveal({direction:pending.direction}).then(flushAlbumMedia);
     } else flushAlbumMedia();
   },
 });
@@ -548,9 +550,32 @@ album=createAlbum({container:$('#album-showcase'),language,modelId,media:ALBUM_M
   if (albumTransition) albumTransition.reset({prepare:currentIndex !== 2});
 }});
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
-albumScroll=createAlbumScroll({transition:albumTransition,reducedMotion,navigate(index){
-  return navigator.goTo(index,{source:'album-scroll',animate:false});
-}});
+albumScroll=createAlbumScroll({
+  transition:{
+    seekBoundary(progress,options){
+      if(progress===0 && options.to===2 && currentIndex!==2)albumTransition.cancel();
+      return albumTransition.seekBoundary(progress,{
+        ...options,
+        outgoing:$('#'+SECTION_IDS[options.from]),
+        incoming:$('#'+SECTION_IDS[options.to]),
+      });
+    },
+    holdCover(){return albumTransition.holdCover();},
+    cancel(){albumTransition.cancel();if(currentIndex!==2)albumTransition.prepare();},
+  },
+  reducedMotion,
+  navigate(index){return navigator.goTo(index,{source:'album-scroll',animate:false});},
+  onHandoff({to}){if(to===1)introEntrance?.finish();},
+  onComplete({to}){
+    if(to===2)flushAlbumMedia();
+    else {
+      albumTransition.reset({prepare:true});
+      if(to===1)introEntrance?.finish();
+      else prepareIntroOffscreen();
+      flushAlbumMedia();
+    }
+  },
+});
 // The public manifest is the content boundary for a future authenticated CMS.
 // Relative media URLs resolve against this page on project GitHub Pages too.
 if (location.protocol !== 'file:') fetch('./data/album.json').then(response=>{

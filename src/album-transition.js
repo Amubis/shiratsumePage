@@ -4,6 +4,7 @@ const smooth = (value) => { const t = clamp(value); return t * t * (3 - 2 * t); 
 
 export const ALBUM_TRANSITION_TIMING = Object.freeze({ cover: 680, reveal: 620, paperBack: 380, paperMiddle: 460, paperFront: 560 });
 export const ALBUM_SCROLL_PHASE = Object.freeze({ enterHandoff: .36, exitHandoff: .62 });
+export const ALBUM_BOUNDARY_HANDOFF = .5;
 export const ALBUM_STATIC_RADIUS_RATIO = .54;
 
 /** Fixed centers, with an extra row/column outside the viewport for complete cover. */
@@ -22,14 +23,15 @@ export function createAlbumCircleGrid({ width = 1440, height = 900, spacing } = 
 }
 
 /** The next row starts when the preceding row is close to its first crest. */
-export function albumRowProgress(progress, row, rows) {
+export function albumRowProgress(progress, row, rows, direction = 1) {
   const duration = 1 / (1 + Math.max(0, rows - 1) * .65);
-  const delay = (rows - 1 - row) * duration * .65;
+  const rank = direction < 0 ? row : rows - 1 - row;
+  const delay = rank * duration * .65;
   return clamp((clamp(progress) - delay) / duration);
 }
 
-export function albumCircleScale(progress, row, rows, mode = 'grow') {
-  const t = albumRowProgress(progress, row, rows);
+export function albumCircleScale(progress, row, rows, mode = 'grow', direction = 1) {
+  const t = albumRowProgress(progress, row, rows, direction);
   if (mode === 'shrink') return 1 - smooth(t);
   if (t <= .65) return smooth(t / .65) * 1.035;
   if (t <= .84) return 1.035 - smooth((t - .65) / .19) * .05;
@@ -97,23 +99,35 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   let destroyed = false;
   let operation = null;
   let seeking = null;
+  let boundary = null;
+  let boundaryDesk = null;
+  let fieldSize = {width:0,height:0};
+  let waveMode = 'grow';
+  let waveDirection = 1;
   let deferredReset = null;
   let heldSignal = null;
   let heldAbort = null;
   const previousOpacity = new Map();
+  const opacityBases = new Map();
   const actorStyles = new Map();
   const deskStates = new Map();
   const instant = () => Boolean(reducedMotion() || doc.hidden);
   const now = () => win.performance?.now?.() ?? Date.now();
   const clearDeferred = () => { if (deferredReset !== null) win.cancelAnimationFrame(deferredReset); deferredReset = null; };
   const clearHeld = () => { heldSignal?.removeEventListener('abort', heldAbort); heldSignal = null; heldAbort = null; };
-  const restorePrevious = () => { for (const [node, opacity] of previousOpacity) node.style.opacity = opacity; previousOpacity.clear(); };
+  const restorePrevious = () => { for (const [node, opacity] of previousOpacity) node.style.opacity = opacity; previousOpacity.clear(); opacityBases.clear(); };
   const outgoingNode = (node) => node?.querySelector?.('.primary-intro') || node;
-  function fadePrevious(value, outgoing = previous) {
-    const node = outgoingNode(outgoing);
+  function paintOpacity(node, value) {
     if (!node) return;
-    if (!previousOpacity.has(node)) previousOpacity.set(node, node.style.opacity || '');
-    node.style.opacity = String(1 - smooth(value));
+    if (!previousOpacity.has(node)) {
+      previousOpacity.set(node, node.style.opacity || '');
+      const base = Number.parseFloat(node.style.opacity || win.getComputedStyle(node).opacity);
+      opacityBases.set(node, Number.isFinite(base) ? base : 1);
+    }
+    node.style.opacity = String(opacityBases.get(node) * value);
+  }
+  function fadePrevious(value, outgoing = previous) {
+    paintOpacity(outgoingNode(outgoing), 1 - smooth(value));
   }
   function restoreActors() {
     section.classList.remove('album-entry-prepared', 'album-entry-playing', 'album-exit-playing');
@@ -121,6 +135,18 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     actorStyles.clear();
     for (const [node, inert] of deskStates) node.inert = inert;
     deskStates.clear();
+  }
+  function clearBoundary() {
+    if (!boundary) return;
+    boundary = null;
+    restorePrevious();
+    if (boundaryDesk) {
+      boundaryDesk.node.inert = boundaryDesk.inert;
+      boundaryDesk = null;
+    }
+    section.classList.remove('album-boundary-seeking');
+    overlay.hidden = true;
+    draw(0);
   }
   function blockDesk() {
     const desk = section.querySelector('.album-desk');
@@ -142,18 +168,28 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   }
   function prepare() {
     if (destroyed || !enabled) return;
+    clearBoundary();
     clearSeek();
     prepareActors();
   }
-  function draw(value, mode = 'grow') {
+  function draw(value, mode = 'grow', direction = waveDirection) {
     progress = clamp(value);
+    waveMode = mode;
+    waveDirection = direction < 0 ? -1 : 1;
     grid.circles.forEach((circle, index) => {
-      const radius = circle.maxRadius * albumCircleScale(progress, circle.row, grid.rows, mode);
+      const radius = circle.maxRadius * albumCircleScale(progress, circle.row, grid.rows, mode, waveDirection);
       circleNodes[index].setAttribute('r', String(Number(radius.toFixed(3))));
     });
   }
   function measure() {
-    grid = createAlbumCircleGrid({ width: win.innerWidth || doc.documentElement.clientWidth, height: win.innerHeight || doc.documentElement.clientHeight });
+    // A reserved scrollbar gutter can make the actual fixed canvas narrower
+    // than innerWidth/clientWidth. Measure it without exposing a painted frame.
+    const wasHidden = overlay.hidden;
+    const visibility = overlay.style.visibility || '';
+    overlay.style.visibility = 'hidden';overlay.hidden = false;
+    const overlayRect = overlay.getBoundingClientRect?.();
+    overlay.hidden = wasHidden;overlay.style.visibility = visibility;
+    grid = createAlbumCircleGrid({ width: overlayRect?.width || win.innerWidth || doc.documentElement.clientWidth, height: overlayRect?.height || win.innerHeight || doc.documentElement.clientHeight });
     svg.setAttribute('viewBox', `0 0 ${grid.width} ${grid.height}`);
     circleNodes = grid.circles.map((circle) => {
       const node = doc.createElementNS(SVG_NS, 'circle');
@@ -163,7 +199,13 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       return node;
     });
     svg.replaceChildren(...circleNodes);
-    const staticGrid = createAlbumCircleGrid({ width: grid.width, height: Math.max(grid.height, section.scrollHeight || 0, section.clientHeight || 0), spacing:Math.max(48,Math.min(120,grid.width/14)) });
+    // Bleeding paper can enlarge scrollHeight beyond the painted chapter.
+    // Measure the actual background area so the SVG lattice stays square.
+    const fieldRect = field.getBoundingClientRect?.();
+    const fieldHeight = fieldRect?.height || section.clientHeight || grid.height;
+    const fieldWidth = fieldRect?.width || section.clientWidth || grid.width;
+    fieldSize = {width:fieldWidth,height:fieldHeight};
+    const staticGrid = createAlbumCircleGrid({ width: fieldWidth, height: fieldHeight, spacing:grid.pitch });
     fieldSVG.setAttribute('viewBox', `0 0 ${staticGrid.width} ${staticGrid.height}`);
     fieldSVG.replaceChildren(...staticGrid.circles.map((circle) => {
       const node = doc.createElementNS(SVG_NS, 'circle');
@@ -172,7 +214,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       node.setAttribute('r', String(staticGrid.pitch * ALBUM_STATIC_RADIUS_RATIO));
       return node;
     }));
-    draw(progress);
+    draw(progress, waveMode, waveDirection);
   }
   function hold(signal) {
     clearHeld();
@@ -193,6 +235,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   function cancel() {
     clearDeferred();
     clearHeld();
+    clearBoundary();
     clearSeek();
     operation?.end(false);
     clearVisuals();
@@ -200,6 +243,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   function begin({ signal, finish, abort = clearVisuals } = {}) {
     clearDeferred();
     clearHeld();
+    clearBoundary();
     clearSeek();
     operation?.end(false);
     let resolve;
@@ -228,16 +272,16 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     const tick = (time) => {
       if (operation !== current) return;
       const fraction = duration ? clamp((time - startedAt) / duration) : 1;
-      draw(from + (target - from) * fraction, mode);
+      draw(from + (target - from) * fraction, mode, options?.direction ?? waveDirection);
       options?.update?.(progress);
       if (fraction >= 1) current.end(true); else current.frame = win.requestAnimationFrame(tick);
     };
-    if (instant() || duration <= 0) { draw(target, mode); options?.update?.(progress); current.end(true); }
+    if (instant() || duration <= 0) { draw(target, mode, options?.direction ?? waveDirection); options?.update?.(progress); current.end(true); }
     else current.frame = win.requestAnimationFrame(tick);
     return current.promise;
   }
   function setProgress(value) {
-    if (destroyed || !enabled || operation || seeking || ['covered', 'active'].includes(phase)) return;
+    if (destroyed || !enabled || operation || seeking || boundary || ['covered', 'active'].includes(phase)) return;
     if (!(value > 0)) {
       // goTo resets resistance immediately before calling cover(); one frame of
       // grace preserves that preview instead of flashing an empty field.
@@ -251,7 +295,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     draw(value);
     fadePrevious(value);
   }
-  function cover({ signal, fromProgress = progress, outgoing = previous, animate = true } = {}) {
+  function cover({ signal, fromProgress = progress, outgoing = previous, animate = true, direction = 1 } = {}) {
     if (destroyed || !enabled) return Promise.resolve(false);
     operation?.end(false);
     clearHeld();
@@ -260,12 +304,13 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     prepare();
     phase = 'covering';
     overlay.hidden = false;
-    draw(start);
+    draw(start, 'grow', direction);
     fadePrevious(start, outgoing);
     return animateField(1, 'grow', animate ? ALBUM_TRANSITION_TIMING.cover * (1 - start) : 0, {
       signal,
+      direction,
       update(value) { fadePrevious(value, outgoing); },
-      finish() { phase = 'covered'; draw(1); fadePrevious(1, outgoing); hold(signal); },
+      finish() { phase = 'covered'; draw(1, 'grow', direction); fadePrevious(1, outgoing); hold(signal); },
     });
   }
   function actorFrames(node, kind, entering) {
@@ -335,7 +380,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   function seekEnter(value) {
     if (destroyed || !enabled) return false;
     const amount = clamp(value);
-    clearDeferred(); clearHeld();
+    clearDeferred(); clearHeld(); clearBoundary();
     operation?.end(false);
     if (amount === 0 || amount === 1) {
       clearSeek();
@@ -360,7 +405,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   function seekExit(value) {
     if (destroyed || !enabled) return false;
     const amount = clamp(value);
-    clearDeferred(); clearHeld();
+    clearDeferred(); clearHeld(); clearBoundary();
     operation?.end(false);
     if (amount === 0 || amount === 1) {
       clearSeek();
@@ -381,11 +426,44 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     }
     return true;
   }
-  function holdCover() {
+  /** Only dots and chapter opacity follow scrolling. Click navigation can
+   * still play the independent paper/photo choreography. */
+  function seekBoundary(value, { kind = 'enter', direction = 1, outgoing = previous, incoming = section } = {}) {
+    if (destroyed || !enabled) return false;
+    const amount = clamp(value);
+    clearDeferred(); clearHeld();
+    if (amount === 0 || amount === 1) {
+      clearBoundary();
+      overlay.hidden = true;
+      draw(0, 'grow', direction);
+      phase = amount === 1 && incoming === section ? 'active' : 'idle';
+      return true;
+    }
+    if (!boundary) {
+      operation?.end(false);
+      clearSeek();
+      boundary = { value: amount, options: { kind, direction, outgoing, incoming } };
+      const desk = section.querySelector('.album-desk');
+      if (desk) { boundaryDesk = { node: desk, inert: Boolean(desk.inert) }; desk.inert = true; }
+      section.classList.add('album-boundary-seeking');
+    } else {
+      boundary.value = amount;
+      boundary.options = { kind, direction, outgoing, incoming };
+    }
+    const growing = amount <= ALBUM_BOUNDARY_HANDOFF;
+    const wave = growing ? amount / ALBUM_BOUNDARY_HANDOFF : (amount - ALBUM_BOUNDARY_HANDOFF) / (1 - ALBUM_BOUNDARY_HANDOFF);
+    overlay.hidden = false;
+    draw(wave, growing ? 'grow' : 'shrink', direction);
+    fadePrevious(growing ? wave : 1, outgoing);
+    paintOpacity(outgoingNode(incoming), growing ? 0 : smooth(wave));
+    phase = growing ? 'boundary-cover' : 'boundary-reveal';
+    return true;
+  }
+  function holdCover({ direction = waveDirection } = {}) {
     if (destroyed || !enabled) return false;
     clearDeferred(); clearHeld();
     operation?.end(false);
-    overlay.hidden = false; draw(1); phase = 'covered';
+    overlay.hidden = false; draw(1, 'grow', direction); phase = 'covered';
     return true;
   }
   function runActors(entering, { signal } = {}) {
@@ -428,20 +506,21 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   }
   function enter(options = {}) { return runActors(true, options); }
   function leave(options = {}) { return runActors(false, options); }
-  function reveal({ signal, animate = true } = {}) {
+  function reveal({ signal, animate = true, direction = 1 } = {}) {
     if (destroyed || !enabled) return Promise.resolve(false);
     operation?.end(false);
     clearHeld();
     progress = 0;
     overlay.hidden = false;
-    draw(0, 'shrink');
+    draw(0, 'shrink', direction);
     phase = 'revealing';
-    return animateField(1, 'shrink', animate ? ALBUM_TRANSITION_TIMING.reveal : 0, { signal,
+    return animateField(1, 'shrink', animate ? ALBUM_TRANSITION_TIMING.reveal : 0, { signal, direction,
       finish() { overlay.hidden = true; progress = 0; phase = 'idle'; restorePrevious(); restoreActors(); },
     });
   }
   const resize = () => {
     const seek = seeking && { direction: seeking.direction, value: seeking.value };
+    const bound = boundary && { value: boundary.value, options: boundary.options };
     const held = phase === 'covered';
     operation?.end(true);
     // Recreate spatial keyframes at the same input position after resizing.
@@ -449,15 +528,22 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     if (seek) {
       if (seek.direction === 'enter') seekEnter(seek.value); else seekExit(seek.value);
     }
+    if (bound) seekBoundary(bound.value, bound.options);
     if (held || phase === 'covered') { overlay.hidden = false; draw(1); phase = 'covered'; }
   };
-  const visibility = () => { if (doc.hidden) operation?.end(true); };
+  const visibility = () => { if (doc.hidden) { operation?.end(true); if (boundary) cancel(); } };
   win.addEventListener('resize', resize, { passive: true });
   doc.addEventListener('visibilitychange', visibility);
   measure();
   prepare();
+  const fieldObserver = typeof win.ResizeObserver === 'function' ? new win.ResizeObserver(()=>{
+    if(destroyed)return;
+    const rect=field.getBoundingClientRect();
+    if(Math.abs(rect.width-fieldSize.width)>.5 || Math.abs(rect.height-fieldSize.height)>.5)measure();
+  }) : null;
+  fieldObserver?.observe(field);
   return {
-    setProgress, cover, enter, leave, reveal, prepare, cancel, seekEnter, seekExit, holdCover,
+    setProgress, cover, enter, leave, reveal, prepare, cancel, seekEnter, seekExit, seekBoundary, holdCover,
     reset({ prepare: pending = false } = {}) { cancel(); if (pending) prepare(); },
     setEnabled(value) {
       enabled = Boolean(value);
@@ -467,13 +553,14 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     },
     get phase() { return phase; },
     get progress() { return progress; },
-    get busy() { return operation !== null || seeking !== null; },
+    get busy() { return operation !== null || seeking !== null || boundary !== null; },
     destroy() {
       if (destroyed) return;
       cancel();
       destroyed = true;
       win.removeEventListener('resize', resize);
       doc.removeEventListener('visibilitychange', visibility);
+      fieldObserver?.disconnect();
       section.classList.remove('has-album-transition');
       overlay.remove(); field.remove();
     },

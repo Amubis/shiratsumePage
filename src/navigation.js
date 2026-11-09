@@ -237,7 +237,10 @@ export function createSectionNavigator({
     if (!Number.isFinite(delta) || !delta || Math.abs(horizontal) > Math.abs(delta)) return;
     if (event.cancelable === false) { interrupt(); return; }
     if (!desktopInput() || nativeWheelTarget(event.target)) { interrupt(); return; }
-    if (onChapterWheel({delta,from:activeIndex,destination:wheelDestination(Math.sign(delta))})) {
+    const intentTime = now();
+    const allowStart = !(operation && operation.source !== 'album-scroll')
+      && !(gestureLocked && intentTime - lastWheelAt <= gestureGap);
+    if (onChapterWheel({delta,from:activeIndex,destination:wheelDestination(Math.sign(delta))},{allowStart})) {
       event.preventDefault();
       return;
     }

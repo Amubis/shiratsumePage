@@ -125,6 +125,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   let railHovered = false;
   let railPointerX = null;
   let railMagnet = null;
+  let shadowFrame = null;
+  let shadowStartedAt = null;
+  let shadowDuration = 0;
+  let shadowLastPaint = -Infinity;
+  let shadowResizeObserver;
 
   function element(tag, className) {
     const node = doc.createElement(tag);
@@ -146,34 +151,31 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   const stage = element('button', 'outfit-stage');
   stage.type = 'button';
   const art = element('span', 'outfit-art');
-  function createShadow(source, suffix = '') {
-    const shadow = svgElement('svg', { class: 'outfit-shadow', viewBox: `0 0 ${IMAGE_WIDTH} ${IMAGE_HEIGHT}`, 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'xMidYMid meet' });
-    const defs = svgElement('defs');
-    const mask = svgElement('mask', { id: `${uid}${suffix}-mask`, maskUnits: 'userSpaceOnUse', x: '0', y: '0', width: IMAGE_WIDTH, height: IMAGE_HEIGHT, 'mask-type': 'alpha', style: 'mask-type:alpha' });
-    const shadowSource = svgElement('image', { x: '0', y: '0', width: IMAGE_WIDTH, height: IMAGE_HEIGHT, preserveAspectRatio: 'xMidYMid meet', href: source });
-    mask.append(shadowSource);
-    const pattern = svgElement('pattern', { id: `${uid}${suffix}-dots`, width: '52', height: '52', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
-    pattern.append(svgElement('circle', { cx: '26', cy: '26', r: '19', fill: 'currentColor' }));
-    defs.append(mask, pattern);
-    const shadowGroup = svgElement('g', { mask: `url(#${uid}${suffix}-mask)`, opacity: '.36' });
-    shadowGroup.append(svgElement('rect', { width: IMAGE_WIDTH, height: IMAGE_HEIGHT, fill: `url(#${uid}${suffix}-dots)` }));
-    shadow.append(defs, shadowGroup);
-    return { shadow, source: shadowSource };
-  }
-  const frontShadow = createShadow(OUTFITS[0].front);
-  const shadow = frontShadow.shadow;
-  const shadowSource = frontShadow.source;
+  // Both alpha silhouettes compose first; the pattern receives one opacity only.
+  // This sibling of both portrait buttons can never paint over either picture.
+  const shadow = svgElement('svg', { class: 'outfit-shadow outfit-shared-shadow', viewBox: `0 0 ${IMAGE_WIDTH} ${IMAGE_HEIGHT}`, 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'none' });
+  const shadowDefs = svgElement('defs');
+  const shadowMask = svgElement('mask', { id: `${uid}-mask`, maskUnits: 'userSpaceOnUse', x: '-320', y: '-320', width: IMAGE_WIDTH + 640, height: IMAGE_HEIGHT + 640, 'mask-type': 'alpha', style: 'mask-type:alpha', 'data-composite': 'alpha-union' });
+  const shadowSources = [OUTFITS[0].front, OUTFITS[0].back].map((source, index) => svgElement('image', { class: index ? 'outfit-projection-back' : 'outfit-projection-front', x: '0', y: '0', width: IMAGE_WIDTH, height: IMAGE_HEIGHT, preserveAspectRatio: 'xMidYMid meet', href: source }));
+  shadowMask.append(...shadowSources);
+  const shadowPattern = svgElement('pattern', { id: `${uid}-dots`, width: '52', height: '52', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
+  shadowPattern.append(svgElement('circle', { cx: '26', cy: '26', r: '19', fill: 'currentColor' }));
+  shadowDefs.append(shadowMask, shadowPattern);
+  const shadowGroup = svgElement('g', { mask: `url(#${uid}-mask)`, opacity: '.36' });
+  const shadowPaint = svgElement('rect', { x: '-320', y: '-320', width: IMAGE_WIDTH + 640, height: IMAGE_HEIGHT + 640, fill: `url(#${uid}-dots)` });
+  shadowGroup.append(shadowPaint);
+  shadow.append(shadowDefs, shadowGroup);
   const image = element('img', 'outfit-image');
   image.width = IMAGE_WIDTH;
   image.height = IMAGE_HEIGHT;
   image.decoding = 'async';
   image.draggable = false;
   image.src = OUTFITS[0].front;
-  art.append(shadow, image);
+  art.append(image);
   const cue = element('span', 'outfit-cue');
   cue.setAttribute('aria-hidden', 'true');
   const cueArt = element('span', 'outfit-cue-art');
-  cueArt.innerHTML = `${cloverSVG({ className: 'clover-svg', variant: 'small' })}<svg class="outfit-cue-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 9 5 12 1.8-5.2L21 14Z"/><path d="m16 16 4 4M7.2 2.2 8 5.1M5.1 8l-2.9-.8M14 4.1 12 6.2M6.2 12l-2.1 2"/></svg>`;
+  cueArt.innerHTML = `${cloverSVG({ className: 'clover-svg', variant: 'small' })}<svg class="outfit-cue-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12V5a2 2 0 0 1 4 0v6l1.8-1a2 2 0 0 1 1.7-.1l3.2 1.3A2.2 2.2 0 0 1 20 13.3V17a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2L4.6 14a1.7 1.7 0 0 1 2.6-2.2L8 13"/><path d="M3.5 5.5 2 4M6 2.3V1M14 3l1.5-1.5"/></svg>`;
   cue.append(cueArt);
   stage.append(art, cue);
   const backStage = element('button', 'outfit-back-stage');
@@ -185,10 +187,9 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   backImage.decoding = 'async';
   backImage.draggable = false;
   backImage.src = OUTFITS[0].back;
-  const backShadow = createShadow(OUTFITS[0].back, '-back');
-  backArt.append(backShadow.shadow, backImage);
+  backArt.append(backImage);
   backStage.append(backArt);
-  pair.append(stage, backStage);
+  pair.append(shadow, stage, backStage);
   const footer = element('div', 'outfit-footer');
   const dots = element('div', 'outfit-dots');
   dots.setAttribute('role', 'group');
@@ -228,10 +229,97 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   footer.append(dots);
   container.replaceChildren(pair, footer, status);
 
+  const setShadowAttribute = (node, name, value) => {
+    const text = String(value);
+    if (node.getAttribute(name) !== text) node.setAttribute(name, text);
+  };
+  const cssLength = (value, extent) => {
+    const number = Number.parseFloat(value);
+    if (!Number.isFinite(number)) return 0;
+    return String(value).includes('%') ? number / 100 * extent : number;
+  };
+  function paintSharedShadow() {
+    if (destroyed) return;
+    const pairStyle = win?.getComputedStyle?.(pair);
+    const bounds = pair.getBoundingClientRect();
+    const pixelWidth = Number.parseFloat(pairStyle?.width) || pair.clientWidth || bounds.width || 500;
+    const pixelHeight = Number.parseFloat(pairStyle?.height) || pair.clientHeight || bounds.height || 600;
+    const units = IMAGE_HEIGHT / pixelHeight;
+    const viewWidth = pixelWidth * units;
+    setShadowAttribute(shadow, 'viewBox', `0 0 ${viewWidth.toFixed(5)} ${IMAGE_HEIGHT}`);
+    for (const node of [shadowMask, shadowPaint]) setShadowAttribute(node, 'width', (viewWidth + 640).toFixed(5));
+    const inspecting = pair.classList.contains('is-back-inspected');
+    const geometry = outfitViewGeometry(OUTFITS[currentIndex]);
+    [stage, backStage].forEach((node, index) => {
+      const style = win?.getComputedStyle?.(node);
+      let width = IMAGE_WIDTH, height = IMAGE_HEIGHT;
+      let x = viewWidth / 2, y = 0;
+      let tx = index ? geometry[inspecting ? 'previewX' : 'restX'] / 100 * IMAGE_WIDTH : (inspecting ? -.7 : -.62) * IMAGE_WIDTH;
+      let ty = index ? geometry[inspecting ? 'previewY' : 'restY'] / 100 * IMAGE_HEIGHT : 0;
+      let sx = index ? geometry[inspecting ? 'previewScale' : 'restScale'] : 1;
+      let sy = sx;
+      let originX = width / 2, originY = height / 2;
+      let pressX = 0, pressY = 0;
+      let pressScaleX = pressed || pressReleased ? .94 : 1;
+      let pressScaleY = pressScaleX;
+      if (style) {
+        width = (Number.parseFloat(style.width) || IMAGE_WIDTH / units) * units;
+        height = (Number.parseFloat(style.height) || pixelHeight) * units;
+        x = cssLength(style.left, pixelWidth) * units;
+        y = cssLength(style.top, pixelHeight) * units;
+        const translations = String(style.translate || 'none').split(/\s+/);
+        tx = cssLength(translations[0], width / units) * units;
+        ty = cssLength(translations[1] || '0', height / units) * units;
+        const scales = String(style.scale || 'none').split(/\s+/).map(Number);
+        sx = Number.isFinite(scales[0]) ? scales[0] : 1;
+        sy = Number.isFinite(scales[1]) ? scales[1] : sx;
+        const origins = String(style.transformOrigin || '50% 50%').split(/\s+/);
+        originX = cssLength(origins[0], width / units) * units;
+        originY = cssLength(origins[1], height / units) * units;
+        const matrix = String(style.transform || '').match(/\(([^)]+)\)/)?.[1].split(',').map(Number);
+        pressScaleX = matrix?.[0] ?? 1;
+        pressScaleY = matrix?.[matrix.length === 16 ? 5 : 3] ?? 1;
+        pressX = (matrix?.[matrix.length === 16 ? 12 : 4] || 0) * units;
+        pressY = (matrix?.[matrix.length === 16 ? 13 : 5] || 0) * units;
+      }
+      const finalScaleX = sx * pressScaleX, finalScaleY = sy * pressScaleY;
+      x += tx + originX * (1 - finalScaleX) + pressX * sx;
+      y += ty + originY * (1 - finalScaleY) + pressY * sy;
+      setShadowAttribute(shadowSources[index], 'transform', `matrix(${(finalScaleX * width / IMAGE_WIDTH).toFixed(6)} 0 0 ${(finalScaleY * height / IMAGE_HEIGHT).toFixed(6)} ${x.toFixed(5)} ${y.toFixed(5)})`);
+    });
+  }
+  function stopSharedShadow() {
+    if (shadowFrame !== null) win?.cancelAnimationFrame?.(shadowFrame);
+    shadowFrame = null; shadowStartedAt = null; shadowDuration = 0;
+  }
+  function trackSharedShadow(duration = 650) {
+    if (destroyed) return;
+    paintSharedShadow();
+    if (!enabled || reducedMotion() || doc.hidden || !win?.requestAnimationFrame) { stopSharedShadow(); return; }
+    // Read the live CSS interpolation only while a scale/press/layout transition
+    // is in flight. Whole-pair water drifting moves the SVG with its siblings.
+    shadowStartedAt = null;
+    shadowDuration = duration;
+    if (shadowFrame !== null) return;
+    const tick = (time) => {
+      shadowFrame = null;
+      if (destroyed || !enabled || doc.hidden) { stopSharedShadow(); return; }
+      if (shadowStartedAt === null) shadowStartedAt = time;
+      if (time - shadowLastPaint >= 1000 / 60 || time - shadowStartedAt >= shadowDuration || reducedMotion()) {
+        paintSharedShadow(); shadowLastPaint = time;
+      }
+      if (reducedMotion() || time - shadowStartedAt >= shadowDuration) { stopSharedShadow(); return; }
+      shadowFrame = win.requestAnimationFrame(tick);
+    };
+    shadowFrame = win.requestAnimationFrame(tick);
+  }
+
   function syncBackInspection() {
     const inspecting = enabled && !busy && (backHovered || backFocused || backPinned);
+    const changed = pair.classList.contains('is-back-inspected') !== inspecting;
     pair.classList.toggle('is-back-inspected', inspecting);
     backStage.setAttribute('aria-pressed', String(inspecting));
+    if (changed) trackSharedShadow();
   }
 
   function resetBackInspection() {
@@ -242,7 +330,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
 
   function updateHitBounds(node, bounds) {
     // Crop only the transparent canvas around each supplied silhouette. The
-    // image stays untouched; a generous margin retains its dotted projection.
+    // image stays untouched; a generous margin keeps its pointer target usable.
     const margin = 80;
     const [left, top, right, bottom] = bounds;
     node.style.clipPath = `inset(${Math.max(0,top-margin)/IMAGE_HEIGHT*100}% ${Math.max(0,IMAGE_WIDTH-right-margin)/IMAGE_WIDTH*100}% ${Math.max(0,IMAGE_HEIGHT-bottom-margin)/IMAGE_HEIGHT*100}% ${Math.max(0,left-margin)/IMAGE_WIDTH*100}%)`;
@@ -279,6 +367,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       button.disabled = !enabled;
     });
     if (announce) status.textContent = `${label} · ${number}`;
+    trackSharedShadow();
   }
 
   function paintRail() {
@@ -461,6 +550,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     // A slow connection leaves the released portrait quietly compressed until
     // its replacement is decoded. Rebound and flip then begin together.
     if (pressReleased || pressed) reboundPress();
+    if (animate && !reducedMotion()) pair.classList.add('is-outfit-turning');
     if (animate && !reducedMotion()) await animateArt([
       { transform: 'translateX(0) rotateY(0deg)', opacity: 1 },
       { transform: `translateX(${-direction * 22}px) rotateY(${-direction * 66}deg)`, opacity: 0 },
@@ -469,8 +559,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     currentIndex = destination;
     image.src = OUTFITS[currentIndex].front;
     backImage.src = OUTFITS[currentIndex].back;
-    shadowSource.setAttribute('href', OUTFITS[currentIndex].front);
-    backShadow.source.setAttribute('href', OUTFITS[currentIndex].back);
+    shadowSources[0].setAttribute('href', OUTFITS[currentIndex].front);
+    shadowSources[1].setAttribute('href', OUTFITS[currentIndex].back);
     renderLabels(true);
     if (!railHovered) targetRail(currentIndex);
     onChange(currentIndex, OUTFITS[currentIndex]);
@@ -481,6 +571,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     ], 320);
     if (destroyed || !enabled || request !== serial) return false;
     busy = false;
+    pair.classList.remove('is-outfit-turning');
+    trackSharedShadow();
     stage.setAttribute('aria-busy', 'false');
     backStage.setAttribute('aria-busy', 'false');
     void preload(currentIndex + 1);
@@ -503,6 +595,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       backPressAnimation = backStage.animate([{ transform: 'scale(1)' }, { transform: 'scale(.94)' }], { duration: 110, easing: 'cubic-bezier(.2,.65,.3,1)', fill: 'forwards' });
       backPressAnimation.finished?.catch(() => {});
     }
+    trackSharedShadow();
     return true;
   }
 
@@ -525,6 +618,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     stage.classList.remove('is-pressed');
     stage.style.transform = '';
     backStage.style.transform = '';
+    trackSharedShadow();
   }
 
   function reboundPress() {
@@ -537,6 +631,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     stage.classList.remove('is-pressed');
     stage.style.transform = '';
     backStage.style.transform = '';
+    trackSharedShadow();
     if (reducedMotion() || !stage.animate) { pressAnimation = backPressAnimation = null; return; }
     const animation = stage.animate([
       { transform: 'scale(.94)' },
@@ -623,7 +718,12 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   });
   bind(backStage, 'pointerup', () => { queueMicrotask(() => { backPointerFocus = false; }); });
   bind(backStage, 'pointercancel', () => { backPointerFocus = false; });
-  bind(backStage, 'focus', () => { backFocused = !backPointerFocus; syncBackInspection(); });
+  bind(backStage, 'focus', () => {
+    // Touch browsers may deliver focus after pointerup. Only keyboard-visible
+    // focus owns inspection; a touch click must remain free to toggle it off.
+    backFocused = typeof backStage.matches === 'function' ? backStage.matches(':focus-visible') : !backPointerFocus && backPointerType !== 'touch';
+    syncBackInspection();
+  });
   bind(backStage, 'blur', () => { backFocused = false; backPinned = false; syncBackInspection(); });
   bind(backStage, 'click', (event) => {
     if (destroyed || !enabled || busy) return;
@@ -637,6 +737,15 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       event.preventDefault(); event.stopPropagation(); resetBackInspection();
     }
   });
+  if (win?.addEventListener) bind(win, 'resize', () => trackSharedShadow());
+  if (doc.addEventListener) bind(doc, 'visibilitychange', () => {
+    if (doc.hidden) stopSharedShadow(); else trackSharedShadow();
+  });
+  if (typeof win?.ResizeObserver === 'function') {
+    shadowResizeObserver = new win.ResizeObserver(() => trackSharedShadow());
+    shadowResizeObserver.observe(pair);
+    listeners.push(() => shadowResizeObserver.disconnect());
+  }
   renderLabels();
   targetRail(currentIndex, true);
   void preload(0).then(() => { if (!destroyed) void preload(1); });
@@ -666,6 +775,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
         railMagnet = null;
         targetRail(currentIndex, true);
         resetBackInspection();
+        pair.classList.remove('is-outfit-turning');
+        stopSharedShadow();
       }
       renderLabels();
     },
@@ -678,6 +789,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       animations.clear();
       cancelPress();
       stopRail();
+      stopSharedShadow();
       container.replaceChildren();
       container.classList.remove('outfit-showcase');
     },
