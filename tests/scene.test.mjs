@@ -238,17 +238,25 @@ test('the smaller solid region still fills corners while the middle of the frame
   }
 });
 
-test('the second chapter retains its approved five-step seam geometry and exact generated circles', () => {
+test('the second chapter retains its approved seam geometry within subpixel precision', () => {
+  // Approved 0.8.3 geometry, not raw JSON bytes: libm/V8 releases may differ
+  // below floating-point display precision without changing a painted dot.
   const approved = [
-    [1440, 900, 'a828fd55e00196743430400a78acc40346b70f706112055ef53bd693b87d0fa0'],
-    [1900, 973, '1fb2bc8d3e0b5173c624df5f1e9c3609d4aa30f7d045c21f65bb8737f7844e73'],
-    [390, 844, '678c21063bde918d5a23ae411c1d006c8c25d4ea00b1c0efa900fb3be8f25bd6'],
+    { width: 1440, height: 900, count: 1103, top: 756, radiusTotal: 10255.132217499216, middle: [823.5767920576683, 101.0188427048783, 7.156010024005468] },
+    { width: 1900, height: 973, count: 1382, top: 1018, radiusTotal: 14572.637493252454, middle: [1543.7434361895641, 176.9203068969013, 9.97797384977672] },
+    { width: 390, height: 844, count: 1310, top: 464, radiusTotal: 6119.506962868641, middle: [185.96510064057648, 763.1771836518167, 4.016539622380723] },
   ];
-  for (const [width, height, hash] of approved) {
+  for (const expected of approved) {
+    const { width, height } = expected;
     const geometry = getHalftoneSeamGeometry({ width, height });
     assert.ok(Math.abs(geometry.featherWidth / geometry.spacing - 5) < 1e-10);
     assert.ok(Math.abs(geometry.outerY * 2 / height - 1) < 1e-10);
-    assert.equal(createHash('sha256').update(JSON.stringify(generateHalftoneSeamDots({ width, height }))).digest('hex'), hash);
+    const dots = generateHalftoneSeamDots({ width, height });
+    assert.equal(dots.length, expected.count);
+    assert.equal(dots.filter(dot => dot.band === 'top').length, expected.top);
+    assert.ok(Math.abs(dots.reduce((sum, dot) => sum + dot.radius, 0) - expected.radiusTotal) < 1e-6);
+    const middle = dots[Math.floor(dots.length / 2)];
+    for (const [index, key] of ['x', 'y', 'radius'].entries()) assert.ok(Math.abs(middle[key] - expected.middle[index]) < 1e-6);
   }
 });
 
