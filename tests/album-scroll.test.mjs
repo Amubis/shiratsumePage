@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ALBUM_SCROLL_INPUT, createAlbumScroll } from '../src/album-scroll.js';
 
 function fixture(t, options = {}) {
+  const { transitionHooks = {}, ...controllerOptions } = options;
   let clock = 0, id = 0;
   const frames = new Map();
   const paints = [], jumps = [], handoffs = [], completions = [];
@@ -12,8 +13,8 @@ function fixture(t, options = {}) {
     requestAnimationFrame(callback) { frames.set(++id, callback); return id; },
     cancelAnimationFrame(frame) { frames.delete(frame); },
   };
-  const transition = { seekBoundary(p, event) { paints.push({ p, ...event }); }, holdCover() { holds++; }, cancel() { cancels++; } };
-  const api = createAlbumScroll({ transition, window: win, navigate(index) { jumps.push(index); return true; }, onHandoff(event) { handoffs.push(event); }, onComplete(event) { completions.push(event); }, ...options });
+  const transition = { seekBoundary(p, event) { paints.push({ p, ...event }); }, holdCover() { holds++; }, cancel() { cancels++; }, ...transitionHooks };
+  const api = createAlbumScroll({ transition, window: win, navigate(index) { jumps.push(index); return true; }, onHandoff(event) { handoffs.push(event); }, onComplete(event) { completions.push(event); }, ...controllerOptions });
   t.after(() => api.destroy());
   async function step(time = 16) {
     clock += time;
@@ -99,8 +100,10 @@ test('all four adjacent routes carry the correct direction for the wave and fade
     f.api.cancel();
     const direction = Math.sign(to - from);
     assert.equal(f.send(direction * 120, from, to), true);
-    assert.deepEqual(f.paints.at(-1), { p: 0, kind, direction, from, to });
+    if (kind === 'enter') assert.deepEqual(f.paints.at(-1), { p: 0, kind, direction, from, to });
+    const before = f.paints.length;
     await f.drain();
+    if (kind === 'exit') assert.deepEqual(f.paints[before], { p: 0, kind, direction, from, to }, 'an exit starts its wave only after commitment');
     assert.equal(f.jumps.at(-1), to);
     assert.deepEqual(f.completions.at(-1), { kind, direction, from, to });
     assert.equal(f.api.busy, false);
@@ -193,4 +196,94 @@ test('failed navigation and reduced motion leave no frozen transition or frame',
   assert.equal(f.send(120), false);
   assert.equal(f.api.busy, false);
   assert.equal(f.frames.size, 0);
+});
+
+test('small and reversed exit input only previews resistance, never withdrawing paper or drawing dots', async (t) => {
+  const previews = [];
+  let exits = 0;
+  const f = fixture(t, { transitionHooks: {
+    previewExit(value, event) { previews.push({ value, ...event }); },
+    beforeExit() { exits++; return true; },
+  } });
+  f.send(30, 2, 3); await f.drain();
+  assert.equal(exits, 0);
+  assert.deepEqual(f.paints, []);
+  assert.ok(previews.some(event => event.value > 0));
+  assert.equal(previews.at(-1).value, 0);
+  await f.step(230);
+  f.send(-100, 2, 1); await f.step(60); f.send(120, 2, 3); await f.drain();
+  assert.equal(exits, 0);
+  assert.deepEqual(f.paints, []);
+  assert.deepEqual(f.jumps, []);
+  assert.equal(f.api.busy, false);
+});
+
+test('committed exit waits for paper withdrawal before its first dot frame and keeps a fresh wave clock', async (t) => {
+  let resolve;
+  const stages = [];
+  const f = fixture(t, { transitionHooks: { beforeExit(event, { signal }) {
+    stages.push({ event, signal });
+    return new Promise(done => { resolve = done; });
+  } } });
+  f.send(-120, 2, 1); await f.step(ALBUM_SCROLL_INPUT.minBuffer);
+  assert.deepEqual(stages.map(stage => stage.event), [{ kind: 'exit', direction: -1, from: 2, to: 1 }]);
+  assert.equal(f.api.busy, true);
+  assert.deepEqual(f.paints, []);
+  assert.equal(f.frames.size, 0, 'the exit animation owns its own clock while the scroll clock waits');
+  for (const delta of [-4000, 4000, -4000]) { await f.step(500); assert.equal(f.send(delta, 2, 1), true); }
+  assert.equal(stages.length, 1);
+  assert.deepEqual(f.jumps, []);
+  resolve(true); await f.step(0);
+  assert.deepEqual(f.paints, [{ p: 0, kind: 'exit', direction: -1, from: 2, to: 1 }]);
+  await f.step(0); await f.step(0);
+  assert.equal(f.api.busy, true, 'same-frame RAF timestamps at the snap origin cannot complete a return');
+  assert.equal(f.api.progress, 0);
+  assert.equal(f.cancels, 0);
+  await f.step(200);
+  assert.ok(f.api.progress > 0 && f.api.progress < .5, 'waiting and inertia cannot consume the dot reveal');
+  assert.equal(stages[0].signal.aborted, false);
+  await f.drain();
+  assert.deepEqual(f.jumps, [1]);
+  assert.equal(f.paints.at(-1).p, 1);
+  assert.equal(f.completions.length, 1);
+});
+
+test('cancelling a pending withdrawal aborts its signal and ignores its late completion', async (t) => {
+  let resolve, signal;
+  const f = fixture(t, { transitionHooks: { beforeExit(_, options) {
+    signal = options.signal;
+    return new Promise(done => { resolve = done; });
+  } } });
+  f.send(120, 2, 3); await f.step(ALBUM_SCROLL_INPUT.minBuffer);
+  f.api.cancel();
+  assert.equal(signal.aborted, true);
+  assert.equal(f.api.busy, false);
+  assert.equal(f.frames.size, 0);
+  resolve(true); await f.step(1000);
+  assert.deepEqual(f.paints, []);
+  assert.deepEqual(f.jumps, []);
+  assert.deepEqual(f.completions, []);
+});
+
+test('failed, rejected and reduced-motion withdrawal paths release input without starting a wave', async (t) => {
+  for (const failure of ['false', 'throw', 'reject', 'reduced']) {
+    let reduced = false, resolve;
+    const f = fixture(t, { reducedMotion: () => reduced, transitionHooks: { beforeExit() {
+      if (failure === 'throw') throw new Error('exit failed');
+      if (failure === 'reject') return Promise.reject(new Error('exit failed'));
+      if (failure === 'false') return false;
+      return new Promise(done => { resolve = done; });
+    } } });
+    f.send(120, 2, 3); await f.step(ALBUM_SCROLL_INPUT.minBuffer);
+    if (failure === 'reduced') {
+      reduced = true;
+      assert.equal(f.send(120, 2, 3), false);
+      resolve(true); await f.step(0);
+    }
+    assert.equal(f.api.busy, false, failure);
+    assert.equal(f.frames.size, 0, failure);
+    assert.deepEqual(f.paints, [], failure);
+    assert.deepEqual(f.jumps, [], failure);
+    assert.equal(f.cancels, 1, failure);
+  }
 });

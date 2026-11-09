@@ -32,6 +32,38 @@ body:not(.theme-preview) .scene-clover {
   animation: cloverSway var(--duration, 5s) ease-in-out var(--delay, 0s) infinite alternate,
     waterDrift var(--drift-duration, 11s) ease-in-out var(--drift-delay, -3s) infinite alternate;
 }
+/* The entry owns the same outer transform as the steady sway, so the contrast
+   clip reads the actual jumping silhouette. Drift and pointer push stay free. */
+.hero-clovers .scene-clover { --entry-alpha: .72; --entry-delay: 0s; --entry-turn: -7deg; }
+.hero-clovers .scene-clover:nth-child(2n) { --entry-alpha: .46; --entry-delay: .14s; --entry-turn: 6deg; }
+.hero-clovers .scene-clover:nth-child(3n) { --entry-alpha: .65; --entry-delay: .28s; --entry-turn: -4deg; }
+html[data-phase="ready"] body.on-home:not(.theme-preview):not(.watch-mode) .hero-clovers .scene-clover {
+  animation: cloverSway var(--duration, 5s) ease-in-out var(--delay, 0s) infinite alternate,
+    waterDrift var(--drift-duration, 11s) ease-in-out var(--drift-delay, -3s) infinite alternate,
+    cloverSurfaceEntry 1.08s cubic-bezier(.2,.65,.3,1) var(--entry-delay) backwards;
+}
+@keyframes cloverSurfaceEntry {
+  0% { opacity: 0; transform: translate(-50%, -50%) translateY(42px) rotate(calc(var(--rotation) + var(--entry-turn))) scale(.25); }
+  24% { opacity: var(--entry-alpha); }
+  58% { opacity: var(--entry-alpha); transform: translate(-50%, -50%) translateY(-14px) rotate(calc(var(--rotation) - var(--entry-turn) * .25)) scale(1.065); }
+  78% { transform: translate(-50%, -50%) translateY(5px) rotate(calc(var(--rotation) + var(--entry-turn) * .12)) scale(.985); }
+  100% { opacity: var(--entry-alpha); transform: translate(-50%, -50%) translateY(0) rotate(var(--rotation)) scale(1); }
+}
+
+/* The two CTA flowers join their text phase, rather than flashing before the
+   final background entrance. Their native button and click wipe stay intact. */
+.hero .flower-one { --flower-entry-x: -61%; --flower-entry-y: -54%; --flower-entry-rotation: -18deg; --flower-entry-alpha: .97; --flower-entry-delay: .28s; }
+.hero .flower-two { --flower-entry-x: -36%; --flower-entry-y: -42%; --flower-entry-rotation: 18deg; --flower-entry-alpha: .84; --flower-entry-delay: .4s; }
+html:is([data-phase="text"], [data-phase="controls"], [data-phase="ready"]) body.on-home:not(.theme-preview):not(.watch-mode) .hero .explore-flower {
+  animation: exploreFlowerSurfaceEntry .88s cubic-bezier(.2,.65,.3,1) var(--flower-entry-delay) backwards;
+}
+@keyframes exploreFlowerSurfaceEntry {
+  0% { opacity: 0; transform: translate(var(--flower-entry-x), var(--flower-entry-y)) translateY(24px) rotate(var(--flower-entry-rotation)) scale(.35); }
+  26% { opacity: var(--flower-entry-alpha); }
+  58% { opacity: var(--flower-entry-alpha); transform: translate(var(--flower-entry-x), var(--flower-entry-y)) translateY(-9px) rotate(var(--flower-entry-rotation)) scale(1.055); }
+  78% { transform: translate(var(--flower-entry-x), var(--flower-entry-y)) translateY(3px) rotate(var(--flower-entry-rotation)) scale(.99); }
+  100% { opacity: var(--flower-entry-alpha); transform: translate(var(--flower-entry-x), var(--flower-entry-y)) translateY(0) rotate(var(--flower-entry-rotation)) scale(1); }
+}
 @keyframes waterDrift {
   from { translate: calc(var(--drift-x, 3px) * -.5) calc(var(--drift-y, -2px) * -.5); }
   to { translate: calc(var(--drift-x, 3px) * .5) calc(var(--drift-y, -2px) * .5); }
@@ -44,6 +76,7 @@ body.is-background .scene-clover,
 body.is-background .section-clover,
 body:not(.on-home) .hero .scene-clover,
 .page-section:not(.is-current) .section-clover { animation-play-state: paused; }
+body.is-background :is(.hero-clovers .scene-clover, .hero .explore-flower) { animation-play-state: paused !important; }
 
 /* The second chapter's decoration occupies both diagonal edges. */
 .intro-halftone-seam { opacity: .17; }
@@ -73,4 +106,5 @@ body:not(.on-home) .hero .scene-clover,
   body:not(.theme-preview) .scene-clover,
   body:not(.theme-preview) .section-clover { animation: none !important; translate: none; }
   .hero-edge-shade { transition: none; }
+  .hero .explore-flower { animation: none !important; }
 }

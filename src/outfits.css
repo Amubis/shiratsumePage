@@ -137,8 +137,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 21px;
-  height: 21px;
+  width: 14px;
+  height: 14px;
   color: #fff;
   transform: translate(-50%, -50%) rotate(-12deg);
 }
@@ -233,7 +233,7 @@ body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
   .outfit-footer { padding-top: 12px; }
   .outfit-cue { right: 7%; }
   .outfit-cue-art { width: 36px; height: 36px; }
-  .outfit-cue-icon { width: 19px; height: 19px; }
+  .outfit-cue-icon { width: 12px; height: 12px; }
 }
 
 @media (max-height: 680px) and (min-width: 761px) {

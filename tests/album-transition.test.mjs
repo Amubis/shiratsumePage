@@ -352,15 +352,15 @@ test('prepared papers stay hidden through the wave and play autonomously only af
   assert.equal(f.section.classList.contains('album-entry-prepared'), false);
 });
 
-test('boundary handoff matches the background circles and cleanup restores original opacity and active controls', (t)=>{
+test('exit handoff preserves a partly withdrawn field and cleanup restores opacity and active controls', (t)=>{
   const f=fixture(t);
   f.controller.cancel();
   f.section.style.opacity='.8';
   f.content.style.opacity='.6';
   f.controller.seekBoundary(.5,{kind:'exit',direction:1,outgoing:f.section,incoming:f.previous});
-  const grid=createAlbumCircleGrid();
   const circles=f.overlay.children[0].children;
-  circles.forEach((circle,index)=>assert.equal(Number(circle.getAttribute('r')),Number(grid.circles[index].maxRadius.toFixed(3))));
+  assert.ok(circles.some(circle=>Number(circle.getAttribute('r'))>0));
+  assert.ok(circles.some(circle=>Number(circle.getAttribute('r'))===0));
   assert.equal(f.desk.inert,true);
   f.controller.seekBoundary(.75,{kind:'exit',direction:1,outgoing:f.section,incoming:f.previous});
   assert.equal(f.content.style.opacity,'0.3','incoming content fades toward its own original opacity');
@@ -368,6 +368,29 @@ test('boundary handoff matches the background circles and cleanup restores origi
   assert.equal(f.section.style.opacity,'.8');assert.equal(f.content.style.opacity,'.6');
   assert.equal(f.desk.inert,false);assert.equal(f.overlay.hidden,true);
   assert.equal(f.section.classList.contains('album-entry-prepared'),false,'finished scroll exit must not scrub/hide the actors');
+});
+
+test('withdrawn papers stay hidden while exit dots shrink and cancellation restores reading', async (t) => {
+  const f = fixture(t);
+  f.controller.cancel();
+  const leave = f.controller.leave({ retainHidden: true });
+  f.step(1600); await Promise.resolve();
+  assert.equal(await leave, true);
+  assert.equal(f.section.classList.contains('album-entry-prepared'), true);
+  assert.equal(f.desk.inert, true);
+  const options = { kind: 'exit', direction: -1, outgoing: f.section, incoming: f.previous };
+  f.controller.seekBoundary(0, options);
+  assert.equal(f.section.classList.contains('album-entry-prepared'), true);
+  f.controller.seekBoundary(.3, options);
+  const circles = f.overlay.children[0].children;
+  assert.ok(Number(circles[0].getAttribute('r')) < Number(circles.at(-1).getAttribute('r')));
+  const radii = circles.map(circle => circle.getAttribute('r'));
+  f.controller.holdCover();
+  assert.deepEqual(circles.map(circle => circle.getAttribute('r')), radii);
+  f.controller.cancel();
+  assert.equal(f.section.classList.contains('album-entry-prepared'), false);
+  assert.equal(f.desk.inert, false);
+  assert.equal(f.overlay.hidden, true);
 });
 
 test('boundary resize preserves travel direction and hidden-page cancellation releases all owned state', (t)=>{

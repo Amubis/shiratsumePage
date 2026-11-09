@@ -426,8 +426,8 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     }
     return true;
   }
-  /** Only dots and chapter opacity follow scrolling. Click navigation can
-   * still play the independent paper/photo choreography. */
+  /** Only dots and chapter opacity follow scrolling. Paper withdrawal and
+   * entrance play independently before exit and after arrival. */
   function seekBoundary(value, { kind = 'enter', direction = 1, outgoing = previous, incoming = section } = {}) {
     if (destroyed || !enabled) return false;
     const amount = clamp(value);
@@ -455,8 +455,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     overlay.hidden = false;
     // Arrival settles into the exact static lattice instead of shrinking it
     // away and revealing a different set of dots underneath.
-    draw(kind === 'enter' ? amount : wave,
-      kind === 'enter' || growing ? 'grow' : 'shrink', direction);
+    draw(amount, kind === 'enter' ? 'grow' : 'shrink', direction);
     fadePrevious(growing ? wave : 1, outgoing);
     paintOpacity(outgoingNode(incoming), growing ? 0 : smooth(wave));
     phase = growing ? 'boundary-cover' : 'boundary-reveal';
@@ -467,19 +466,22 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     clearDeferred(); clearHeld();
     operation?.end(false);
     overlay.hidden = false;
-    // Keep the same growing field across the covered document jump; arrival
-    // has no fully expanded interlude that could flash before shrinking back.
-    if (boundary?.options.kind !== 'enter') draw(1, 'grow', direction);
+    // Keep the current field across the document jump, so neither arrival nor
+    // departure can flash a different-sized lattice at the handoff.
+    if (!boundary) draw(1, 'grow', direction);
     phase = 'covered';
     return true;
   }
-  function runActors(entering, { signal } = {}) {
+  function runActors(entering, { signal, retainHidden = false } = {}) {
     if (destroyed || !enabled) return Promise.resolve(false);
     const current = begin({ signal,
       finish() {
         restoreActors();
         if (entering) { overlay.hidden = true; phase = 'active'; restorePrevious(); }
-        else { overlay.hidden = false; draw(1); phase = 'covered'; hold(signal); }
+        else {
+          if (retainHidden) prepareActors();
+          overlay.hidden = false; draw(1); phase = 'covered'; hold(signal);
+        }
       },
     });
     if (operation !== current) return current.promise;

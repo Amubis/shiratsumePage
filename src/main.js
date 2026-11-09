@@ -385,7 +385,7 @@ navigator = createSectionNavigator({
       introEntrance?.finish();
       const completed = index === 2
         ? await albumTransition.cover({signal,outgoing:$('#' + SECTION_IDS[from]),direction:operation.direction})
-        : await albumTransition.leave({signal});
+        : await albumTransition.leave({signal,retainHidden:true});
       if (!completed || signal.aborted) {
         if (pendingAlbumNavigation === operation) pendingAlbumNavigation = null;
         // If a language or motion change settles the decorative controller,
@@ -552,6 +552,11 @@ album=createAlbum({container:$('#album-showcase'),language,modelId,media:ALBUM_M
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
 albumScroll=createAlbumScroll({
   transition:{
+    previewExit(amount,{direction}){root.style.setProperty('--resistance',String(reducedMotion()?0:direction*amount));},
+    beforeExit(options,{signal}){
+      root.style.setProperty('--resistance','0');
+      return albumTransition.leave({signal,retainHidden:true});
+    },
     seekBoundary(progress,options){
       if(progress===0 && options.to===2 && currentIndex!==2){
         albumTransition.cancel();
@@ -566,7 +571,7 @@ albumScroll=createAlbumScroll({
       });
     },
     holdCover(){return albumTransition.holdCover();},
-    cancel(){albumTransition.cancel();if(currentIndex!==2)albumTransition.prepare();},
+    cancel(){root.style.setProperty('--resistance','0');albumTransition.cancel();if(currentIndex!==2)albumTransition.prepare();},
   },
   reducedMotion,
   navigate(index){return navigator.goTo(index,{source:'album-scroll',animate:false});},
