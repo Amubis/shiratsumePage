@@ -101,6 +101,11 @@ function sidebarFixture(t, { motionReduced = false } = {}) {
   list.append(highlight);
   highlight.append(shape);
   highlight.queries.set('.side-highlight-spin', shape);
+  highlight.getBoundingClientRect = () => {
+    const panel = list.getBoundingClientRect();
+    const size = parseFloat(highlight.style.getPropertyValue('--highlight-size')) || 110;
+    return { left: 0, top: panel.top + panel.height / 2 + (highlight.paintedY ?? 0) - size / 2, width: size, height: size };
+  };
   root.queries.set('#mobile-current', mobile);
   const links = Array.from({ length: 4 }, (_, index) => {
     const row = new FakeNode();
@@ -358,7 +363,7 @@ test('bubble slots retain their coordinates after sibling removal and continuous
   assert.equal(f.timers.size, 0);
 });
 
-test('entry, inter-item changes and exit spin visibly from the interrupted pose', (t) => {
+test('entry and exit keep their whole turn while inter-item movement rolls a fraction of a turn', (t) => {
   const f = sidebarFixture(t);
   f.links[0].emit('pointerenter');
   assert.match(f.animations[0].frames.at(-1).transform, /rotate\(-360deg\)/);
@@ -366,8 +371,12 @@ test('entry, inter-item changes and exit spin visibly from the interrupted pose'
   f.links[2].emit('pointerenter');
   assert.equal(f.animations[0].cancelled, true);
   assert.match(f.animations[1].frames[0].transform, /rotate\(-90deg\)/);
-  assert.match(f.animations[1].frames.at(-1).transform, /rotate\(270deg\)/);
-  assert.match(f.animations[1].frames[1].transform, /rotate\(280deg\)/, 'the full turn slightly overshoots before settling');
+  const start = getTransformPose(f.animations[1].frames[0].transform);
+  const end = getTransformPose(f.animations[1].frames.at(-1).transform);
+  assert.ok(end.rotation - start.rotation > 30 && end.rotation - start.rotation < 90);
+  assert.equal(f.animations[1].frames.length, 2, 'the shared position curve supplies the small settling overshoot');
+  assert.equal(end.scale, 1, 'target changes no longer add an extra scale pulse');
+  assert.equal(f.animations[1].options.easing, 'cubic-bezier(.3,0,.25,1.08)');
   f.list.emit('pointerleave');
   assert.equal(f.animations[1].cancelled, true);
   assert.match(f.animations[2].frames.at(-1).transform, /rotate\(270deg\)/);
@@ -375,7 +384,7 @@ test('entry, inter-item changes and exit spin visibly from the interrupted pose'
   assert.equal(f.animations.filter((animation) => !animation.cancelled).length, 1);
 });
 
-test('rapid inter-item reversals start at the visible angle and keep only one full turn active', (t) => {
+test('rapid inter-item reversals roll the remaining painted distance and keep only one animation active', (t) => {
   const f = sidebarFixture(t);
   f.list.emit('pointerenter', { clientY: 140 });
   f.shape.visibleTransform = 'rotate(-72deg) scale(1.035)';
@@ -385,9 +394,10 @@ test('rapid inter-item reversals start at the visible angle and keep only one fu
   const downEnd = getTransformPose(downward.frames.at(-1).transform);
   assert.equal(downStart.rotation, -72);
   assert.equal(downStart.scale, 1.035);
-  assert.equal(downEnd.rotation - downStart.rotation, 360);
+  assert.ok(downEnd.rotation - downStart.rotation > 10 && downEnd.rotation - downStart.rotation < 90);
   assert.equal(downward.options.duration, 520);
   f.shape.visibleTransform = 'matrix(0.7212489168,0.7212489168,-0.7212489168,0.7212489168,0,0)';
+  f.highlight.paintedY = 18;
   const previousLabel = f.links[0].querySelector('span').getBoundingClientRect();
   const previousCenter = previousLabel.top + previousLabel.height / 2;
   f.list.emit('pointermove', { clientY: previousCenter });
@@ -397,7 +407,7 @@ test('rapid inter-item reversals start at the visible angle and keep only one fu
   assert.equal(downward.cancelled, true);
   assert.equal(upStart.rotation, 45);
   assert.ok(Math.abs(upStart.scale - 1.02) < 1e-8, 'reversal preserves the currently visible scale');
-  assert.equal(upEnd.rotation - upStart.rotation, -360);
+  assert.ok(upEnd.rotation - upStart.rotation < 0 && upEnd.rotation - upStart.rotation > -90);
   assert.equal(f.animations.filter((animation) => !animation.cancelled).length, 1);
   const count = f.animations.length;
   f.list.emit('pointermove', { clientY: previousCenter + 1 });

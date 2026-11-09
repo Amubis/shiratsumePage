@@ -14,6 +14,8 @@ import { createIntroEntrance } from './intro-entrance.js';
 import { createAlbum, ALBUM_MEDIA } from './album.js';
 import { createAlbumTransition } from './album-transition.js';
 import { createAlbumScroll } from './album-scroll.js';
+import { createPersonalPage, normalizePersonalProfile } from './personal-page.js';
+import { createTopbarDock } from './topbar-dock.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -28,6 +30,8 @@ let watching = false;
 let sidebar;
 let contrastLayer;
 let ownerProfile;
+let personalPage;
+let topbarDock;
 let videoReveal;
 let introTimers = [];
 let introWaiting = false;
@@ -93,7 +97,7 @@ function applyLanguage() {
   const overrides = MODELS[modelId].preview ? {
     heroDescription: 'previewHero', helloHeading: 'previewHelloHeading', helloDescription: 'previewHelloDescription',
     momentsHeading: 'previewMomentsHeading', momentsNote: 'previewMomentsNote', collectionHeading: 'previewCollectionHeading',
-    frameLabel: 'previewFrameLabel', sampleNotice: 'previewNotice',
+    frameLabel: 'previewFrameLabel', sampleNotice: 'previewNotice', navCollection: 'previewNavCollection',
   } : {};
   $$('[data-i18n]').forEach((element) => {
     const key = overrides[element.dataset.i18n] || element.dataset.i18n;
@@ -103,6 +107,7 @@ function applyLanguage() {
   $('#language-label').textContent = language === 'zh' ? '中文' : '日本語';
   $('.language-other').textContent = language === 'zh' ? 'JP' : '中';
   $('#language-toggle').setAttribute('aria-label', translate('switchLanguage'));
+  $('#model-toggle').title = translate('switchModel');
   $('#lightbox-close').setAttribute('aria-label', translate('close'));
   $('.scroll-cue').setAttribute('aria-label', translate('scrollExplore'));
   $('.side-nav').setAttribute('aria-label', translate('menu'));
@@ -111,6 +116,8 @@ function applyLanguage() {
   updatePlaybackLabel();
   renderTitle();
   ownerProfile?.setLanguage(language);
+  personalPage?.setLanguage(language);
+  $('.top-links a[data-go="3"] small').textContent = MODELS[modelId].preview ? 'COLLECTION' : 'ABOUT';
   outfitShowcase?.setLanguage(language);
   album?.setLanguage(language);
   const profile = MODEL_PROFILE[language];
@@ -343,7 +350,9 @@ navigator = createSectionNavigator({
     if(index!==0 && watching)setWatching(false);
     document.body.classList.toggle('on-home', index === 0);
     document.body.classList.toggle('on-album', index === 2 && !MODELS[modelId].preview);
+    document.body.classList.toggle('on-personal', index === 3 && !MODELS[modelId].preview);
     (index === 0 ? $('.topbar') : $('.language-dock')).append(languageControl);
+    topbarDock?.refresh();
     $$('.page-section').forEach((section,i) => section.classList.toggle('is-current',i === index));
     $$('.top-links>a').forEach((link,i) => { if(i===index)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current'); });
     $('.topbar').inert = index !== 0 || watching;
@@ -486,6 +495,9 @@ function applyTheme() {
   $('.primary-album').hidden=model.preview;
   $('.preview-album').hidden=!model.preview;
   $('#moments').setAttribute('aria-labelledby',model.preview?'moments-heading':'album-heading');
+  $('.primary-personal').hidden=model.preview;
+  $('.preview-collection').hidden=!model.preview;
+  $('#collection').setAttribute('aria-labelledby',model.preview?'collection-heading':'personal-heading');
   album?.setModel(modelId);
   album?.setEnabled(!model.preview);
   albumTransition?.setEnabled(!model.preview);
@@ -543,6 +555,7 @@ window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(loc
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
 contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
 ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
+personalPage=createPersonalPage({root:$('#personal-page'),language});
 outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
 introEntrance=createIntroEntrance({section:$('#hello'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview});
 // The reminder starts only once the real chapter has completed its entrance;
@@ -613,6 +626,16 @@ heroInteractions=createHeroInteractions({
   isActive:()=>currentIndex===0 && !watching && !MODELS[modelId].preview && root.dataset.phase==='ready'
     && !document.body.classList.contains('watch-reveal-animating') && !$('.transition-wipe').classList.contains('is-active'),
 });
+topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
+// A future authenticated CMS can publish the same JSON for both owner views.
+if(location.protocol!=='file:')fetch('./data/owner.json').then(response=>{
+  if(!response.ok)throw new Error('Owner profile unavailable');
+  return response.json();
+}).then(profile=>{
+  if(profile.schemaVersion!==1)return;
+  const data=normalizePersonalProfile(profile);
+  ownerProfile.update(data);personalPage.update(data);
+}).catch(()=>{/* The empty, honest profile also works offline. */});
 applyTheme();
 if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {
   if(reducedMotion() || !root.classList.contains('is-booting'))finishIntro();

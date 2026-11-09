@@ -175,7 +175,10 @@ export function createCloverScene({ container, seed = 'shiratsume', theme = '#B7
 
 // Ratios describe full ellipse diameters relative to the viewport. The lattice
 // rotates independently; the clear opening remains horizontal and centered.
-export const HALFTONE_GEOMETRY = Object.freeze({ innerWidth: (0.83 / 0.84) * 0.8, innerHeight: 0.8, innerScale: 0.8, angle: 8, featherSteps: 5 });
+export const HALFTONE_GEOMETRY = Object.freeze({ innerWidth: (0.83 / 0.84) * 0.8, innerHeight: 0.8, innerScale: 0.8 / 1.04, angle: 8, featherSteps: 6 });
+// The chapter seam keeps its approved five-step band. Only the home frame
+// gains one more lattice row, moving the solid edge outward by one pitch.
+const SEAM_HALFTONE_GEOMETRY = Object.freeze({ ...HALFTONE_GEOMETRY, innerScale: 0.8, featherSteps: 5 });
 
 /** Exact ink coverage of equal round dots on a square lattice, including overlap. */
 export function halftoneCellCoverage(radius, spacing = 1) {
@@ -220,23 +223,27 @@ export function halftoneOpacityAt(progress) {
   return halftoneToneAt(progress) ** 0.15;
 }
 
-export function getHalftoneGeometry({ width = 1440, height = 900, spacing, maxRadius } = {}) {
+function halftoneGeometry({ width = 1440, height = 900, spacing, maxRadius } = {}, geometry = HALFTONE_GEOMETRY) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
-  const innerX = width * HALFTONE_GEOMETRY.innerWidth / 2;
-  const innerY = height * HALFTONE_GEOMETRY.innerHeight / 2;
-  const outerX = innerX / HALFTONE_GEOMETRY.innerScale;
-  const outerY = innerY / HALFTONE_GEOMETRY.innerScale;
+  const innerX = width * geometry.innerWidth / 2;
+  const innerY = height * geometry.innerHeight / 2;
+  const outerX = innerX / geometry.innerScale;
+  const outerY = innerY / geometry.innerScale;
   const minimumAxis = Math.min(outerX, outerY);
-  const featherWidth = minimumAxis * (1 - HALFTONE_GEOMETRY.innerScale);
+  const featherWidth = minimumAxis * (1 - geometry.innerScale);
   const suppliedSpacing = Number(spacing);
   const preferredSpacing = Number.isFinite(suppliedSpacing) && suppliedSpacing > 0 ? suppliedSpacing : Math.min(width, height) <= 600 ? 16 : 32;
   // The wider feather and coarser pitch reveal more distinct round dots.
   // Clamp explicit spacing as well: a coarse grid would erase the progression.
-  spacing = Math.min(preferredSpacing, featherWidth / HALFTONE_GEOMETRY.featherSteps);
+  spacing = Math.min(preferredSpacing, featherWidth / geometry.featherSteps);
   const suppliedRadius = Number(maxRadius);
   maxRadius = Math.max(Number.isFinite(suppliedRadius) && suppliedRadius > 0 ? suppliedRadius : spacing * 0.75, spacing / Math.SQRT2 + 0.05);
   return { width, height, spacing, maxRadius, innerX, innerY, outerX, outerY, minimumAxis, featherWidth };
+}
+
+export function getHalftoneGeometry(options) {
+  return halftoneGeometry(options);
 }
 
 /** A rotated square lattice; only the positions rotate, not its ellipse field. */
@@ -268,7 +275,7 @@ export function generateTiltedGridDots({ width = 1440, height = 900, spacing, ma
       if (x < -padding || x > width + padding || y < -padding || y > height + padding) continue;
       const edgeRho = Math.hypot((x - cx) / baseX, (y - cy) / baseY);
       // This conservative physical distance has a gradient of at most one:
-      // feathering therefore spans at least five grid steps on either axis.
+      // feathering therefore spans at least six grid steps on either axis.
       const inwardDistance = (1 - edgeRho) * minimumAxis;
       const progress = clamp(1 - inwardDistance / featherWidth, 0, 1);
       const radius = halftoneRadiusAt(progress, spacing, maxRadius);
@@ -331,7 +338,7 @@ export function createHalftoneSVG({ width = 1440, height = 900, spacing, maxRadi
 
 /** The chapter's two parallel clear boundaries share the lattice's slope. */
 export function getHalftoneSeamGeometry(options = {}) {
-  const geometry = getHalftoneGeometry(options);
+  const geometry = halftoneGeometry(options, SEAM_HALFTONE_GEOMETRY);
   const slope = Math.tan(HALFTONE_GEOMETRY.angle * Math.PI / 180);
   return {
     ...geometry,

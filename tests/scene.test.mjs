@@ -62,16 +62,19 @@ function svgDots(svg) {
 }
 
 const halftoneViewports = [[1899, 973], [1440, 900], [390, 844], [320, 844], [320, 568]];
-test('coarser pitch and wider feather preserve the approved outer ellipse and large clear opening', () => {
+test('one extra feather row pushes the solid home frame outward without changing pitch or its clear opening', () => {
   for (const [width, height] of halftoneViewports) {
     const geometry = getHalftoneGeometry({ width, height });
     assert.equal(geometry.innerX * 2, width * HALFTONE_GEOMETRY.innerWidth);
     assert.equal(geometry.innerY * 2, height * HALFTONE_GEOMETRY.innerHeight);
-    assert.ok(Math.abs(geometry.outerX * 2 / width - 0.83 / 0.84) < 1e-12);
-    assert.ok(Math.abs(geometry.outerY * 2 / height - 1) < 1e-12);
-    assert.ok(geometry.featherWidth / geometry.spacing >= 5 - 1e-10);
+    assert.ok(Math.abs(geometry.outerX * 2 / width - (0.83 / 0.84) * 1.04) < 1e-12);
+    assert.ok(Math.abs(geometry.outerY * 2 / height - 1.04) < 1e-12);
+    assert.ok(geometry.featherWidth / geometry.spacing >= 6 - 1e-10);
     const oldSpacing = Math.min(width * (0.83 / 0.84) / 2, height / 2) * .16 / 5;
     assert.ok(geometry.spacing >= oldSpacing * 1.24);
+    const approvedSpacing = Math.min(width * (0.83 / 0.84) / 2, height / 2) * .2 / 5;
+    assert.ok(Math.abs(geometry.spacing - approvedSpacing) < 1e-10);
+    assert.ok(Math.abs(geometry.featherWidth / geometry.spacing - 6) < 1e-10);
     assert.ok(geometry.innerX * 2 / width > .78 && geometry.innerY * 2 / height >= .8);
     const dots = generateTiltedGridDots({ width, height });
     assert.ok(dots.length > 100 && dots.length < 15000);
@@ -90,7 +93,7 @@ test('opaque circles merge before one continuous ellipse alpha mask, preventing 
     assert.equal((svg.match(/<g mask=/g) || []).length, 1);
     assert.ok(svg.includes('data-composite="opaque-union"'));
     assert.ok(svg.includes('style="mask-type:alpha"'));
-    assert.ok(svg.includes('offset="0.800000" stop-color="white" stop-opacity="0.000000"'));
+    assert.ok(svg.includes('offset="0.769231" stop-color="white" stop-opacity="0.000000"'));
     assert.ok(svg.includes('offset="1.000000" stop-color="white" stop-opacity="1.000000"'));
     assert.ok(!svg.includes('<filter') && !svg.includes('data:image'));
     assert.ok(svg.includes(`data-inner-width="${HALFTONE_GEOMETRY.innerWidth}" data-inner-height="${HALFTONE_GEOMETRY.innerHeight}"`));
@@ -141,7 +144,7 @@ test('custom spacing is constrained by the feather while small supplied radii st
   assert.equal(getHalftoneGeometry({ width: 1440, height: 900, spacing: 7 }).spacing, 7);
   const geometry = getHalftoneGeometry({ width: 390, height: 844, spacing: 24, maxRadius: 1 });
   assert.ok(geometry.spacing < 24);
-  assert.ok(geometry.featherWidth / geometry.spacing >= 5 - 1e-10);
+  assert.ok(geometry.featherWidth / geometry.spacing >= 6 - 1e-10);
   assert.equal(geometry.maxRadius, geometry.spacing / Math.SQRT2 + 0.05);
 });
 
@@ -222,20 +225,30 @@ test('area and whole-field alpha jointly follow an even tone instead of a late h
   assert.equal(halftoneRadiusAt(1, 18, 16.2), 16.2);
 });
 
-test('merged outer circles cover all four viewport edges without clipped triangular corners', () => {
+test('the smaller solid region still fills corners while the middle of the frame retains a dot progression', () => {
   for (const [width, height] of halftoneViewports) {
-    // The expanded ellipse is tangent to the top/bottom edges; circles just
-    // inside its outer contour participate in the continuous frame as well.
+    const { outerX, outerY, spacing } = getHalftoneGeometry({ width, height });
+    assert.ok(outerX > width / 2 && outerY > height / 2);
     const dots = generateTiltedGridDots({ width, height });
     const covered = (x, y) => dots.some((dot) => (dot.x - x) ** 2 + (dot.y - y) ** 2 <= dot.radius ** 2);
-    for (let x = 0; x <= width; x += 4) {
-      assert.ok(covered(x, 0));
-      assert.ok(covered(x, height));
-    }
-    for (let y = 0; y <= height; y += 4) {
-      assert.ok(covered(0, y));
-      assert.ok(covered(width, y));
-    }
+    for (const [x, y] of [[0, 0], [width, 0], [0, height], [width, height]]) assert.ok(covered(x, y));
+    const nearTop = dots.filter(dot => Math.abs(dot.x - width / 2) < spacing && dot.y >= 0 && dot.y < spacing);
+    assert.ok(nearTop.length > 0);
+    assert.ok(nearTop.every(dot => dot.radius < spacing / Math.SQRT2), 'solid closure has moved past the top-middle edge');
+  }
+});
+
+test('the second chapter retains its approved five-step seam geometry and exact generated circles', () => {
+  const approved = [
+    [1440, 900, 'a828fd55e00196743430400a78acc40346b70f706112055ef53bd693b87d0fa0'],
+    [1900, 973, '1fb2bc8d3e0b5173c624df5f1e9c3609d4aa30f7d045c21f65bb8737f7844e73'],
+    [390, 844, '678c21063bde918d5a23ae411c1d006c8c25d4ea00b1c0efa900fb3be8f25bd6'],
+  ];
+  for (const [width, height, hash] of approved) {
+    const geometry = getHalftoneSeamGeometry({ width, height });
+    assert.ok(Math.abs(geometry.featherWidth / geometry.spacing - 5) < 1e-10);
+    assert.ok(Math.abs(geometry.outerY * 2 / height - 1) < 1e-10);
+    assert.equal(createHash('sha256').update(JSON.stringify(generateHalftoneSeamDots({ width, height }))).digest('hex'), hash);
   }
 });
 

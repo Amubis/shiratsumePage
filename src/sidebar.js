@@ -210,9 +210,14 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     const serial = ++spinSerial;
     spinAnimation?.cancel();
     spinAnimation = null;
-    // One visible turn per target change, independent of skipped label count.
-    // Read the in-flight pose above so rapid reversals never snap or queue spins.
-    const turn = Math.sign(selected - previous) * 360;
+    // Roll over the remaining, actually painted distance. A nearby label needs
+    // only part of a turn; interrupted movement continues from its live pose.
+    const panel = list.getBoundingClientRect();
+    const bounds = highlight.getBoundingClientRect();
+    const currentY = bounds.top + bounds.height / 2 - panel.top - panel.height / 2;
+    const targetY = lastLayout?.[selected]?.y ?? 0;
+    const diameter = parseFloat(highlight.style.getPropertyValue('--highlight-size')) || bounds.width || 110;
+    const turn = (targetY - currentY) / (diameter / 2) * 180 / Math.PI;
     const end = pose.rotation + turn;
     shape.style.transform = `rotate(${pose.rotation}deg) scale(${pose.scale})`;
     if (reducedMotion() || !shape.animate) {
@@ -221,10 +226,8 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
     }
     const animation = shape.animate([
       { transform: `rotate(${pose.rotation}deg) scale(${pose.scale})` },
-      { transform: `rotate(${end + Math.sign(turn) * 10}deg) scale(1.065)`, offset: .68 },
-      { transform: `rotate(${end - Math.sign(turn) * 2}deg) scale(.995)`, offset: .86 },
       { transform: `rotate(${end}deg) scale(1)` },
-    ], { duration: 520, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+    ], { duration: 520, easing: 'cubic-bezier(.3,0,.25,1.08)', fill: 'forwards' });
     spinAnimation = animation;
     animation.finished.then(() => {
       if (destroyed || serial !== spinSerial) return;

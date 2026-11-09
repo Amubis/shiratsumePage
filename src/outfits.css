@@ -11,9 +11,16 @@
 .outfit-pair {
   position: relative;
   width: 100%;
-  height: min(65svh, 650px);
+  height: min(78svh, 840px);
   min-height: 350px;
   isolation: isolate;
+}
+
+@media (min-width: 761px) {
+  .outfit-pair { max-height: calc(65vw - 26px); }
+}
+@media (min-width: 1200px) {
+  .outfit-showcase { translate: clamp(22px, 3vw, 48px) 0; }
 }
 
 .outfit-stage,
@@ -223,7 +230,7 @@
 
 @media (max-width: 760px) {
   .outfit-pair {
-    height: min(53svh, 500px);
+    height: min(60svh, 560px, calc((100vw - 36px) * 1.5));
     min-height: 300px;
   }
   .outfit-shadow { transform: translate(11px, 13px); }
@@ -233,8 +240,11 @@
   .outfit-cue-icon { width: 12px; height: 12px; }
 }
 
+@media (max-height: 800px) and (min-width: 761px) {
+  .outfit-pair { height: calc(100svh - 180px); }
+}
 @media (max-height: 680px) and (min-width: 761px) {
-  .outfit-pair { min-height: 280px; height: 62svh; }
+  .outfit-pair { min-height: 280px; height: calc(100svh - 164px); }
   .outfit-footer { padding-top: 10px; }
 }
 

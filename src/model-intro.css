@@ -20,11 +20,14 @@ body:not(.on-home) .language-dock .language-control button {
 .primary-intro { position: relative; min-height: 100svh; isolation: isolate; }
 .model-intro-inner {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: clamp(30px, 4vw, 70px);
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: clamp(26px, 3vw, 50px);
+  width: min(1280px, 82vw);
+  margin-left: max(14vw, calc((100vw - 1280px) / 2));
+  margin-right: 0;
   align-items: center;
   min-height: 100svh;
-  padding-block: 75px 85px;
+  padding-block: 52px 64px;
 }
 .intro-halftone-seam {
   position: absolute;
@@ -37,9 +40,9 @@ body:not(.on-home) .language-dock .language-control button {
   overflow: hidden;
 }
 .intro-halftone-seam > svg { width: 100%; height: 100%; }
-.model-intro-copy { padding: 5px 18px 0 16px; }
-.model-intro-copy .section-number { margin-bottom: 35px; }
-.model-intro-title { position: relative; padding-left: 4px; margin-bottom: 45px; }
+.model-intro-copy { width: 100%; max-width: 430px; padding: 5px 18px 0 16px; }
+.model-intro-copy .section-number { margin-bottom: 28px; }
+.model-intro-title { position: relative; padding-left: 4px; margin-bottom: 34px; }
 .model-intro-title > span:first-child {
   position: absolute;
   left: -25px;
@@ -51,12 +54,12 @@ body:not(.on-home) .language-dock .language-control button {
   transform: rotate(-14deg);
 }
 .model-intro-title h2 {
-  font-size: clamp(44px, 5.1vw, 76px);
+  font-size: clamp(42px, 4.2vw, 64px);
   line-height: 1.3;
   letter-spacing: .07em;
 }
 .model-intro-reading { display: block; margin-top: 13px; font-size: 9px; letter-spacing: .4em; color: var(--theme-dark); }
-.model-intro-quote { position: relative; isolation: isolate; padding: 26px 25px 32px; }
+.model-intro-quote { position: relative; isolation: isolate; padding: 22px 22px 28px; }
 .intro-quote-mark {
   position: absolute;
   font: 112px/.85 Georgia, serif;
@@ -64,7 +67,7 @@ body:not(.on-home) .language-dock .language-control button {
   pointer-events: none;
 }
 .quote-open { top: -12px; left: -15px; }
-.quote-close { bottom: -25px; right: -12px; }
+.quote-close { bottom: -44px; right: -7px; font-size: 88px; }
 .intro-quote-mark::after {
   content: '“';
   position: absolute;
@@ -78,9 +81,9 @@ body:not(.on-home) .language-dock .language-control button {
   opacity: .44;
 }
 .quote-close::after { content: '”'; }
-.model-intro-lead { font-size: clamp(16px, 1.5vw, 21px); line-height: 1.9; letter-spacing: .08em; margin: 0 0 22px; white-space: pre-line; }
-.model-intro-description { font-size: 13px; line-height: 2.25; letter-spacing: .06em; color: #66695b; margin: 0; white-space: pre-line; }
-.model-intro-copy > .text-link { margin: 27px 0 0 25px; }
+.model-intro-lead { font-size: clamp(16px, 1.35vw, 19px); line-height: 1.85; letter-spacing: .08em; margin: 0 0 20px; white-space: pre-line; }
+.model-intro-description { font-size: 13px; line-height: 2.1; letter-spacing: .06em; color: #66695b; margin: 0; white-space: pre-line; }
+.model-intro-copy > .text-link { margin: 22px 0 0 22px; }
 
 /* A small pull is enough to communicate the next complete chapter. */
 .section-inner { transform: none; }
@@ -108,13 +111,15 @@ body:not(.on-home) .language-dock .language-control button {
   .language-dock { top: 20px; right: 18px; }
   .model-intro-inner {
     grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
+    width: auto;
+    margin-inline: 0;
+    gap: 20px;
     padding: 84px 26px 110px;
   }
   .model-intro-copy { max-width: 450px; margin-inline: auto; padding: 12px 14px 0; }
   .model-intro-copy .section-number { margin-bottom: 23px; }
   .model-intro-title { margin-bottom: 30px; }
-  .model-intro-title h2 { font-size: 44px; }
+  .model-intro-title h2 { font-size: 40px; }
   .model-intro-title > span:first-child { width: 48px; height: 48px; left: -21px; top: -13px; }
   .model-intro-reading { font-size: 8px; margin-top: 8px; }
   .model-intro-quote { padding: 19px 16px 28px; }
@@ -123,8 +128,11 @@ body:not(.on-home) .language-dock .language-control button {
   .model-intro-description { font-size: 12px; }
   .model-intro-copy > .text-link { margin-left: 16px; }
 }
+@media (max-height: 800px) and (min-width: 761px) {
+  .model-intro-inner { padding-block: 42px 58px; }
+}
 @media (max-height: 650px) and (min-width: 761px) {
-  .model-intro-inner { padding-block: 65px; }
+  .model-intro-inner { padding-block: 44px 48px; }
   .model-intro-copy .section-number { margin-bottom: 18px; }
   .model-intro-title { margin-bottom: 25px; }
   .model-intro-title h2 { font-size: 46px; }

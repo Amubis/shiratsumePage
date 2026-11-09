@@ -1,0 +1,53 @@
+/* A quiet strip occupies its own space; the moving video starts below it. */
+.has-topbar-dock .topbar {
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: calc(64px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  transform: none;
+  translate: 0 var(--topbar-offset, -100%);
+  transition: translate .42s var(--water-easing, var(--easing)), opacity .3s var(--easing);
+}
+.has-topbar-dock .topbar .topbar-surface {
+  background: #f3f2e8;
+  background: color-mix(in srgb, var(--paper) 94%, var(--theme) 6%);
+  border: 0;
+  border-bottom: 1px solid #3d45201a;
+  border-radius: 0;
+  box-shadow: 0 1px 0 #ffffff66;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.has-topbar-dock .topbar .owner-profile {
+  flex: 0 0 clamp(80px, 17vw, 250px);
+  padding-inline: max(24px, env(safe-area-inset-left, 0px));
+}
+.has-topbar-dock .topbar .owner-card { left: max(24px, env(safe-area-inset-left, 0px)); }
+.has-topbar-dock .topbar .top-links { min-width: 0; }
+.has-topbar-dock .topbar > .language-control {
+  padding-inline: 20px max(24px, env(safe-area-inset-right, 0px));
+}
+.has-topbar-dock .topbar .language-control button { background: transparent; }
+.has-topbar-dock .hero .hero-media {
+  top: var(--topbar-space, 0px);
+  transition: top .42s var(--water-easing, var(--easing)), opacity .6s var(--easing), filter .6s var(--easing);
+}
+.is-topbar-dock-tracking .topbar,
+.is-topbar-dock-locked .topbar { transition-property: opacity; }
+.is-topbar-dock-tracking .hero .hero-media,
+.is-topbar-dock-locked .hero .hero-media { transition-property: opacity, filter; }
+.is-topbar-dock-collapsed .topbar { pointer-events: none; }
+@media (max-width: 760px) {
+  .has-topbar-dock .topbar .owner-profile { flex: 1 1 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)); }
+  .has-topbar-dock .topbar .owner-avatar { width: 44px; height: 44px; }
+  .has-topbar-dock .topbar .owner-card { left: max(16px, env(safe-area-inset-left, 0px)); }
+  .has-topbar-dock .topbar > .language-control { padding-inline: 8px max(16px, env(safe-area-inset-right, 0px)); }
+}
+.is-topbar-dock-instant .topbar,
+.is-topbar-dock-instant .hero .hero-media { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .has-topbar-dock .topbar,
+  .has-topbar-dock .hero .hero-media { transition: none !important; }
+}

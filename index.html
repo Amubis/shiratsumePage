@@ -20,7 +20,7 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#B7BB5A">
-  <meta name="demo-version" content="0.8.3">
+  <meta name="demo-version" content="0.9.0">
   <meta name="description" content="しらつめ的小小庭院。把可爱，藏进每一个日常。">
   <title>しらつめ · little clover garden</title>
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
@@ -38,6 +38,8 @@
   <link rel="stylesheet" href="./src/album-transition.css">
   <link rel="stylesheet" href="./src/album-page.css">
   <link rel="stylesheet" href="./src/album-player-motion.css">
+  <link rel="stylesheet" href="./src/personal-page.css">
+  <link rel="stylesheet" href="./src/topbar-dock.css">
   <script type="module" src="./src/main.js"></script>
 </head>
 <body class="on-home">
@@ -144,7 +146,14 @@
       </div>
     </section>
 
-    <section id="collection" class="page-section collection-section" aria-labelledby="collection-heading">
+    <section id="collection" class="page-section collection-section" aria-labelledby="personal-heading">
+      <div class="primary-personal">
+        <div class="personal-inner">
+          <div id="personal-page"><h2 id="personal-heading">关于我</h2><p>欢迎来到我的小庭院。</p></div>
+          <footer class="personal-return"><button class="personal-home" data-go="0"><span data-clover aria-hidden="true"></span><span data-i18n="personalHome">回到主页</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button></footer>
+        </div>
+      </div>
+      <div class="preview-collection" hidden>
       <div class="section-inner collection-inner"><p class="section-number">03 <span>KEEP THE GOOD DAYS.</span></p><div class="collection-heading"><h2 id="collection-heading" data-i18n="collectionHeading">慢慢收集，<br>小小的喜欢。</h2><p class="section-description" data-i18n="collectionDescription">让每一个平常的日子，<br>都有值得回看的理由。</p></div>
         <div class="collection-meta"><span><i class="live-dot"></i><span data-i18n="collectionLabel">影像手记</span></span><span data-i18n="sampleNotice">视频摘帧 · 相册预览</span></div>
         <div class="collection-grid">
@@ -153,6 +162,7 @@
           <button class="collection-card collection-wide" data-lightbox="./assets/frame-02.jpg"><img src="./assets/frame-02.jpg" alt="视频片段画面 02" data-i18n-alt="frame2Alt" loading="lazy" data-model-image><span><small>03</small><span data-i18n="collectionThree">下一次，也一起吧</span><span>↗</span></span></button>
         </div>
         <footer class="garden-footer"><span data-clover aria-hidden="true"></span><p data-i18n="footerLine">一片幸运，一点日常。</p><button class="text-link" data-go="0"><span data-i18n="backTop">回到庭院入口</span><svg class="icon"><use href="#icon-arrow"/></svg></button><small>SHIRATSUME · LITTLE CLOVER GARDEN</small></footer>
+      </div>
       </div>
     </section>
   </main>
