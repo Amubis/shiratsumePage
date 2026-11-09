@@ -506,6 +506,19 @@ test('refresh and initial restored positions update selection without forcing sc
   assert.equal(f.fire('wheel', { deltaY: -20 }).defaultPrevented, false);
 });
 
+test('a cold-load layout contraction cannot turn a restored last chapter into the home chapter', async (t) => {
+  const f = browserFixture(t, {}, { tops: [0, 10000, 20000, 30000], documentHeight: 30800, initialY: 30000 });
+  await f.drain();
+  assert.equal(f.nav.activeIndex, 3);
+  f.tops.splice(0, 4, 0, 1000, 2000, 3000);
+  f.root.scrollHeight = f.body.scrollHeight = 3800;
+  f.win.scrollTo({ top: 30000 });
+  await f.drain();
+  assert.equal(f.win.scrollY, 3000);
+  assert.equal(f.nav.activeIndex, 3);
+  assert.deepEqual(f.active, [[3, 'init']], 'scroll spying must not publish an incorrect home selection before load');
+});
+
 test('failed hooks and destruction release promises, CSS state and all event listeners', async (t) => {
   let shouldFail = true;
   const f = browserFixture(t, {

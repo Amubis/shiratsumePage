@@ -297,6 +297,9 @@ export function createSectionNavigator({
     if (spyFrame !== null) return;
     spyFrame = requestFrame(() => {
       spyFrame = null;
+      // Images and the initial theme can settle before the load event. Use
+      // current geometry when the browser clamps or restores a scroll offset.
+      measure();
       spy();
     });
   };
