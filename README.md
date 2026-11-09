@@ -280,7 +280,7 @@ GitHub Pages 是否支持私有源码仓库，取决于账号计划和组织设�
 - 第二页角色高度增加约 20%，预览列拓宽，文字块收至 430px，标题上限降至 64px；保留正背面校准、提示时序与共享投影。
 - 首页导航贴顶全宽，乳白主题底色；视频预留独立 64px 空间，滚动收起、观看模式和键盘聚焦自动调整，手机包含安全区。
 - 作者名片读取 `data/owner.json`（`schemaVersion:1`），支持双语 `name`／`bio`、相对或 HTTP(S) `avatar`、`contacts` 及四项 `socials`：`xiaohongshu`、`x`、`vrchat`、`pixiv`。同一份资料同步更新左上头像卡片。
-- 当前头像和个人平台链接尚未提供，因此显示四叶草占位、禁用缺失链接，不跳到平台首页。`journal.mode` 可为 `placeholder`、`hidden` 或 `link`；后者读取 `journal.url`，这一轮先预留碎碎念入口。
+- 个人资料已填入 Amubis、Chaotic Good 和用户提供的小红书／X／VRChat／pixiv 主页；头像使用用户合照中指定的中央脑袋透明裁图，两处头像共用 `assets/owner-avatar.png`，保留耳尖与发梢。网页资源按实际显示尺寸导出为 256px（约 87KiB），避免部分 WebKit 环境缩小大图时出现锯齿。未配置的链接仍保持禁用，不跳到平台首页。`journal.mode` 可为 `placeholder`、`hidden` 或 `link`；后者读取 `journal.url`，这一轮先预留碎碎念入口。
 - 平台 SVG 来自 [Simple Icons](https://simpleicons.org/) 16.37.0（CC0），随站点本地提供；版本、来源与许可证见 `assets/icons/README.md`。
 
 发布前：234 项自动测试与静态构建通过；Chromium 与 Linux WebKit 各通过 64 项章节串联和 46 项个人页检查，另验证贴顶导航、鼠标滚动、角色多尺寸校准与小屏布局。Linux WebKit 及手机模拟不等同于 iOS 真机复测。

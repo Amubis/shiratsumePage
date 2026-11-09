@@ -1,9 +1,17 @@
 {
   "schemaVersion": 1,
-  "avatar": null,
-  "name": { "zh": "关于我", "ja": "この庭について" },
-  "bio": { "zh": "欢迎来到我的小庭院。", "ja": "小さな庭へようこそ。" },
+  "avatar": "./assets/owner-avatar.png",
+  "name": "Amubis",
+  "bio": "Chaotic Good",
   "contacts": [],
-  "socials": { "xiaohongshu": null, "x": null, "vrchat": null, "pixiv": null },
-  "journal": { "mode": "placeholder", "url": null }
+  "socials": {
+    "xiaohongshu": "https://xhslink.cn/o/5Edl2I5FOIJ",
+    "x": "https://x.com/amubis1",
+    "vrchat": "https://vrchat.com/home/user/usr_6d804734-2944-478b-a1bd-eb37cd14dbf9",
+    "pixiv": "https://www.pixiv.net/users/9527287"
+  },
+  "journal": {
+    "mode": "placeholder",
+    "url": null
+  }
 }
