@@ -3,6 +3,15 @@
   --water-settle: cubic-bezier(.2, .9, .3, 1.15);
 }
 
+/* The decorative field joins the final home entrance, after text and controls.
+   Keep it at its starting opacity throughout boot/video/veil, rather than
+   revealing it as soon as the video treatment appears. */
+.halftone-vignette { transition: opacity .85s var(--water-easing); }
+html:is(.is-booting, :not([data-phase="ready"])) :is(.halftone-vignette, .hero-edge-shade) {
+  opacity: 0;
+  transition: none;
+}
+
 /* A broad, soft vignette shares the dot field's elliptical opening. */
 .hero-edge-shade {
   position: absolute;
@@ -11,7 +20,7 @@
   pointer-events: none;
   background: radial-gradient(ellipse var(--shade-rx, 49.4%) var(--shade-ry, 50%) at 50% 50%,
     transparent 83%, rgba(24, 28, 16, .025) 92%, rgba(24, 28, 16, .11) 104%, rgba(24, 28, 16, .20) 128%);
-  transition: opacity .65s var(--water-easing);
+  transition: opacity .85s var(--water-easing);
 }
 body.theme-preview .hero-edge-shade { display: none; }
 [data-phase="video"] .hero-edge-shade,

@@ -33,10 +33,10 @@ body.on-album .side-highlight { color: var(--theme); }
 .outfit-cue {
   left: 50%; right: auto; top: 50%;
   transform: translate(-50%, -50%);
-  width: 86px; height: 86px;
+  width: 42px; height: 42px;
   justify-content: center; gap: 0;
 }
-.outfit-cue-art { width: 86px; height: 86px; opacity: .96; }
+.outfit-cue-art { width: 100%; height: 100%; opacity: .96; }
 @media (max-width: 760px) {
   /* WebKit mandatory snapping can skip the lower controls of a tall chapter. */
   html { scroll-snap-type: y proximity; }
@@ -50,8 +50,8 @@ body.on-album .side-highlight { color: var(--theme); }
     padding-left: calc(var(--album-bleed-left) + 17px);
     padding-bottom: calc(var(--album-bleed-bottom) + 25px);
   }
-  .outfit-cue { left: 50%; right: auto; }
-  .outfit-cue-art { width: 86px; height: 86px; }
+  .outfit-cue { left: 50%; right: auto; width: 36px; height: 36px; }
+  .outfit-cue-art { width: 100%; height: 100%; }
 }
 @media (max-height: 700px) and (min-width: 761px) {
   .primary-album.album-inner { --album-inset-top: 8svh; padding-top: var(--album-inset-top); padding-bottom: 8svh; }

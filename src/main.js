@@ -553,7 +553,12 @@ albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'
 albumScroll=createAlbumScroll({
   transition:{
     seekBoundary(progress,options){
-      if(progress===0 && options.to===2 && currentIndex!==2)albumTransition.cancel();
+      if(progress===0 && options.to===2 && currentIndex!==2){
+        albumTransition.cancel();
+        // Reveal the dotted background first. Keep every paper/photo hidden
+        // until the wheel wave finishes, then play its own entrance clock.
+        albumTransition.prepare();
+      }
       return albumTransition.seekBoundary(progress,{
         ...options,
         outgoing:$('#'+SECTION_IDS[options.from]),
@@ -567,7 +572,7 @@ albumScroll=createAlbumScroll({
   navigate(index){return navigator.goTo(index,{source:'album-scroll',animate:false});},
   onHandoff({to}){if(to===1)introEntrance?.finish();},
   onComplete({to}){
-    if(to===2)flushAlbumMedia();
+    if(to===2)enterAlbum();
     else {
       albumTransition.reset({prepare:true});
       if(to===1)introEntrance?.finish();

@@ -107,12 +107,12 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   let backPressAnimation;
   let backHovered = false;
   let backFocused = false;
-  let backPinned = false;
   let backPointerFocus = false;
   let backPointerType = 'mouse';
   let pressed = false;
   let pressReleased = false;
   let pressPointer = null;
+  let pressOwner = null;
   let pressBounds = null;
   let keyboardHeld = false;
   let suppressClick = false;
@@ -315,15 +315,14 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function syncBackInspection() {
-    const inspecting = enabled && !busy && (backHovered || backFocused || backPinned);
+    const inspecting = enabled && !busy && (backHovered || backFocused);
     const changed = pair.classList.contains('is-back-inspected') !== inspecting;
     pair.classList.toggle('is-back-inspected', inspecting);
-    backStage.setAttribute('aria-pressed', String(inspecting));
     if (changed) trackSharedShadow();
   }
 
   function resetBackInspection() {
-    backHovered = backFocused = backPinned = false;
+    backHovered = backFocused = false;
     backPointerFocus = false;
     syncBackInspection();
   }
@@ -345,7 +344,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     stage.setAttribute('aria-busy', String(busy));
     stage.disabled = !enabled;
     backStage.disabled = !enabled;
-    backStage.setAttribute('aria-label', `${label} · ${copy.back} · ${copy.inspect}`);
+    backStage.setAttribute('aria-label', `${label} · ${copy.back} · ${copy.next}`);
     backStage.setAttribute('aria-busy', String(busy));
     image.alt = `しらつめ · ${label} · ${copy.front}`;
     backImage.alt = `しらつめ · ${label} · ${copy.back}`;
@@ -579,11 +578,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     return true;
   }
 
-  function holdPress() {
+  function holdPress(target = stage) {
     if (destroyed || !enabled || busy) return false;
     pressAnimation?.cancel();
     backPressAnimation?.cancel();
-    resetBackInspection();
+    if (target !== backStage) resetBackInspection();
     pressed = true;
     pressReleased = false;
     stage.classList.add('is-pressed');
@@ -601,8 +600,10 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
 
   function releasePointerCapture() {
     const id = pressPointer;
+    const owner = pressOwner;
     pressPointer = null;
-    if (id !== null && stage.hasPointerCapture?.(id)) stage.releasePointerCapture(id);
+    pressOwner = null;
+    if (id !== null && owner?.hasPointerCapture?.(id)) owner.releasePointerCapture(id);
   }
 
   function cancelPress() {
@@ -655,57 +656,62 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     }).catch(() => {});
   }
 
-  bind(stage, 'pointerdown', (event) => {
-    const bounds = stage.getBoundingClientRect?.();
-    if ((event.button ?? 0) !== 0 || !holdPress()) return;
-    pressBounds = bounds;
-    suppressClick = false;
-    pressPointer = event.pointerId ?? null;
-    if (pressPointer !== null) stage.setPointerCapture?.(pressPointer);
-  });
-  bind(stage, 'pointerup', (event) => {
-    if (!pressed || (pressPointer !== null && event.pointerId !== pressPointer)) return;
-    const rect = pressBounds || stage.getBoundingClientRect?.();
-    const outside = rect && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
-      && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom);
-    pressed = false;
-    if (outside) { suppressClick = true; cancelPress(); return; }
-    pressReleased = true;
-    releasePointerCapture();
-  });
-  bind(stage, 'pointercancel', () => { suppressClick = true; cancelPress(); });
-  bind(stage, 'lostpointercapture', () => { if (pressed) { suppressClick = true; cancelPress(); } });
-  bind(stage, 'blur', () => { if (keyboardHeld || pressed) cancelPress(); });
-  bind(stage, 'click', () => {
-    if (suppressClick) { suppressClick = false; return; }
-    if (destroyed || !enabled || busy) return;
-    if (!pressReleased) { holdPress(); pressed = false; pressReleased = true; }
-    void goTo(currentIndex + 1);
-  });
-  bind(stage, 'keydown', (event) => {
-    // A cancelled pointer gesture must not swallow a later keyboard activation.
-    if (event.key === 'Enter') { suppressClick = false; return; }
-    if (event.key === ' ' || event.key === 'Spacebar') {
+  // Both visible views use one press/rebound/flip interaction.
+  for (const target of [stage, backStage]) {
+    bind(target, 'pointerdown', (event) => {
+      const bounds = target.getBoundingClientRect?.();
+      if ((event.button ?? 0) !== 0 || !holdPress(target)) return;
+      pressBounds = bounds;
+      suppressClick = false;
+      pressPointer = event.pointerId ?? null;
+      pressOwner = target;
+      if (pressPointer !== null) target.setPointerCapture?.(pressPointer);
+    });
+    bind(target, 'pointerup', (event) => {
+      if (!pressed || (pressPointer !== null && event.pointerId !== pressPointer)) return;
+      const rect = pressBounds || target.getBoundingClientRect?.();
+      const outside = rect && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+        && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom);
+      pressed = false;
+      if (outside) { suppressClick = true; cancelPress(); return; }
+      pressReleased = true;
+      releasePointerCapture();
+    });
+    bind(target, 'pointercancel', () => { suppressClick = true; cancelPress(); });
+    bind(target, 'lostpointercapture', () => { if (pressed) { suppressClick = true; cancelPress(); } });
+    bind(target, 'blur', () => { if ((keyboardHeld || pressed) && (!pressOwner || pressOwner === target)) cancelPress(); });
+    bind(target, 'click', (event) => {
+      event.stopPropagation();
+      if (suppressClick) { suppressClick = false; return; }
+      if (destroyed || !enabled || busy) return;
+      if (!pressReleased) { holdPress(target); pressed = false; pressReleased = true; }
+      void goTo(currentIndex + 1);
+    });
+    bind(target, 'keydown', (event) => {
+      // A cancelled pointer gesture must not swallow a later keyboard activation.
+      if (event.key === 'Enter') { suppressClick = false; return; }
+      if (event.key === ' ' || event.key === 'Spacebar') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat && holdPress(target)) keyboardHeld = true;
+        return;
+      }
+      const targets = { ArrowLeft: currentIndex - 1, ArrowRight: currentIndex + 1, Home: 0, End: OUTFITS.length - 1 };
+      if (!Object.hasOwn(targets, event.key)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (!event.repeat && holdPress()) keyboardHeld = true;
-      return;
-    }
-    const targets = { ArrowLeft: currentIndex - 1, ArrowRight: currentIndex + 1, Home: 0, End: OUTFITS.length - 1 };
-    if (!Object.hasOwn(targets, event.key)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    void goTo(targets[event.key]);
-  });
-  bind(stage, 'keyup', (event) => {
-    if ((event.key !== ' ' && event.key !== 'Spacebar') || !keyboardHeld) return;
-    event.preventDefault();
-    event.stopPropagation();
-    keyboardHeld = false;
-    pressed = false;
-    pressReleased = true;
-    void goTo(currentIndex + 1);
-  });
+      void goTo(targets[event.key]);
+    });
+    bind(target, 'keyup', (event) => {
+      if ((event.key !== ' ' && event.key !== 'Spacebar') || !keyboardHeld) return;
+      event.preventDefault();
+      event.stopPropagation();
+      keyboardHeld = false;
+      pressed = false;
+      pressReleased = true;
+      void goTo(currentIndex + 1);
+    });
+  }
   bind(backStage, 'pointerenter', (event) => {
     if (event.pointerType === 'touch') return;
     backHovered = true; syncBackInspection();
@@ -720,18 +726,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   bind(backStage, 'pointercancel', () => { backPointerFocus = false; });
   bind(backStage, 'focus', () => {
     // Touch browsers may deliver focus after pointerup. Only keyboard-visible
-    // focus owns inspection; a touch click must remain free to toggle it off.
+    // focus owns inspection; touch activation advances to the next outfit.
     backFocused = typeof backStage.matches === 'function' ? backStage.matches(':focus-visible') : !backPointerFocus && backPointerType !== 'touch';
     syncBackInspection();
   });
-  bind(backStage, 'blur', () => { backFocused = false; backPinned = false; syncBackInspection(); });
-  bind(backStage, 'click', (event) => {
-    if (destroyed || !enabled || busy) return;
-    event.stopPropagation();
-    markInteracted();
-    if (backPointerType === 'touch' || !event.detail) backPinned = !backPinned;
-    syncBackInspection();
-  });
+  bind(backStage, 'blur', () => { backFocused = false; syncBackInspection(); });
   bind(backStage, 'keydown', (event) => {
     if (event.key === 'Escape') {
       event.preventDefault(); event.stopPropagation(); resetBackInspection();

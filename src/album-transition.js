@@ -7,14 +7,14 @@ export const ALBUM_SCROLL_PHASE = Object.freeze({ enterHandoff: .36, exitHandoff
 export const ALBUM_BOUNDARY_HANDOFF = .5;
 export const ALBUM_STATIC_RADIUS_RATIO = .54;
 
-/** Fixed centers, with an extra row/column outside the viewport for complete cover. */
+/** Fixed centers; the largest wave circles match the resting album background. */
 export function createAlbumCircleGrid({ width = 1440, height = 900, spacing } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
   const pitch = Number.isFinite(spacing) && spacing > 0 ? spacing : Math.max(96, Math.min(220, width / 8));
   const columns = Math.ceil(width / pitch) + 2;
   const rows = Math.ceil(height / pitch) + 2;
-  const maxRadius = pitch / Math.SQRT2 + 1;
+  const maxRadius = pitch * ALBUM_STATIC_RADIUS_RATIO;
   const circles = [];
   for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
     circles.push({ x: (column - .5) * pitch, y: (row - .5) * pitch, row, column, maxRadius });
@@ -177,7 +177,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     waveMode = mode;
     waveDirection = direction < 0 ? -1 : 1;
     grid.circles.forEach((circle, index) => {
-      const radius = circle.maxRadius * albumCircleScale(progress, circle.row, grid.rows, mode, waveDirection);
+      const radius = circle.maxRadius * Math.min(1, albumCircleScale(progress, circle.row, grid.rows, mode, waveDirection));
       circleNodes[index].setAttribute('r', String(Number(radius.toFixed(3))));
     });
   }
@@ -453,7 +453,10 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     const growing = amount <= ALBUM_BOUNDARY_HANDOFF;
     const wave = growing ? amount / ALBUM_BOUNDARY_HANDOFF : (amount - ALBUM_BOUNDARY_HANDOFF) / (1 - ALBUM_BOUNDARY_HANDOFF);
     overlay.hidden = false;
-    draw(wave, growing ? 'grow' : 'shrink', direction);
+    // Arrival settles into the exact static lattice instead of shrinking it
+    // away and revealing a different set of dots underneath.
+    draw(kind === 'enter' ? amount : wave,
+      kind === 'enter' || growing ? 'grow' : 'shrink', direction);
     fadePrevious(growing ? wave : 1, outgoing);
     paintOpacity(outgoingNode(incoming), growing ? 0 : smooth(wave));
     phase = growing ? 'boundary-cover' : 'boundary-reveal';
@@ -463,7 +466,11 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     if (destroyed || !enabled) return false;
     clearDeferred(); clearHeld();
     operation?.end(false);
-    overlay.hidden = false; draw(1, 'grow', direction); phase = 'covered';
+    overlay.hidden = false;
+    // Keep the same growing field across the covered document jump; arrival
+    // has no fully expanded interlude that could flash before shrinking back.
+    if (boundary?.options.kind !== 'enter') draw(1, 'grow', direction);
+    phase = 'covered';
     return true;
   }
   function runActors(entering, { signal } = {}) {

@@ -127,8 +127,8 @@
 .outfit-cue-art {
   position: relative;
   display: block;
-  width: 66px;
-  height: 66px;
+  width: 42px;
+  height: 42px;
   color: var(--theme);
   transform: rotate(12deg);
 }
@@ -137,9 +137,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 30px;
-  height: 30px;
-  color: var(--ink);
+  width: 21px;
+  height: 21px;
+  color: #fff;
   transform: translate(-50%, -50%) rotate(-12deg);
 }
 
@@ -232,7 +232,8 @@ body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
   .outfit-shadow { transform: translate(11px, 13px); }
   .outfit-footer { padding-top: 12px; }
   .outfit-cue { right: 7%; }
-  .outfit-cue-art { width: 57px; height: 57px; }
+  .outfit-cue-art { width: 36px; height: 36px; }
+  .outfit-cue-icon { width: 19px; height: 19px; }
 }
 
 @media (max-height: 680px) and (min-width: 761px) {

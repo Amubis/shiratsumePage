@@ -233,56 +233,57 @@ test('both views decode before either displayed image or its shadow switches', a
   assert.deepEqual(sources.map(node=>node.getAttribute('href')),[OUTFITS[2].front,OUTFITS[2].back]);
 });
 
-test('rear inspection has its own native button, hover and keyboard focus without advancing the outfit', (t) => {
+test('rear hover and keyboard focus inspect without advancing, while its label explains next-outfit activation', (t) => {
   const f = fixture(t);
-  assert.deepEqual(f.pair.children.map(node=>node.localName),['svg','button','button']);
-  assert.equal(f.stage.children.some(node=>node.localName==='button'),false);
-  assert.equal(f.backStage.getAttribute('aria-pressed'),'false');
+  assert.deepEqual(f.pair.children.map(node => node.localName), ['svg', 'button', 'button']);
+  assert.equal(f.stage.children.some(node => node.localName === 'button'), false);
+  assert.equal(f.backStage.getAttribute('aria-pressed'), null, 'advancing is not a toggle action');
   assert.ok(f.backStage.getAttribute('aria-label').includes('背面'));
-  f.backStage.emit('pointerenter',{pointerType:'mouse'});
-  assert.equal(f.pair.classList.contains('is-back-inspected'),true);
-  f.backStage.emit('click',{detail:1});
-  assert.equal(f.api.index,0);
-  f.backStage.emit('pointerleave');
-  assert.equal(f.pair.classList.contains('is-back-inspected'),false);
-  f.backStage.focus();
-  assert.equal(f.backStage.getAttribute('aria-pressed'),'true');
-  const escape=f.backStage.emit('keydown',{key:'Escape'});
-  assert.equal(escape.stopped,true);
-  assert.equal(f.pair.classList.contains('is-back-inspected'),false);
-});
-
-test('touch can pin the rear view and the front still selects the next matching pair', async (t) => {
-  const f = fixture(t);
-  f.backStage.emit('pointerdown',{pointerType:'touch'});
-  f.backStage.emit('focus');
-  f.backStage.emit('pointerup',{pointerType:'touch'});
-  f.backStage.emit('click',{detail:1});
-  assert.equal(f.pair.classList.contains('is-back-inspected'),true);
-  assert.equal(f.api.index,0);
-  assert.equal(f.cue.hidden,true);
-  f.stage.emit('click'); await settle();
-  assert.equal(f.api.index,1);
-  assert.equal(f.backImage.src,OUTFITS[1].back);
-  assert.equal(f.pair.classList.contains('is-back-inspected'),false);
-  f.api.setEnabled(false);
-  f.backStage.emit('click');
-  assert.equal(f.backStage.disabled,true);
-  assert.equal(f.backStage.getAttribute('aria-pressed'),'false');
-});
-
-test('delayed touch focus does not keep the rear pinned after a second tap', async (t) => {
-  const f = fixture(t);
-  f.backStage.emit('pointerdown', { pointerType: 'touch' });
-  f.backStage.emit('pointerup', { pointerType: 'touch' });
-  await settle();
-  f.backStage.emit('focus');
-  f.backStage.emit('click', { detail: 1 });
+  assert.ok(f.backStage.getAttribute('aria-label').includes('下一套'));
+  f.backStage.emit('pointerenter', { pointerType: 'mouse' });
   assert.equal(f.pair.classList.contains('is-back-inspected'), true);
+  assert.equal(f.api.index, 0);
+  f.backStage.emit('pointerleave');
+  assert.equal(f.pair.classList.contains('is-back-inspected'), false);
+  f.backStage.focus();
+  assert.equal(f.pair.classList.contains('is-back-inspected'), true);
+  const escape = f.backStage.emit('keydown', { key: 'Escape' });
+  assert.equal(escape.stopped, true);
+  assert.equal(f.pair.classList.contains('is-back-inspected'), false);
+});
+
+test('touching either view advances the same matching pair and hides the cue', async (t) => {
+  const f = fixture(t);
   f.backStage.emit('pointerdown', { pointerType: 'touch' });
+  f.backStage.emit('focus');
   f.backStage.emit('pointerup', { pointerType: 'touch' });
   f.backStage.emit('click', { detail: 1 });
+  await settle();
+  assert.equal(f.api.index, 1);
+  assert.equal(f.backImage.src, OUTFITS[1].back);
+  assert.equal(f.cue.hidden, true);
   assert.equal(f.pair.classList.contains('is-back-inspected'), false);
+  f.stage.emit('click'); await settle();
+  assert.equal(f.api.index, 2);
+  assert.equal(f.backImage.src, OUTFITS[2].back);
+  f.api.setEnabled(false);
+  f.backStage.emit('click'); await settle();
+  assert.equal(f.api.index, 2);
+  assert.equal(f.backStage.disabled, true);
+});
+
+test('delayed touch focus never pins the rear after activating the next outfit', async (t) => {
+  const f = fixture(t);
+  for (let expected = 1; expected <= 2; expected++) {
+    f.backStage.emit('pointerdown', { pointerType: 'touch' });
+    f.backStage.emit('pointerup', { pointerType: 'touch' });
+    await settle();
+    f.backStage.emit('focus');
+    f.backStage.emit('click', { detail: 1 });
+    await settle();
+    assert.equal(f.api.index, expected);
+    assert.equal(f.pair.classList.contains('is-back-inspected'), false);
+  }
 });
 
 test('concurrent requests do not race or leave the stage busy; disabling blocks interactions', async (t) => {
@@ -497,6 +498,30 @@ test('pointer press stays compressed indefinitely; cancel and release outside re
   await settle();
   assert.equal(f.api.index, 0);
   assert.equal(f.stage.style.transform, '');
+});
+
+test('the rear keeps hover inspection during a held press, owns capture, and supports Space and Enter', async (t) => {
+  const f = fixture(t);
+  f.backStage.emit('pointerenter', { pointerType: 'mouse' });
+  f.backStage.emit('pointerdown', { button: 0, pointerId: 13, clientX: 200, clientY: 300 });
+  f.stage.emit('blur');
+  assert.equal(f.backStage.hasPointerCapture(13), true);
+  assert.equal(f.stage.style.transform, 'scale(.94)');
+  assert.equal(f.pair.classList.contains('is-back-inspected'), true);
+  f.doc.tick(4000);
+  assert.equal(f.api.index, 0);
+  f.backStage.emit('pointerup', { pointerId: 13, clientX: 200, clientY: 300 });
+  f.backStage.emit('click', { detail: 1 }); await settle();
+  assert.equal(f.api.index, 1);
+  assert.equal(f.backStage.hasPointerCapture(13), false);
+  const down = f.backStage.emit('keydown', { key: ' ', repeat: false });
+  assert.equal(down.prevented, true);
+  assert.equal(f.stage.style.transform, 'scale(.94)');
+  f.backStage.emit('keyup', { key: ' ' }); await settle();
+  assert.equal(f.api.index, 2);
+  f.backStage.emit('keydown', { key: 'Enter' });
+  f.backStage.emit('click', { detail: 0 }); await settle();
+  assert.equal(f.api.index, 3);
 });
 
 test('release holds the compressed portrait during delayed decode, then rebounds concurrently with the flip', async (t) => {

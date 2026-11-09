@@ -2,17 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition, ALBUM_STATIC_RADIUS_RATIO, ALBUM_BOUNDARY_HANDOFF } from '../src/album-transition.js';
 
-test('large circles retain fixed square-grid centers and fully cover desktop/mobile corners', () => {
+test('wave circles share the background lattice and preserve four-corner openings at maximum size', () => {
   for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
     const grid = createAlbumCircleGrid({ width, height });
     assert.ok(grid.pitch >= 96 && grid.pitch <= 220);
     assert.ok(grid.circles.length < 150);
     assert.equal(grid.circles[1].x - grid.circles[0].x, grid.pitch);
     assert.equal(grid.circles[grid.columns].y - grid.circles[0].y, grid.pitch);
-    const covered = (x, y) => grid.circles.some((circle) => Math.hypot(circle.x - x, circle.y - y) <= circle.maxRadius);
-    for (let x = 0; x <= width; x += 4) { assert.ok(covered(x, 0)); assert.ok(covered(x, height)); }
-    for (let y = 0; y <= height; y += 4) { assert.ok(covered(0, y)); assert.ok(covered(width, y)); }
-    assert.ok(covered(width, height));
+    assert.equal(grid.maxRadius, grid.pitch * ALBUM_STATIC_RADIUS_RATIO);
+    assert.ok(grid.maxRadius * 2 > grid.pitch);
+    assert.ok(grid.maxRadius < grid.pitch / Math.SQRT2);
   }
 });
 
@@ -316,7 +315,7 @@ test('boundary scrolling only seeks circles and chapter opacity, preserving auto
   assert.equal(f.controller.phase,'boundary-reveal');
   assert.equal(f.content.style.opacity,'0');
   assert.equal(f.section.style.opacity,'0.5');
-  assert.ok(Number(circles[0].getAttribute('r'))<Number(circles.at(-1).getAttribute('r')));
+  assert.ok(Number(circles[0].getAttribute('r'))>Number(circles.at(-1).getAttribute('r')),'arrival continues growing in the requested direction');
   f.step(5000);
   assert.deepEqual(circles.map(c=>c.getAttribute('r')),radii,'a seek has no autonomous clock');
   f.controller.seekBoundary(0);
@@ -327,7 +326,33 @@ test('boundary scrolling only seeks circles and chapter opacity, preserving auto
   assert.equal(f.controller.busy,false);
 });
 
-test('boundary handoff fully covers the viewport and cleanup restores original opacity and active controls', (t)=>{
+test('prepared papers stay hidden through the wave and play autonomously only after its completion', async (t) => {
+  const f = fixture(t);
+  f.controller.cancel(); f.controller.prepare();
+  const options = { kind: 'enter', direction: 1, outgoing: f.previous, incoming: f.section };
+  for (const progress of [0, .2, .5, .8, 1]) {
+    f.controller.seekBoundary(progress, options);
+    if (progress === .5) {
+      const radii = f.overlay.children[0].children.map(circle => circle.getAttribute('r'));
+      f.controller.holdCover();
+      assert.deepEqual(f.overlay.children[0].children.map(circle => circle.getAttribute('r')), radii, 'the document handoff cannot jump to a larger lattice');
+    }
+    assert.equal(f.section.classList.contains('album-entry-prepared'), true);
+    assert.equal(f.animations.length, 0);
+    assert.equal(f.desk.inert, true);
+  }
+  const entry = f.controller.enter();
+  assert.equal(f.overlay.hidden, true);
+  assert.equal(f.controller.phase, 'entering');
+  assert.equal(f.animations.length, createAlbumEnterPlan(4).length);
+  assert.ok(f.animations.every(animation => !animation.paused));
+  f.step(2000); await Promise.resolve();
+  assert.equal(await entry, true);
+  assert.equal(f.desk.inert, false);
+  assert.equal(f.section.classList.contains('album-entry-prepared'), false);
+});
+
+test('boundary handoff matches the background circles and cleanup restores original opacity and active controls', (t)=>{
   const f=fixture(t);
   f.controller.cancel();
   f.section.style.opacity='.8';

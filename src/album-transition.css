@@ -21,6 +21,7 @@
 }
 .album-transition-overlay > svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .album-static-field > svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.album-boundary-seeking.album-entry-prepared .album-static-field { opacity: 0; }
 .album-entry-prepared :is(.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-filter-tab, .album-group-heading, .album-page-status, .album-source-note) { opacity: 0; }
 .album-entry-prepared .album-desk,
 .album-entry-playing .album-desk,
