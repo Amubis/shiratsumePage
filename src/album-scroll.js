@@ -255,12 +255,15 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     if (active === operation) frame = requestFrame(tick);
   }
 
-  function wheel({ delta, from, destination } = {}) {
+  function wheel({ delta, from, destination, timeStamp } = {}) {
     if (destroyed) return false;
     delta = Number(delta);
     if (!Number.isFinite(delta) || delta === 0) return false;
     if (reducedMotion()) { if (active || arrivalPending) cancel(); return false; }
     const time = now();
+    // Queued native events retain the visitor's timing even when a busy frame
+    // delays their handlers. Older epoch-based timestamps fall back safely.
+    const inputAt = Number.isFinite(timeStamp) && timeStamp >= Math.max(0, time - 2000) && timeStamp <= time + 1 ? timeStamp : time;
     const route = routeFor(from, destination, delta);
     const amount = Math.min(Math.abs(delta), ALBUM_SCROLL_INPUT.maxDelta);
     if (cooling) {
@@ -270,7 +273,7 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
       if (destination === null) return false;
       lastWheelAt = time;
       if (route && route.direction !== completedDirection) {
-        if (trackReversal(route, amount, time) && !arrivalPending) resumeReversal();
+        if (trackReversal(route, amount, inputAt) && !arrivalPending) resumeReversal();
         return true;
       }
       queuedReverse = null;
@@ -286,13 +289,13 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     // Finish a committed wave on its own clock. A clear reversal after its
     // handoff may queue the next route; it cannot fast-forward the current one.
     if (operation.mode === 'snap' || operation.mode === 'pre-exit') {
-      if (route && from === operation.end && route.direction !== operation.direction) trackReversal(route, amount, time);
+      if (route && from === operation.end && route.direction !== operation.direction) trackReversal(route, amount, inputAt);
       else queuedReverse = null;
       return true;
     }
     if (Math.sign(delta) !== operation.direction) {
       const oppositeRoute = route || { kind: null, direction: Math.sign(delta), start: from, end: destination };
-      if (trackReversal(oppositeRoute, amount, time)) {
+      if (trackReversal(oppositeRoute, amount, inputAt)) {
         const samples = queuedReverse.samples;
         cancel();
         if (!route) return false;
@@ -310,11 +313,11 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
       }
     } else {
       queuedReverse = null;
-      addSample(operation.samples, amount, time);
+      addSample(operation.samples, amount, inputAt);
     }
     if (operation.mode === 'return') operation.mode = 'buffer';
     operation.origin = operation.progress;
-    updateIntent(operation, time);
+    updateIntent(operation, inputAt);
     operation.startedAt = time;
     if (frame === null) frame = requestFrame(tick);
     return true;

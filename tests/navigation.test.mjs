@@ -116,6 +116,16 @@ test('chapter wheel hooks own progress without cancelling their covered navigati
   assert.equal(samples.length,count,'zoom and horizontal input stay outside the hook');
 });
 
+test('chapter intent receives the original native event time rather than the delayed handler time', async (t) => {
+  const samples = [];
+  const f = browserFixture(t, { onChapterWheel(details) { samples.push(details); return true; } }, { initialY: 800 });
+  await f.step(300);
+  f.fire('wheel', { deltaY: 120, timeStamp: 42 });
+  assert.equal(samples.at(-1).timeStamp, 42);
+  assert.equal(samples.at(-1).from, 1);
+  assert.equal(samples.at(-1).destination, 2);
+});
+
 test('reading stays native before a tall chapter reaches the next boundary', async(t)=>{
   const samples=[];
   let interrupted=0;

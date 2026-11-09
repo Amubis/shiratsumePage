@@ -242,7 +242,8 @@ export function createSectionNavigator({
     const intentTime = now();
     const allowStart = !(operation && operation.source !== 'album-scroll')
       && !(gestureLocked && intentTime - lastWheelAt <= gestureGap);
-    if (onChapterWheel({delta,from:activeIndex,destination:wheelDestination(Math.sign(delta))},{allowStart})) {
+    const inputTime = Number.isFinite(event.timeStamp) ? { timeStamp: event.timeStamp } : {};
+    if (onChapterWheel({delta,from:activeIndex,destination:wheelDestination(Math.sign(delta)),...inputTime},{allowStart})) {
       event.preventDefault();
       return;
     }

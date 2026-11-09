@@ -80,6 +80,27 @@ test('two deliberate mouse notches infer a chapter turn without a long scroll-di
   assert.deepEqual(f.completions, [{ kind: 'enter', direction: 1, from: 1, to: 2 }]);
 });
 
+test('rendering delays do not split a continuous gesture recorded by native event timestamps', async (t) => {
+  const f = fixture(t);
+  await f.step(200);
+  f.api.wheel({ delta: 120, from: 1, destination: 2, timeStamp: 0 });
+  await f.step(300); await f.step(130);
+  f.api.wheel({ delta: 120, from: 1, destination: 2, timeStamp: 250 });
+  await f.drain();
+  assert.deepEqual(f.jumps, [2], 'the actual 250ms input gap must survive a 430ms handler gap');
+});
+
+test('unusable event timestamps retain normal wheel behavior', async (t) => {
+  for (const timeStamp of [undefined, Number.NaN, -40, 1700000000000]) {
+    const f = fixture(t);
+    f.api.wheel({ delta: 120, from: 1, destination: 2, timeStamp });
+    await f.step(90);
+    f.api.wheel({ delta: 120, from: 1, destination: 2, timeStamp });
+    await f.drain();
+    assert.deepEqual(f.jumps, [2]);
+  }
+});
+
 test('a stable trackpad flow is enough while tiny alternating direction noise is not', async (t) => {
   const noise = fixture(t);
   for (let sample = 0; sample < 12; sample++) { noise.send(sample % 2 ? -4 : 4); await noise.step(20); }
