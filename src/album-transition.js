@@ -4,7 +4,7 @@ const smooth = (value) => { const t = clamp(value); return t * t * (3 - 2 * t); 
 
 export const ALBUM_TRANSITION_TIMING = Object.freeze({ cover: 680, reveal: 620, paperBack: 380, paperMiddle: 460, paperFront: 560 });
 export const ALBUM_SCROLL_PHASE = Object.freeze({ enterHandoff: .36, exitHandoff: .62 });
-export const ALBUM_STATIC_RADIUS_RATIO = .46;
+export const ALBUM_STATIC_RADIUS_RATIO = .54;
 
 /** Fixed centers, with an extra row/column outside the viewport for complete cover. */
 export function createAlbumCircleGrid({ width = 1440, height = 900, spacing } = {}) {

@@ -230,15 +230,16 @@ test('resize and visibility complete an in-flight operation without freezing a n
   assert.equal(f.frames.size, 0);
 });
 
-test('smaller resting dots keep a narrow gap while the independent transition still covers the screen', (t)=>{
+test('resting dots slightly overlap along rows while preserving openings at square centers', (t)=>{
   const f=fixture(t);
-  assert.equal(ALBUM_STATIC_RADIUS_RATIO,.46);
+  assert.equal(ALBUM_STATIC_RADIUS_RATIO,.54);
   const circles=f.field.children[0].children;
   const pitch=Number(circles[1].getAttribute('cx'))-Number(circles[0].getAttribute('cx'));
   const radius=Number(circles[0].getAttribute('r'));
   assert.ok(pitch<createAlbumCircleGrid().pitch,'resting dots use a smaller scale than the covering transition');
-  assert.ok(pitch>radius*2,'individual circles remain separated');
-  assert.ok(pitch/(radius*2)<1.1,'the center distance stays only slightly larger than the diameter');
+  assert.ok(radius*2>pitch,'the diameter exceeds the center distance');
+  assert.ok(radius*2/pitch<1.1,'the overlap stays slight');
+  assert.ok(radius<pitch/Math.SQRT2,'four-corner openings remain between circles');
 });
 
 test('scroll entrance pauses exactly at input and rewinds the same actor timelines', (t)=>{

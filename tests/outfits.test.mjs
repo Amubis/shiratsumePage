@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
-import { OUTFITS, MODEL_PROFILE, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, createOutfitShowcase } from '../src/outfits.js';
+import { OUTFITS, MODEL_PROFILE, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, createOutfitShowcase } from '../src/outfits.js';
 
 class Element {
   constructor(tag, doc) {
@@ -102,6 +102,23 @@ function fixture(t, { docSetup, ...options } = {}) {
 }
 
 async function settle() { for (let i = 0; i < 10; i += 1) await Promise.resolve(); }
+
+test('each rear figure shares the front baseline and matches its visible height only during inspection', () => {
+  for (const outfit of OUTFITS) {
+    const geometry = outfitViewGeometry(outfit);
+    const frontHeight = outfit.frontBounds[3] - outfit.frontBounds[1];
+    const rearHeight = outfit.backBounds[3] - outfit.backBounds[1];
+    assert.ok(Math.abs(rearHeight * geometry.previewScale - frontHeight) < 1e-8);
+    assert.ok(Math.abs(rearHeight * geometry.restScale / frontHeight - .93) < 1e-10);
+    for (const mode of ['rest', 'preview']) {
+      const rearBottom = 1280 + (outfit.backBounds[3] - 1280) * geometry[`${mode}Scale`] + geometry[`${mode}Y`] / 100 * 2560;
+      assert.ok(Math.abs(rearBottom - outfit.frontBounds[3]) < 1e-8, `${outfit.id}: baseline drift`);
+      const rearCenter = geometry[`${mode}X`] / 100 * 1440 + 720 + ((outfit.backBounds[0] + outfit.backBounds[2]) / 2 - 720) * geometry[`${mode}Scale`];
+      const frontCenter = (mode === 'rest' ? -.62 : -.70) * 1440 + (outfit.frontBounds[0] + outfit.frontBounds[2]) / 2;
+      assert.ok(Math.abs((rearCenter - frontCenter) / 1440 - (mode === 'rest' ? .2 : .48)) < 1e-8);
+    }
+  }
+});
 
 test('four supplied matching front/back pairs are configured with both languages and real assets', async () => {
   assert.equal(OUTFITS.length, 4);

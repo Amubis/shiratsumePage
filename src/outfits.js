@@ -24,6 +24,30 @@ const IMAGE_WIDTH = 1440;
 const IMAGE_HEIGHT = 2560;
 let outfitSerial = 0;
 
+/** Normalize the visible figures, rather than assuming equal PNG canvases mean equal height.
+ * Optional per-outfit backCalibration: { scale, offsetX, offsetY } uses source-image
+ * pixels for offsets, leaving room to correct pose/perspective by eye later. */
+export function outfitViewGeometry(outfit) {
+  const front = outfit.frontBounds;
+  const back = outfit.backBounds;
+  const correction = outfit.backCalibration || {};
+  const previewScale = (front[3] - front[1]) / Math.max(1, back[3] - back[1]) * (correction.scale ?? 1);
+  const restScale = previewScale * .93;
+  const frontCenter = (front[0] + front[2]) / (2 * IMAGE_WIDTH);
+  const backCenter = (back[0] + back[2]) / (2 * IMAGE_WIDTH);
+  const offsetX = (correction.offsetX ?? 0) / IMAGE_WIDTH;
+  const offsetY = (correction.offsetY ?? 0) / IMAGE_HEIGHT;
+  const horizontal = (scale) => frontCenter - (.5 + (backCenter - .5) * scale) + offsetX;
+  const vertical = (scale) => front[3] / IMAGE_HEIGHT - .5 - (back[3] / IMAGE_HEIGHT - .5) * scale + offsetY;
+  return {
+    restScale, previewScale,
+    restX: (-.42 + horizontal(restScale)) * 100,
+    previewX: (-.22 + horizontal(previewScale)) * 100,
+    restY: vertical(restScale) * 100,
+    previewY: vertical(previewScale) * 100,
+  };
+}
+
 export function wrapOutfitIndex(index, length = OUTFITS.length) {
   if (!Number.isInteger(length) || length < 1) throw new TypeError('An outfit list must contain at least one item.');
   if (!Number.isInteger(index)) throw new TypeError('An outfit index must be an integer.');
@@ -239,6 +263,12 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     backImage.alt = `しらつめ · ${label} · ${copy.back}`;
     updateHitBounds(stage, outfit.frontBounds);
     updateHitBounds(backStage, outfit.backBounds);
+    const geometry = outfitViewGeometry(outfit);
+    for (const mode of ['rest', 'preview']) {
+      pair.style.setProperty(`--back-${mode}-scale`, String(geometry[`${mode}Scale`]));
+      pair.style.setProperty(`--back-${mode}-x`, `${geometry[`${mode}X`]}%`);
+      pair.style.setProperty(`--back-${mode}-y`, `${geometry[`${mode}Y`]}%`);
+    }
     syncBackInspection();
     cue.hidden = interacted;
     dots.setAttribute('aria-label', copy.choose);

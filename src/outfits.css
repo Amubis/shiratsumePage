@@ -36,15 +36,24 @@
   user-select: none;
 }
 
-.outfit-stage { translate: -70% 0; z-index: 2; }
-.outfit-back-stage {
-  translate: -30% 0;
-  z-index: 1;
-  filter: saturate(.35) contrast(.65) brightness(1.15);
-  opacity: .65;
-  transition: filter .45s var(--water-easing, var(--easing)), opacity .45s var(--water-easing, var(--easing));
+.outfit-stage {
+  translate: -62% 0;
+  z-index: 2;
+  transition: translate .5s var(--water-easing, var(--easing));
 }
-.outfit-pair.is-back-inspected .outfit-back-stage { z-index: 3; filter: none; opacity: 1; }
+.outfit-back-stage {
+  translate: var(--back-rest-x, -42%) var(--back-rest-y, 3%);
+  scale: var(--back-rest-scale, .93);
+  z-index: 1;
+  opacity: .65;
+  transition: translate .5s var(--water-easing, var(--easing)), scale .5s var(--water-easing, var(--easing)), opacity .45s var(--water-easing, var(--easing));
+}
+.outfit-pair.is-back-inspected .outfit-stage { translate: -70% 0; }
+.outfit-pair.is-back-inspected .outfit-back-stage {
+  translate: var(--back-preview-x, -22%) var(--back-preview-y, 0%);
+  scale: var(--back-preview-scale, 1);
+  z-index: 3; opacity: 1;
+}
 
 .outfit-stage:focus-visible,
 .outfit-back-stage:focus-visible {
@@ -63,6 +72,18 @@
   transform-origin: 50% 54%;
   transform-style: preserve-3d;
 }
+
+/* Rear photo and shadow form one flat print. Keeping nested 3D layers under
+   the animated filter/scale can crash WebKit's compositor during inspection. */
+.outfit-back-art { transform-style: flat; }
+
+/* Filter the bitmap itself, keeping the SVG projection out of the filter's
+   compositing surface while the pair changes scale and depth. */
+.outfit-back-image {
+  filter: saturate(.35) contrast(.65) brightness(1.15);
+  transition: filter .45s var(--water-easing, var(--easing));
+}
+.outfit-pair.is-back-inspected .outfit-back-image { filter: none; }
 
 .outfit-image,
 .outfit-back-image,
@@ -217,6 +238,7 @@ body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
 @media (prefers-reduced-motion: reduce) {
   .outfit-stage,
   .outfit-back-stage,
+  .outfit-back-image,
   .outfit-cue-art,
   .outfit-dot-circle { transition: none; }
   .outfit-cue-art { animation: none !important; }
