@@ -14,9 +14,9 @@ export function advanceWaterPush(state, seconds) {
   return settled ? { x: 0, y: 0, vx: 0, vy: 0, settled: true } : { x, y, vx, vy, settled: false };
 }
 
-/** Keep one semantic CTA and gently displace decorative clovers under a pointer. */
+/** Share the water push across scenes; the hero can also supply one semantic CTA. */
 export function createHeroInteractions({ hero, exploreButton, exploreWrap, reducedMotion = () => false, isActive = () => true } = {}) {
-  if (!hero?.ownerDocument || !exploreButton || !exploreWrap) throw new TypeError('The hero and exploration control are required.');
+  if (!hero?.ownerDocument || Boolean(exploreButton) !== Boolean(exploreWrap)) throw new TypeError('A scene and, optionally, its complete exploration control are required.');
   const doc = hero.ownerDocument;
   const win = doc.defaultView;
   const records = new Map();
@@ -33,7 +33,7 @@ export function createHeroInteractions({ hero, exploreButton, exploreWrap, reduc
     cleanups.push(() => target.removeEventListener(event, handler, options));
   };
   const canMove = () => !destroyed && !doc.hidden && !reducedMotion() && isActive();
-  const updateCTA = () => exploreWrap.classList.toggle('is-explore-hovered', !destroyed && isActive() && (hovered || focused));
+  const updateCTA = () => exploreWrap?.classList.toggle('is-explore-hovered', !destroyed && isActive() && (hovered || focused));
   const clearProperties = (node) => {
     node.style.removeProperty('--pointer-push-x');
     node.style.removeProperty('--pointer-push-y');
@@ -97,10 +97,12 @@ export function createHeroInteractions({ hero, exploreButton, exploreWrap, reduc
     lastPointer = { x: event.clientX, y: event.clientY, time };
   }, { passive: true });
   bind(hero, 'pointerleave', () => { lastPointer = null; impulse = null; });
-  bind(exploreButton, 'pointerenter', (event) => { if (event.pointerType !== 'touch') { hovered = true; updateCTA(); } });
-  bind(exploreButton, 'pointerleave', () => { hovered = false; updateCTA(); });
-  bind(exploreButton, 'focus', () => { focused = true; updateCTA(); });
-  bind(exploreButton, 'blur', () => { focused = false; updateCTA(); });
+  if (exploreButton) {
+    bind(exploreButton, 'pointerenter', (event) => { if (event.pointerType !== 'touch') { hovered = true; updateCTA(); } });
+    bind(exploreButton, 'pointerleave', () => { hovered = false; updateCTA(); });
+    bind(exploreButton, 'focus', () => { focused = true; updateCTA(); });
+    bind(exploreButton, 'blur', () => { focused = false; updateCTA(); });
+  }
   bind(doc, 'visibilitychange', reset);
   bind(win, 'resize', reset, { passive: true });
   bind(win, 'scroll', reset, { passive: true });
@@ -112,7 +114,7 @@ export function createHeroInteractions({ hero, exploreButton, exploreWrap, reduc
       destroyed = true;
       reset();
       cleanups.splice(0).forEach((dispose) => dispose());
-      exploreWrap.classList.toggle('is-explore-hovered', false);
+      exploreWrap?.classList.toggle('is-explore-hovered', false);
     },
   };
 }

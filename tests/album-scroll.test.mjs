@@ -28,7 +28,7 @@ function fixture(t, options = {}) {
   }
   const send = (delta, from = 1, destination = 2) => api.wheel({ delta, from, destination });
   async function commit(from = 1, destination = 2) {
-    for (let notch = 0; notch < 6; notch++) { send(Math.sign(destination - from) * 120, from, destination); await step(40); }
+    for (let notch = 0; notch < 2; notch++) { send(Math.sign(destination - from) * 120, from, destination); await step(70); }
   }
   return { api, paints, jumps, handoffs, completions, frames, step, drain, send, commit, get cancels() { return cancels; }, get holds() { return holds; } };
 }
@@ -46,7 +46,7 @@ test('small input previews dots smoothly and returns after the gesture ends with
   const first = f.api.progress;
   assert.ok(first > 0);
   await f.step(ALBUM_SCROLL_INPUT.followDuration - 30);
-  assert.ok(f.api.progress > first && f.api.progress < .05);
+  assert.ok(f.api.progress > first && f.api.progress < .1);
   assert.equal(f.api.busy, true);
   assert.deepEqual(f.jumps, []);
   await f.drain();
@@ -60,7 +60,7 @@ test('a single arbitrarily large wheel packet only previews and cannot commit a 
   const f = fixture(t);
   f.send(4000);
   await f.step(ALBUM_SCROLL_INPUT.followDuration);
-  assert.ok(f.api.progress > .05 && f.api.progress < .1);
+  assert.equal(f.api.progress, ALBUM_SCROLL_INPUT.singlePreviewLimit);
   await f.drain();
   assert.equal(f.api.busy, false);
   assert.deepEqual(f.jumps, []);
@@ -68,33 +68,37 @@ test('a single arbitrarily large wheel packet only previews and cannot commit a 
   assert.equal(f.paints.at(-1).p, 0);
 });
 
-test('ordinary spaced mouse notches control a wider wave preview before the final snap', async (t) => {
+test('two deliberate mouse notches infer a chapter turn without a long scroll-distance barrier', async (t) => {
   const f = fixture(t);
-  const samples = [];
-  for (let notch = 0; notch < 5; notch++) {
-    f.send(120); await f.step(190);
-    samples.push(f.api.progress);
-    assert.deepEqual(f.jumps, [], 'the first five notches cannot navigate');
-    assert.equal(f.api.busy, true);
-  }
-  assert.ok(samples.every((p, i) => i === 0 || p > samples[i - 1]));
-  assert.ok(samples.at(-1) > .4 && samples.at(-1) < .5, 'several visible dot-growth stages remain under wheel control');
-  f.send(120); await f.step(120); await f.drain();
+  f.send(120); await f.step(150);
+  assert.ok(f.api.progress > .1 && f.api.progress < .5);
+  assert.deepEqual(f.jumps, []);
+  f.send(120); await f.step(100); await f.drain();
   assert.deepEqual(f.jumps, [2]);
   assert.equal(f.holds, 1);
   assert.equal(f.paints.at(-1).p, 1);
   assert.deepEqual(f.completions, [{ kind: 'enter', direction: 1, from: 1, to: 2 }]);
 });
 
-test('input cannot advance across the midpoint or accelerate the clock before a committed snap', async (t) => {
+test('a stable trackpad flow is enough while tiny alternating direction noise is not', async (t) => {
+  const noise = fixture(t);
+  for (let sample = 0; sample < 12; sample++) { noise.send(sample % 2 ? -4 : 4); await noise.step(20); }
+  await noise.drain();
+  assert.deepEqual(noise.jumps, []);
+  const flow = fixture(t);
+  for (let sample = 0; sample < 6; sample++) { flow.send(18); await flow.step(20); }
+  await flow.drain();
+  assert.deepEqual(flow.jumps, [2]);
+});
+
+test('intent recognition cannot skip the committed wave even after a delayed frame or oversized packet', async (t) => {
   const f = fixture(t);
-  for (let notch = 0; notch < 5; notch++) { f.send(4000); await f.step(30); }
-  assert.ok(f.api.progress < .5);
+  f.send(4000); await f.step(60);
   assert.deepEqual(f.jumps, []);
   f.send(4000); await f.step(40);
   assert.ok(f.api.progress <= ALBUM_SCROLL_INPUT.previewLimit);
   f.send(4000); await f.step(1000);
-  assert.ok(f.api.progress < .5, 'a delayed frame is capped instead of skipping the wave');
+  assert.ok(f.api.progress < .5, 'a late frame is capped instead of skipping the wave');
   assert.deepEqual(f.jumps, []);
   await f.drain();
   assert.deepEqual(f.jumps, [2]);
@@ -113,24 +117,32 @@ test('all four adjacent routes carry the correct wave and fade direction', async
   }
 });
 
-test('reversing a nearly committed preview cancels before any chapter handoff', async (t) => {
+test('a deliberate opposite notch cancels an uncommitted entrance instead of paying back its old distance', async (t) => {
   const f = fixture(t);
-  for (let notch = 0; notch < 5; notch++) { f.send(120); await f.step(120); }
-  const before = f.api.progress;
-  assert.ok(before > .4);
-  f.send(-120, 1, 0); await f.step(120);
-  assert.ok(f.api.progress < before);
+  f.send(120); await f.step(120);
+  assert.ok(f.api.progress > 0);
+  assert.equal(f.send(-120, 1, 0), false, 'the normal previous chapter can handle the reversed input');
   await f.drain();
   assert.deepEqual(f.jumps, []);
   assert.deepEqual(f.completions, []);
-  assert.equal(f.paints.at(-1).p, 0);
+  assert.equal(f.api.busy, false);
+});
+
+test('an uncommitted album exit changes direction directly with no accumulated scroll debt', async (t) => {
+  const f = fixture(t);
+  f.send(120, 2, 3); await f.step(120);
+  f.send(-120, 2, 1); await f.step(100);
+  assert.deepEqual(f.jumps, []);
+  f.send(-120, 2, 1); await f.step(100); await f.drain();
+  assert.deepEqual(f.jumps, [1]);
+  assert.deepEqual(f.completions, [{ kind: 'exit', direction: -1, from: 2, to: 1 }]);
 });
 
 test('a renewed gesture continues a returning preview from its visible position', async (t) => {
   const f = fixture(t);
   f.send(120); await f.step(ALBUM_SCROLL_INPUT.settleDelay); await f.step(50);
   const before = f.api.progress;
-  assert.ok(before > 0 && before < .09);
+  assert.ok(before > 0 && before < ALBUM_SCROLL_INPUT.singlePreviewLimit);
   f.send(120);
   assert.equal(f.api.progress, before);
   await f.commit(); await f.drain();
@@ -160,36 +172,68 @@ test('a committed turn holds its cover during an asynchronous handoff and cannot
   assert.equal(f.completions.length, 1);
 });
 
-test('arrival dwell and continuous inertia cannot immediately chain an exit after entering', async (t) => {
+test('continuous same-direction inertia stays in the entry gesture, but a short fresh gesture can leave', async (t) => {
   const f = fixture(t);
   await f.commit(); await f.drain();
-  await f.step(300);
-  assert.equal(f.send(120, 2, 3), true);
-  assert.equal(f.api.busy, false, 'a 300ms pause does not bypass the arrival dwell');
   for (let i = 0; i < 8; i++) { await f.step(100); f.send(120, 2, 3); }
-  assert.deepEqual(f.jumps, [2], 'continuous tail packets stay in the arrival gesture');
+  assert.deepEqual(f.jumps, [2]);
   await f.step(ALBUM_SCROLL_INPUT.gestureGap + 1);
   await f.commit(2, 3); await f.drain();
   assert.deepEqual(f.jumps, [2, 3]);
 });
 
-test('paper entrance promise finishes before a fresh 700ms reading interval can unlock exit', async (t) => {
+test('a clear reverse gesture bypasses same-direction cooling immediately after arrival', async (t) => {
+  const f = fixture(t);
+  await f.commit(); await f.drain();
+  await f.commit(2, 1); await f.drain();
+  assert.deepEqual(f.jumps, [2, 1]);
+});
+
+test('native final-page reading remains available during album gesture cooling', async (t) => {
+  const f = fixture(t);
+  await f.commit(2, 3); await f.drain();
+  assert.equal(f.send(120, 3, null), false);
+  assert.equal(f.send(-120, 3, null), false);
+});
+
+test('paper arrival stays independent while a confirmed upward intent waits without a new dead zone', async (t) => {
+  let resolve;
+  const arrivals = [];
+  const f = fixture(t, { onComplete(event) { arrivals.push(event); return arrivals.length === 1 ? new Promise(done => { resolve = done; }) : undefined; } });
+  await f.commit(); await f.drain();
+  assert.equal(f.api.isArriving, true);
+  await f.commit(2, 1);
+  assert.deepEqual(f.jumps, [2], 'the entry paper performance finishes before exit begins');
+  resolve(true); await f.step(0); await f.drain();
+  assert.equal(f.api.isArriving, false);
+  assert.deepEqual(f.jumps, [2, 1], 'the visitor does not have to repeat the confirmed upward gesture');
+});
+
+test('small reverse noise during paper arrival does not schedule an unwanted exit', async (t) => {
   let resolve;
   const f = fixture(t, { onComplete() { return new Promise(done => { resolve = done; }); } });
   await f.commit(); await f.drain();
-  assert.equal(f.api.busy, true, 'autonomous paper arrival is part of the entry gate');
-  assert.equal(f.api.isArriving, true);
-  await f.step(3000); assert.equal(f.send(120, 2, 3), true);
+  f.send(-4, 2, 1); await f.step(20);
+  f.send(20, 2, 3); await f.step(20);
+  resolve(true); await f.step(0); await f.drain();
   assert.deepEqual(f.jumps, [2]);
-  resolve(true); await f.step(0);
   assert.equal(f.api.busy, false);
-  await f.step(ALBUM_SCROLL_INPUT.arrivalDwell - 1); f.send(120, 2, 3);
-  assert.equal(f.api.isArriving, false);
-  assert.equal(f.api.busy, false, 'the final paper frame receives its own readable pause');
-  await f.step(ALBUM_SCROLL_INPUT.gestureGap + 1);
-  f.send(120, 2, 3);
-  assert.equal(f.api.busy, true, 'a separate deliberate exit gesture is accepted');
-  assert.deepEqual(f.jumps, [2]);
+});
+
+test('a reversal confirmed during arrival starts withdrawal as soon as the paper promise resolves', async (t) => {
+  let resolveArrival, withdrawals = 0;
+  const f = fixture(t, {
+    onComplete(event) { return event.kind === 'enter' ? new Promise(done => { resolveArrival = done; }) : undefined; },
+    transitionHooks: { beforeExit() { withdrawals++; return true; } },
+  });
+  await f.commit(); await f.drain();
+  await f.commit(2, 1);
+  assert.equal(withdrawals, 0);
+  resolveArrival(true);
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(withdrawals, 1, 'confirmed intent must not wait for another preview frame or minimum-buffer interval');
+  await f.drain();
+  assert.deepEqual(f.jumps, [2, 1]);
 });
 
 test('cancel during paper arrival ignores a late promise and does not leave input gated', async (t) => {
@@ -211,7 +255,7 @@ test('rejected and thrown arrival callbacks release their gates without an unhan
     const f = fixture(t, { onComplete() { if (fail === 'throw') throw new Error('arrival failed'); return Promise.reject(new Error('arrival failed')); } });
     await f.commit(); await f.drain(); await f.step(0);
     assert.equal(f.api.busy, false);
-    await f.step(ALBUM_SCROLL_INPUT.arrivalDwell + 1);
+    await f.step(ALBUM_SCROLL_INPUT.gestureGap + 1);
     f.send(30, 2, 3);
     assert.equal(f.api.busy, true);
     await f.drain();
@@ -249,7 +293,7 @@ test('failed navigation and reduced motion leave no frozen transition or frame',
   assert.equal(f.frames.size, 0);
 });
 
-test('small and reversed exit input only previews resistance, never withdrawing paper or drawing dots', async (t) => {
+test('small exit input only previews resistance and never withdraws paper or draws dots', async (t) => {
   const previews = [];
   let exits = 0;
   const f = fixture(t, { transitionHooks: {
@@ -261,12 +305,6 @@ test('small and reversed exit input only previews resistance, never withdrawing 
   assert.deepEqual(f.paints, []);
   assert.ok(previews.some(event => event.value > 0));
   assert.equal(previews.at(-1).value, 0);
-  await f.step(ALBUM_SCROLL_INPUT.gestureGap + 1);
-  for (let notch = 0; notch < 5; notch++) { f.send(-120, 2, 1); await f.step(120); }
-  f.send(120, 2, 3); await f.drain();
-  assert.equal(exits, 0);
-  assert.deepEqual(f.paints, []);
-  assert.deepEqual(f.jumps, []);
   assert.equal(f.api.busy, false);
 });
 

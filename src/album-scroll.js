@@ -1,9 +1,11 @@
 const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(minimum, value));
 
 export const ALBUM_SCROLL_INPUT = Object.freeze({
-  distance: 900, maxDelta: 120, followDuration: 120, gestureGap: 420,
-  minBuffer: 180, settleDelay: 420, snapThreshold: .72, previewLimit: .48,
-  snapDuration: 820, returnDuration: 260, maxFrameStep: 64, arrivalDwell: 700,
+  distance: 300, maxDelta: 120, followDuration: 95, gestureGap: 240,
+  minBuffer: 80, settleDelay: 280, snapThreshold: .6, previewLimit: .48,
+  intentWindow: 420, flowDistance: 90, flowDuration: 60, flowSpeed: .55,
+  reverseDistance: 48, singlePreviewLimit: .18,
+  snapDuration: 820, returnDuration: 220, maxFrameStep: 64,
 });
 export const ALBUM_SCROLL_HANDOFF = Object.freeze({ enter: .5, exit: .5 });
 
@@ -21,7 +23,8 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
   let destroyed = false;
   let cooling = false;
   let arrivalPending = false;
-  let coolingUntil = -Infinity;
+  let completedDirection = 0;
+  let queuedReverse = null;
   let lastWheelAt = -Infinity;
   const requestFrame = (callback) => win.requestAnimationFrame(callback);
   const cancelFrame = () => { if (frame !== null) win.cancelAnimationFrame(frame); frame = null; };
@@ -29,6 +32,68 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
   const smooth = (value) => { const t = clamp(value); return t * t * (3 - 2 * t); };
   const detail = (operation) => ({ kind: operation.kind, direction: operation.direction, from: operation.start, to: operation.end });
   const threshold = (operation) => ALBUM_SCROLL_HANDOFF[operation.kind];
+  const routeFor = (from, destination, delta) => {
+    if (!Number.isInteger(from) || !Number.isInteger(destination) || Math.abs(destination - from) !== 1) return null;
+    const direction = Math.sign(destination - from);
+    const kind = destination === 2 ? 'enter' : from === 2 ? 'exit' : null;
+    return kind && Math.sign(delta) === direction ? { kind, direction, start: from, end: destination } : null;
+  };
+  const sameRoute = (a, b) => a && b && a.start === b.start && a.end === b.end;
+  function intentFor(samples, timestamp) {
+    const recent = samples.filter(sample => timestamp - sample.time <= ALBUM_SCROLL_INPUT.intentWindow);
+    const distance = recent.reduce((sum, sample) => sum + sample.amount, 0);
+    const duration = recent.length > 1 ? recent.at(-1).time - recent[0].time : 0;
+    const speed = duration > 0 ? distance / duration : 0;
+    const confirmed = recent.length >= 2 && (distance >= ALBUM_SCROLL_INPUT.distance * ALBUM_SCROLL_INPUT.snapThreshold
+      || (distance >= ALBUM_SCROLL_INPUT.flowDistance && duration >= ALBUM_SCROLL_INPUT.flowDuration && speed >= ALBUM_SCROLL_INPUT.flowSpeed));
+    return { samples: recent, distance, duration, confirmed };
+  }
+  function addSample(samples, amount, timestamp) {
+    samples.push({ amount: clamp(amount, 0, ALBUM_SCROLL_INPUT.maxDelta), time: timestamp });
+    return intentFor(samples, timestamp);
+  }
+  function trackReversal(route, amount, timestamp) {
+    if (!sameRoute(queuedReverse, route)) queuedReverse = { ...route, samples: [] };
+    const intent = addSample(queuedReverse.samples, amount, timestamp);
+    queuedReverse.samples = intent.samples;
+    queuedReverse.confirmed = intent.confirmed;
+    queuedReverse.clear = intent.distance >= ALBUM_SCROLL_INPUT.reverseDistance
+      && (intent.samples.length >= 2 || amount >= 80);
+    return queuedReverse.clear;
+  }
+  function updateIntent(operation, timestamp) {
+    const intent = intentFor(operation.samples, timestamp);
+    operation.samples = intent.samples;
+    operation.intent = intent.distance / ALBUM_SCROLL_INPUT.distance;
+    operation.confirmed = intent.confirmed;
+    const limit = intent.samples.length < 2 ? ALBUM_SCROLL_INPUT.singlePreviewLimit : ALBUM_SCROLL_INPUT.previewLimit;
+    operation.target = Math.min(intent.distance / (ALBUM_SCROLL_INPUT.distance * ALBUM_SCROLL_INPUT.snapThreshold), 1) * ALBUM_SCROLL_INPUT.previewLimit;
+    operation.target = Math.min(operation.target, limit);
+  }
+  function startOperation(route, timestamp, samples = []) {
+    serial += 1;
+    active = { ...route, current: route.start, progress: 0, intent: 0, target: 0, origin: 0,
+      createdAt: samples[0]?.time ?? timestamp, startedAt: timestamp, mode: 'buffer', jumping: false,
+      waveStarted: route.kind !== 'exit', exitController: null, samples: [...samples], confirmed: false };
+    updateIntent(active, timestamp);
+    paint(active);
+    if (frame === null) frame = requestFrame(tick);
+    return active;
+  }
+  function resumeReversal() {
+    const queued = queuedReverse;
+    if (!queued?.clear || (!queued.confirmed && now() - queued.samples.at(-1).time > ALBUM_SCROLL_INPUT.intentWindow)) return;
+    queuedReverse = null;
+    cooling = false;
+    // A confirmed opposite gesture survives the paper performance, without
+    // making its visitor repeat the same intent after the final paper lands.
+    const timestamp = now();
+    const shift = timestamp - queued.samples.at(-1).time;
+    const operation = startOperation(queued, timestamp, queued.samples.map(sample => ({ ...sample, time: sample.time + shift })));
+    // This gesture was already confirmed while the papers were arriving.
+    // Start its withdrawal now rather than imposing another preview/frame wait.
+    if (queued.confirmed) settle(operation, 1, timestamp);
+  }
   const desiredChapter = (operation) => operation.progress >= threshold(operation) ? operation.end : operation.start;
   const paint = (operation) => {
     const options = detail(operation);
@@ -47,7 +112,8 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     active = null;
     cooling = false;
     arrivalPending = false;
-    coolingUntil = -Infinity;
+    completedDirection = 0;
+    queuedReverse = null;
     lastWheelAt = -Infinity;
     previous?.exitController?.abort();
     if (previous?.kind === 'exit') transition.previewExit?.(0, detail(previous));
@@ -60,12 +126,12 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     if (operation.current !== desiredChapter(operation)) return;
     cancelFrame();
     active = null;
-    cooling = true;
+    cooling = operation.progress === 1;
     lastWheelAt = now();
     if (operation.progress === 1) {
+      completedDirection = operation.direction;
       // The wave settles before the papers arrive. Await that separate
       // performance so a trailing wheel packet cannot immediately withdraw it.
-      coolingUntil = now() + ALBUM_SCROLL_INPUT.arrivalDwell;
       let arrival;
       try { arrival = onComplete(detail(operation)); }
       catch { return; }
@@ -75,11 +141,11 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
         const release = () => {
           if (destroyed || serial !== generation) return;
           arrivalPending = false;
-          coolingUntil = now() + ALBUM_SCROLL_INPUT.arrivalDwell;
+          resumeReversal();
         };
         Promise.resolve(arrival).then(release, release);
-      }
-    } else transition.cancel();
+      } else resumeReversal();
+    } else { queuedReverse = null; transition.cancel(); }
   }
 
   function reconcile(operation) {
@@ -171,7 +237,7 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
       operation.progress = amount >= 1 ? operation.target : operation.origin + (operation.target - operation.origin) * eased(amount);
       reconcile(operation);
       if (active !== operation) return;
-      const intent = operation.intent >= ALBUM_SCROLL_INPUT.snapThreshold;
+      const intent = operation.confirmed;
       const quiet = timestamp - lastWheelAt >= ALBUM_SCROLL_INPUT.settleDelay;
       if (timestamp - operation.createdAt >= ALBUM_SCROLL_INPUT.minBuffer && (intent || quiet)) settle(operation, intent ? 1 : 0, timestamp);
       if (active !== operation || operation.mode === 'pre-exit') return;
@@ -195,36 +261,60 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     if (!Number.isFinite(delta) || delta === 0) return false;
     if (reducedMotion()) { if (active || arrivalPending) cancel(); return false; }
     const time = now();
+    const route = routeFor(from, destination, delta);
+    const amount = Math.min(Math.abs(delta), ALBUM_SCROLL_INPUT.maxDelta);
     if (cooling) {
       const gap = time - lastWheelAt;
+      // Native reading in a tall final chapter must not be trapped behind an
+      // album gesture, even while a decorative arrival is still running.
+      if (destination === null) return false;
       lastWheelAt = time;
-      if (arrivalPending || time < coolingUntil || gap < ALBUM_SCROLL_INPUT.gestureGap) return true;
+      if (route && route.direction !== completedDirection) {
+        if (trackReversal(route, amount, time) && !arrivalPending) resumeReversal();
+        return true;
+      }
+      queuedReverse = null;
+      if (arrivalPending || (Math.sign(delta) === completedDirection && gap < ALBUM_SCROLL_INPUT.gestureGap)) return true;
       cooling = false;
     }
     if (!active) {
-      const adjacent = Number.isInteger(from) && Number.isInteger(destination) && Math.abs(destination - from) === 1;
-      const direction = Math.sign(destination - from);
-      const kind = adjacent && destination === 2 ? 'enter' : adjacent && from === 2 ? 'exit' : null;
-      if (!kind || Math.sign(delta) !== direction) return false;
-      serial += 1;
-      active = { kind, direction, start: from, end: destination, current: from, progress: 0, intent: 0, target: 0, origin: 0, createdAt: time, startedAt: time, mode: 'buffer', jumping: false, waveStarted: kind !== 'exit', exitController: null };
-      paint(active);
+      if (!route) return false;
+      startOperation(route, time);
     }
     lastWheelAt = time;
     const operation = active;
-    // Once the intent has snapped, wheel inertia cannot undo it or start a
-    // second chapter. Before that point, opposite input reduces the preview.
-    if (operation.mode === 'snap' || operation.mode === 'pre-exit') return true;
-    if (operation.mode === 'return') {
-      operation.mode = 'buffer';
-      operation.createdAt = time;
-      operation.intent = operation.progress * ALBUM_SCROLL_INPUT.snapThreshold / ALBUM_SCROLL_INPUT.previewLimit;
+    // Finish a committed wave on its own clock. A clear reversal after its
+    // handoff may queue the next route; it cannot fast-forward the current one.
+    if (operation.mode === 'snap' || operation.mode === 'pre-exit') {
+      if (route && from === operation.end && route.direction !== operation.direction) trackReversal(route, amount, time);
+      else queuedReverse = null;
+      return true;
     }
+    if (Math.sign(delta) !== operation.direction) {
+      const oppositeRoute = route || { kind: null, direction: Math.sign(delta), start: from, end: destination };
+      if (trackReversal(oppositeRoute, amount, time)) {
+        const samples = queuedReverse.samples;
+        cancel();
+        if (!route) return false;
+        startOperation(route, time, samples);
+        lastWheelAt = time;
+        return true;
+      }
+      // Small direction noise reduces the preview without borrowing a debt
+      // that a deliberate opposite gesture must later scroll back through.
+      let remaining = amount;
+      for (let index = operation.samples.length - 1; index >= 0 && remaining > 0; index--) {
+        const sample = operation.samples[index];
+        const remove = Math.min(sample.amount, remaining);
+        sample.amount -= remove; remaining -= remove;
+      }
+    } else {
+      queuedReverse = null;
+      addSample(operation.samples, amount, time);
+    }
+    if (operation.mode === 'return') operation.mode = 'buffer';
     operation.origin = operation.progress;
-    operation.intent = clamp(operation.intent + clamp(delta * operation.direction, -ALBUM_SCROLL_INPUT.maxDelta, ALBUM_SCROLL_INPUT.maxDelta) / ALBUM_SCROLL_INPUT.distance);
-    // Spread the preview over several deliberate notches, rather than making
-    // one coarse packet commit a complete entry and its following exit.
-    operation.target = Math.min(operation.intent / ALBUM_SCROLL_INPUT.snapThreshold, 1) * ALBUM_SCROLL_INPUT.previewLimit;
+    updateIntent(operation, time);
     operation.startedAt = time;
     if (frame === null) frame = requestFrame(tick);
     return true;

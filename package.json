@@ -1,6 +1,6 @@
 {
   "name": "shiratsume-garden",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "type": "module",
   "description": "A little clover garden — static avatar showcase prototype",

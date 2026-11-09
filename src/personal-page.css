@@ -1,7 +1,20 @@
 /* The final chapter belongs to the owner, separate from either avatar theme. */
 body:not(.theme-preview) .collection-section { background: var(--paper); min-height: 100svh; }
+.primary-personal { position: relative; isolation: isolate; }
+.personal-clovers { z-index: 0; opacity: var(--personal-field-alpha, 1); }
+.personal-clovers .scene-clover { opacity: var(--personal-clover-alpha, .2); }
+.personal-clovers .scene-clover:nth-child(2n), .personal-clovers .scene-clover:nth-child(3n) { opacity: var(--personal-clover-alpha, .2); }
+.collection-section:not(.is-current) .personal-clovers .scene-clover { animation-play-state: paused; }
+.personal-enter-playing .personal-clovers .scene-clover {
+  --entry-alpha: var(--personal-clover-alpha, .2);
+  --entry-turn: -5deg;
+  animation: cloverSway var(--duration, 5s) ease-in-out var(--delay, 0s) infinite alternate,
+    waterDrift var(--drift-duration, 11s) ease-in-out var(--drift-delay, -3s) infinite alternate,
+    cloverSurfaceEntry 1.08s cubic-bezier(.2, .65, .3, 1) var(--personal-clover-entry-delay, .2s) backwards;
+}
 .personal-inner {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -40,16 +53,14 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
   .personal-home:hover { transform: translateY(-3px); }
 }
 .personal-social:active:not(.is-pending), .personal-home:active { transform: translateY(2px) scale(.96); }
-.is-current .personal-reveal { animation: personalSurfaceArrival .72s var(--water-settle) both; }
-.is-current .personal-reveal:nth-child(2) { animation-delay: .08s; }
-.is-current .personal-reveal:nth-child(3) { animation-delay: .17s; }
-.is-current .personal-reveal:nth-child(4) { animation-delay: .24s; }
-.is-current .personal-reveal:nth-child(5) { animation-delay: .31s; }
-.is-current .personal-reveal:nth-child(6) { animation-delay: .38s; }
-@keyframes personalSurfaceArrival {
-  0% { opacity: 0; translate: 0 17px; scale: .97; }
-  65% { opacity: 1; translate: 0 -3px; scale: 1.01; }
-  100% { opacity: 1; translate: 0 0; scale: 1; }
+.personal-enter-managed .personal-avatar-wrap {
+  opacity: var(--personal-avatar-alpha, 1);
+  transform: translateY(var(--personal-avatar-y, 0px)) scale(var(--personal-avatar-scale-x, 1), var(--personal-avatar-scale-y, 1));
+  transform-origin: 50% 65%;
+}
+.personal-enter-managed :is(.personal-eyebrow, .personal-name, .personal-bio, .personal-socials, .personal-journal, .personal-return) {
+  opacity: var(--personal-item-alpha, 1);
+  translate: 0 var(--personal-item-y, 0px);
 }
 @media (max-width: 1100px) { .personal-inner { width: calc(100% - 240px); margin-left: 210px; padding-inline: 15px; } }
 @media (max-width: 760px) {
@@ -78,6 +89,9 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
   .personal-socials { margin-top: 22px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .is-current .personal-reveal { animation: none; }
+  .personal-enter-managed .personal-avatar-wrap,
+  .personal-enter-managed :is(.personal-eyebrow, .personal-name, .personal-bio, .personal-socials, .personal-journal, .personal-return) { opacity: 1; transform: none; translate: none; }
+  .personal-clovers { opacity: 1; }
+  .personal-clovers .scene-clover { animation: none !important; }
   .personal-social, .personal-home { transition: none; }
 }

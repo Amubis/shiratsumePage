@@ -16,6 +16,7 @@ import { createAlbumTransition } from './album-transition.js';
 import { createAlbumScroll } from './album-scroll.js';
 import { createPersonalPage, normalizePersonalProfile } from './personal-page.js';
 import { createTopbarDock } from './topbar-dock.js';
+import { createPersonalEntrance } from './personal-entrance.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -31,6 +32,7 @@ let sidebar;
 let contrastLayer;
 let ownerProfile;
 let personalPage;
+let personalEntrance;
 let topbarDock;
 let videoReveal;
 let introTimers = [];
@@ -322,6 +324,14 @@ function enterAlbum() {
   return albumTransition?.enter().then(completed => { flushAlbumMedia(); return completed; });
 }
 
+function syncPersonalEntrance() {
+  if (!personalEntrance) return;
+  if (MODELS[modelId].preview) { personalEntrance.finish(); return; }
+  if (currentIndex !== 3) { personalEntrance.prepare(); return; }
+  if (pendingAlbumNavigation || albumScroll?.busy || albumTransition?.busy || navigator?.transitioning) return;
+  void personalEntrance.enter();
+}
+
 function prepareIntroOffscreen() {
   if (!introEntrance || currentIndex === 1 || introInWipe || albumScroll?.busy || MODELS[modelId].preview) return;
   const rect = $('#hello').getBoundingClientRect();
@@ -360,6 +370,7 @@ navigator = createSectionNavigator({
     $('.video-controls').inert = index !== 0;
     if (index !== 0) { finishIntro(); player.pause(); } else if (!userPaused) void player.resume();
     sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
+    syncPersonalEntrance();
   },
   onProgress(progress) {
     if(progress !== 0)finishIntro();
@@ -376,10 +387,12 @@ navigator = createSectionNavigator({
   },
   onInterrupt() {
     if(albumScroll?.busy){albumScroll.cancel();flushAlbumMedia();}
+    syncPersonalEntrance();
   },
   async onBeforeNavigate(index,{source,from,signal}) {
     if(source==='album-scroll')return {animate:false};
     if(albumScroll?.busy)albumScroll.cancel();
+    if(index===3 && currentIndex!==3 && !MODELS[modelId].preview)personalEntrance?.prepare();
     ownerProfile?.close();
     if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');}
     finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
@@ -416,8 +429,8 @@ navigator = createSectionNavigator({
     pendingAlbumNavigation = null;
     if (pending?.index === index) {
       if (pending.kind === 'enter') enterAlbum();
-      else void albumTransition?.reveal({direction:pending.direction}).then(flushAlbumMedia);
-    } else flushAlbumMedia();
+      else void albumTransition?.reveal({direction:pending.direction}).then(() => {flushAlbumMedia();syncPersonalEntrance();});
+    } else {flushAlbumMedia();syncPersonalEntrance();}
   },
 });
 let explorePoint = null;
@@ -501,6 +514,8 @@ function applyTheme() {
   album?.setModel(modelId);
   album?.setEnabled(!model.preview);
   albumTransition?.setEnabled(!model.preview);
+  personalEntrance?.setEnabled(!model.preview);
+  personalEntrance?.setTheme(model.theme,modelId);
   $('#theme-status').hidden=!model.preview;
   $('#pause-toggle').disabled=model.preview;
   $('#watch-toggle').disabled=model.preview;
@@ -521,10 +536,11 @@ function applyTheme() {
   });
   applyLanguage();applyURL();
   if (!model.preview && currentIndex !== 1) introEntrance?.prepare();
+  syncPersonalEntrance();
 }
 
 $('#language-toggle').addEventListener('click', () => {
-  finishIntro();introEntrance?.finish();if(albumScroll?.busy)albumScroll.cancel();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();
+  finishIntro();introEntrance?.finish();if(albumScroll?.busy)albumScroll.cancel();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();syncPersonalEntrance();
 });
 $$('[data-lightbox]').forEach((button) => button.addEventListener('click', () => {
   finishIntro();
@@ -541,8 +557,8 @@ window.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
   if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
-document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();queueMicrotask(prepareIntroOffscreen);});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();};
+document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();personalEntrance?.refresh();if(!document.hidden)syncPersonalEntrance();queueMicrotask(prepareIntroOffscreen);});
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
@@ -609,6 +625,7 @@ albumScroll=createAlbumScroll({
       if(to===1)introEntrance?.finish();
       else prepareIntroOffscreen();
       flushAlbumMedia();
+      syncPersonalEntrance();
     }
   },
 });
@@ -632,6 +649,7 @@ heroInteractions=createHeroInteractions({
   isActive:()=>currentIndex===0 && !watching && !MODELS[modelId].preview && root.dataset.phase==='ready'
     && !document.body.classList.contains('watch-reveal-animating') && !$('.transition-wipe').classList.contains('is-active'),
 });
+personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview,theme:MODELS[modelId].theme,seed:modelId});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
 // A future authenticated CMS can publish the same JSON for both owner views.
 if(location.protocol!=='file:')fetch('./data/owner.json',{cache:'no-cache'}).then(response=>{

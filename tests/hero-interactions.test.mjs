@@ -17,7 +17,7 @@ class Node {
   getBoundingClientRect() { return { left: 0, top: 0, right: 300, bottom: 300, width: 300, height: 300 }; }
 }
 
-function fixture({ reduced = false } = {}) {
+function fixture({ reduced = false, decorationOnly = false } = {}) {
   const win = new Node();
   const doc = new Node();
   const hero = new Node();
@@ -34,7 +34,7 @@ function fixture({ reduced = false } = {}) {
   doc.defaultView = win;
   hero.ownerDocument = doc;
   hero.querySelectorAll = () => [clover];
-  const controller = createHeroInteractions({ hero, exploreButton: button, exploreWrap: wrap, reducedMotion: () => reduced, isActive: () => active });
+  const controller = createHeroInteractions({ hero, ...(decorationOnly ? {} : { exploreButton: button, exploreWrap: wrap }), reducedMotion: () => reduced, isActive: () => active });
   const tick = (milliseconds = 34) => {
     time += milliseconds;
     const callbacks = [...frames.values()]; frames.clear();
@@ -62,6 +62,17 @@ test('a pointer stroke pushes the real clover, then the spring clears its styles
   assert.equal(f.clover.values.size, 0);
   assert.equal(f.frames.size, 0);
   f.controller.destroy();
+});
+
+test('a decoration-only chapter shares the same water push without an exploration button', () => {
+  const f = fixture({ decorationOnly: true });
+  f.move(70, 110); f.tick(); f.move(140, 120); f.tick();
+  assert.ok(parseFloat(f.clover.values.get('--pointer-push-x')) > 0);
+  f.controller.refresh();
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.clover.values.size, 0);
+  f.controller.destroy();
+  for (const node of [f.hero, f.doc, f.win]) assert.ok([...node.events.values()].every(set => set.size === 0));
 });
 
 test('touch, reduced motion and non-home states do not leave pointer displacement behind', () => {

@@ -7,7 +7,7 @@ import { embedOwnerProfileData } from './owner-profile-data.mjs';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(project, 'dist');
-const moduleNames = ['scene', 'media', 'navigation', 'content', 'outfits', 'album-player-motion', 'album', 'intro-entrance', 'album-transition', 'album-scroll', 'motion', 'sidebar', 'stable-clip', 'contrast', 'transition-preview', 'owner-profile', 'personal-page', 'video-reveal', 'hero-interactions', 'topbar-dock'];
+const moduleNames = ['scene', 'media', 'navigation', 'content', 'outfits', 'album-player-motion', 'album', 'intro-entrance', 'album-transition', 'album-scroll', 'motion', 'sidebar', 'stable-clip', 'contrast', 'transition-preview', 'owner-profile', 'personal-page', 'video-reveal', 'hero-interactions', 'personal-entrance', 'topbar-dock'];
 const bundled = [];
 const emitted=new Set();
 function rewriteImports(source,available){
