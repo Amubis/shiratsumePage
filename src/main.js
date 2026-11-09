@@ -25,6 +25,7 @@ const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = () => motionPreference.matches;
 let { model: modelId, language } = getSelection(location.search);
 const requestedSection = SECTION_IDS.indexOf(location.hash.slice(1));
+let initialRoutePending = requestedSection > 0;
 let currentIndex = 0;
 let userPaused = reducedMotion();
 let watching = false;
@@ -79,7 +80,7 @@ function notify(text) { $('#announcement').textContent = text; }
 function applyURL() {
   // The built preview also works from a local file; file origins may forbid
   // history API query changes. URL sharing is enabled on HTTP(S) hosting.
-  if (location.protocol === 'file:') return;
+  if (initialRoutePending || location.protocol === 'file:') return;
   const url = new URL(location.href);
   url.searchParams.set('model', modelId);
   url.searchParams.set('lang', language);
@@ -657,7 +658,13 @@ if(location.protocol!=='file:')fetch('./data/owner.json',{cache:'no-cache'}).the
   return response.json();
 }).then(applyOwnerProfile).catch(()=>{/* Keep the public profile bundled with this build. */});
 applyTheme();
-if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {
+if(requestedSection>0) {
+  finishIntro();
+  // Keep the original fragment while the browser and the navigator settle
+  // their initial position. An interim home hash can retarget a late anchor.
+  const releaseInitialRoute=()=>{initialRoutePending=false;applyURL();};
+  void navigator.goTo(requestedSection,{animate:false,source:'history'}).then(releaseInitialRoute,releaseInitialRoute);
+} else {
   if(reducedMotion() || !root.classList.contains('is-booting'))finishIntro();
   else if(MODELS[modelId].preview)startIntro();
   else {
