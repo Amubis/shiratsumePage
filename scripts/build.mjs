@@ -3,6 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { embedOwnerProfileData } from './owner-profile-data.mjs';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(project, 'dist');
@@ -39,6 +40,7 @@ await cp(resolve(project, 'data'), resolve(output, 'data'), { recursive: true })
 await writeFile(resolve(output,styleName),stylesheet);
 await writeFile(resolve(output,scriptName),javascript);
 let html = await readFile(resolve(project, 'index.html'), 'utf8');
+html = embedOwnerProfileData(html, JSON.parse(await readFile(resolve(project, 'data/owner.json'), 'utf8')));
 html = html.replace('./src/styles.css', `./${styleName}`).replace('<script type="module" src="./src/main.js"></script>', `<script defer src="./${scriptName}"></script>`);
 for(const name of ['refinements','owner-profile','video-reveal','outfits','model-intro','water-theme','hero-interactions','intro-entrance','album','album-transition','album-page','album-player-motion','personal-page','topbar-dock'])html=html.replace(`  <link rel="stylesheet" href="./src/${name}.css">\n`,'');
 await writeFile(resolve(output, 'index.html'), html);

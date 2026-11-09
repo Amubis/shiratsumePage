@@ -1,9 +1,9 @@
 const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(minimum, value));
 
 export const ALBUM_SCROLL_INPUT = Object.freeze({
-  distance: 260, maxDelta: 120, followDuration: 120, gestureGap: 220,
-  minBuffer: 180, settleDelay: 140, snapThreshold: .35, previewLimit: .24,
-  snapDuration: 820, returnDuration: 260, maxFrameStep: 64,
+  distance: 900, maxDelta: 120, followDuration: 120, gestureGap: 420,
+  minBuffer: 180, settleDelay: 420, snapThreshold: .72, previewLimit: .48,
+  snapDuration: 820, returnDuration: 260, maxFrameStep: 64, arrivalDwell: 700,
 });
 export const ALBUM_SCROLL_HANDOFF = Object.freeze({ enter: .5, exit: .5 });
 
@@ -20,6 +20,8 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
   let serial = 0;
   let destroyed = false;
   let cooling = false;
+  let arrivalPending = false;
+  let coolingUntil = -Infinity;
   let lastWheelAt = -Infinity;
   const requestFrame = (callback) => win.requestAnimationFrame(callback);
   const cancelFrame = () => { if (frame !== null) win.cancelAnimationFrame(frame); frame = null; };
@@ -44,6 +46,8 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     cancelFrame();
     active = null;
     cooling = false;
+    arrivalPending = false;
+    coolingUntil = -Infinity;
     lastWheelAt = -Infinity;
     previous?.exitController?.abort();
     if (previous?.kind === 'exit') transition.previewExit?.(0, detail(previous));
@@ -58,8 +62,24 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     active = null;
     cooling = true;
     lastWheelAt = now();
-    if (operation.progress === 1) onComplete(detail(operation));
-    else transition.cancel();
+    if (operation.progress === 1) {
+      // The wave settles before the papers arrive. Await that separate
+      // performance so a trailing wheel packet cannot immediately withdraw it.
+      coolingUntil = now() + ALBUM_SCROLL_INPUT.arrivalDwell;
+      let arrival;
+      try { arrival = onComplete(detail(operation)); }
+      catch { return; }
+      if (arrival && typeof arrival.then === 'function') {
+        arrivalPending = true;
+        const generation = serial;
+        const release = () => {
+          if (destroyed || serial !== generation) return;
+          arrivalPending = false;
+          coolingUntil = now() + ALBUM_SCROLL_INPUT.arrivalDwell;
+        };
+        Promise.resolve(arrival).then(release, release);
+      }
+    } else transition.cancel();
   }
 
   function reconcile(operation) {
@@ -173,12 +193,12 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     if (destroyed) return false;
     delta = Number(delta);
     if (!Number.isFinite(delta) || delta === 0) return false;
-    if (reducedMotion()) { if (active) cancel(); return false; }
+    if (reducedMotion()) { if (active || arrivalPending) cancel(); return false; }
     const time = now();
     if (cooling) {
       const gap = time - lastWheelAt;
       lastWheelAt = time;
-      if (gap < ALBUM_SCROLL_INPUT.gestureGap) return true;
+      if (arrivalPending || time < coolingUntil || gap < ALBUM_SCROLL_INPUT.gestureGap) return true;
       cooling = false;
     }
     if (!active) {
@@ -198,13 +218,13 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
     if (operation.mode === 'return') {
       operation.mode = 'buffer';
       operation.createdAt = time;
-      operation.intent = operation.progress;
+      operation.intent = operation.progress * ALBUM_SCROLL_INPUT.snapThreshold / ALBUM_SCROLL_INPUT.previewLimit;
     }
     operation.origin = operation.progress;
     operation.intent = clamp(operation.intent + clamp(delta * operation.direction, -ALBUM_SCROLL_INPUT.maxDelta, ALBUM_SCROLL_INPUT.maxDelta) / ALBUM_SCROLL_INPUT.distance);
-    // A coarse mouse notch can signal a turn without visually jumping to the
-    // covered midpoint. The remaining wave always receives its full duration.
-    operation.target = Math.min(operation.intent, ALBUM_SCROLL_INPUT.previewLimit);
+    // Spread the preview over several deliberate notches, rather than making
+    // one coarse packet commit a complete entry and its following exit.
+    operation.target = Math.min(operation.intent / ALBUM_SCROLL_INPUT.snapThreshold, 1) * ALBUM_SCROLL_INPUT.previewLimit;
     operation.startedAt = time;
     if (frame === null) frame = requestFrame(tick);
     return true;
@@ -212,7 +232,8 @@ export function createAlbumScroll({ transition, navigate, reducedMotion = () => 
 
   return {
     wheel, cancel,
-    get busy() { return active !== null; },
+    get busy() { return active !== null || arrivalPending; },
+    get isArriving() { return arrivalPending; },
     get isHandoff() { return Boolean(active?.jumping); },
     get progress() { return active?.progress ?? null; },
     get kind() { return active?.kind ?? null; },

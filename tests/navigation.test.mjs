@@ -483,6 +483,14 @@ test('an aborted covering transition cannot jump when its hook later returns ani
   assert.deepEqual(f.settled, []);
 });
 
+test('a deep-link handoff still initializes the view when the browser already restored that chapter', async (t) => {
+  const f = browserFixture(t, {}, { initialY: 2400 });
+  const navigation = f.nav.goTo(3, { source: 'history', animate: false });
+  assert.equal(await navigation, true);
+  assert.deepEqual(f.active, [[3, 'history']], 'the initial queued spy must not leave the view uninitialized');
+  assert.equal(f.win.scrollY, 2400);
+});
+
 test('refresh and initial restored positions update selection without forcing scroll offsets', async (t) => {
   const f = browserFixture(t, {}, { initialY: 1700 });
   await f.drain();

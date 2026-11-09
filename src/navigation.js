@@ -44,6 +44,7 @@ export function createSectionNavigator({
   const cancelFrame = win.cancelAnimationFrame.bind(win);
   let positions = [];
   let activeIndex = 0;
+  let hasActiveNotification = false;
   let operation = null;
   let destroyed = false;
   let spyFrame = null;
@@ -74,8 +75,9 @@ export function createSectionNavigator({
     onProgress(0);
   };
   const setActive = (index, source, force = false) => {
-    if (force || index !== activeIndex) {
+    if (force || !hasActiveNotification || index !== activeIndex) {
       activeIndex = index;
+      hasActiveNotification = true;
       onActive(index, { source });
     }
   };

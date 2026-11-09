@@ -3,7 +3,7 @@ import { createSidebar } from './sidebar.js';
 import { createContrastLayer } from './contrast.js';
 import { coverScale, exploreGrowthFrames, EXPLORE_TIMING } from './motion.js';
 import { createPageReveal } from './transition-preview.js';
-import { createOwnerProfile } from './owner-profile.js';
+import { createOwnerProfile, readOwnerProfileData } from './owner-profile.js';
 import { createVideoReveal } from './video-reveal.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
@@ -313,13 +313,13 @@ function finishWipe() {
 }
 
 function flushAlbumMedia() {
-  if (!pendingAlbumMedia || !album || albumTransition?.busy || albumScroll?.busy || pendingAlbumNavigation) return;
+  if (!pendingAlbumMedia || !album || albumTransition?.busy || (albumScroll?.busy && !albumScroll.isArriving) || pendingAlbumNavigation) return;
   const media = pendingAlbumMedia; pendingAlbumMedia = null;
   album.setMedia(media);
 }
 
 function enterAlbum() {
-  void albumTransition?.enter().then(flushAlbumMedia);
+  return albumTransition?.enter().then(completed => { flushAlbumMedia(); return completed; });
 }
 
 function prepareIntroOffscreen() {
@@ -554,8 +554,14 @@ window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(loc
 
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
 contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
-ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
-personalPage=createPersonalPage({root:$('#personal-page'),language});
+const initialOwnerProfile=normalizePersonalProfile(readOwnerProfileData(document));
+ownerProfile=createOwnerProfile({root:$('#owner-profile'),profile:initialOwnerProfile,language});
+personalPage=createPersonalPage({root:$('#personal-page'),profile:initialOwnerProfile,language});
+function applyOwnerProfile(profile) {
+  if(profile?.schemaVersion!==1)return;
+  const data=normalizePersonalProfile(profile);
+  ownerProfile.update(data);personalPage.update(data);
+}
 outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
 introEntrance=createIntroEntrance({section:$('#hello'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview});
 // The reminder starts only once the real chapter has completed its entrance;
@@ -597,7 +603,7 @@ albumScroll=createAlbumScroll({
   navigate(index){return navigator.goTo(index,{source:'album-scroll',animate:false});},
   onHandoff({to}){if(to===1)introEntrance?.finish();},
   onComplete({to}){
-    if(to===2)enterAlbum();
+    if(to===2)return enterAlbum();
     else {
       albumTransition.reset({prepare:true});
       if(to===1)introEntrance?.finish();
@@ -628,14 +634,10 @@ heroInteractions=createHeroInteractions({
 });
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
 // A future authenticated CMS can publish the same JSON for both owner views.
-if(location.protocol!=='file:')fetch('./data/owner.json').then(response=>{
+if(location.protocol!=='file:')fetch('./data/owner.json',{cache:'no-cache'}).then(response=>{
   if(!response.ok)throw new Error('Owner profile unavailable');
   return response.json();
-}).then(profile=>{
-  if(profile.schemaVersion!==1)return;
-  const data=normalizePersonalProfile(profile);
-  ownerProfile.update(data);personalPage.update(data);
-}).catch(()=>{/* The empty, honest profile also works offline. */});
+}).then(applyOwnerProfile).catch(()=>{/* Keep the public profile bundled with this build. */});
 applyTheme();
 if(requestedSection>0) {finishIntro();void navigator.goTo(requestedSection,{animate:false,source:'history'});} else {
   if(reducedMotion() || !root.classList.contains('is-booting'))finishIntro();

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, dirname, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { embedOwnerProfileData } from './owner-profile-data.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.json':'application/json; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.jpg':'image/jpeg', '.png':'image/png', '.mp4':'video/mp4' };
@@ -14,7 +15,10 @@ const server = createServer(async (request, response) => {
     if (!path.startsWith(root+sep)) { response.writeHead(403); response.end(); return; }
     const information = await stat(path);
     if (!information.isFile()) {response.writeHead(404);response.end();return;}
-    const content = await readFile(path);
+    let content = await readFile(path);
+    if (path === resolve(root, 'index.html')) {
+      content = Buffer.from(embedOwnerProfileData(content.toString('utf8'), JSON.parse(await readFile(resolve(root, 'data/owner.json'), 'utf8'))));
+    }
     const headers = {'Content-Type':types[extname(path)]||'application/octet-stream','Accept-Ranges':'bytes','Cache-Control':'no-cache'};
     const range = request.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
     if (range) {

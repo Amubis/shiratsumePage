@@ -30,6 +30,56 @@
   padding-inline: 20px max(24px, env(safe-area-inset-right, 0px));
 }
 .has-topbar-dock .topbar .language-control button { background: transparent; }
+/* Warm charcoal echoes the model's ribbon while preserving the pale profile card. */
+.has-topbar-dock body:not(.theme-preview) .topbar {
+  color: #f6f2e8;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .topbar-surface {
+  background: #292925;
+  border-bottom-color: #f6f2e81f;
+  box-shadow: 0 1px 4px #17181324;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a {
+  color: #f6f2e8;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a small {
+  opacity: .72;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a:hover,
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a[aria-current="page"] {
+  color: #d5d88d;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a[aria-current="page"] span::after {
+  background: #d5d88d;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .language-control {
+  color: #f6f2e8;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .language-other {
+  opacity: .75;
+  border-left-color: #f6f2e84d;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .language-control button:hover {
+  color: #d5d88d;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .owner-avatar {
+  border-color: #f6f2e899;
+  box-shadow: 0 1px 5px #00000035;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .owner-avatar:hover,
+.has-topbar-dock body:not(.theme-preview) .topbar .owner-avatar[aria-expanded="true"] {
+  border-color: #d5d88d;
+  box-shadow: 0 0 0 2px #d5d88d26;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar :is(a, button):focus-visible {
+  outline-color: #d5d88d;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a:focus-visible {
+  outline-offset: -8px;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .owner-card :is(a, button):focus-visible {
+  outline-color: #41462d;
+}
 .has-topbar-dock .hero .hero-media {
   top: var(--topbar-space, 0px);
   transition: top .42s var(--water-easing, var(--easing)), opacity .6s var(--easing), filter .6s var(--easing);

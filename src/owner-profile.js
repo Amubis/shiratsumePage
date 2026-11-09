@@ -14,6 +14,14 @@ const OWNER_COPY = {
 };
 let ownerProfileSerial = 0;
 
+/** Public build-time data is a fallback when the separately editable JSON is unavailable. */
+export function readOwnerProfileData(doc = globalThis.document) {
+  try {
+    const profile = JSON.parse(doc?.getElementById?.('owner-profile-data')?.textContent || 'null');
+    return profile?.schemaVersion === 1 ? profile : null;
+  } catch { return null; }
+}
+
 export function localizeOwnerText(value, language = 'zh') {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return '';
