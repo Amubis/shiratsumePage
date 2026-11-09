@@ -13,6 +13,7 @@ import { createHeroInteractions } from './hero-interactions.js';
 import { createIntroEntrance } from './intro-entrance.js';
 import { createAlbum, ALBUM_MEDIA } from './album.js';
 import { createAlbumTransition } from './album-transition.js';
+import { createAlbumScroll } from './album-scroll.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -43,6 +44,7 @@ let heroInteractions;
 let introEntrance;
 let album;
 let albumTransition;
+let albumScroll;
 let detachIntroSnapshot;
 let introInWipe = false;
 let pendingAlbumNavigation = null;
@@ -304,7 +306,7 @@ function finishWipe() {
 }
 
 function flushAlbumMedia() {
-  if (!pendingAlbumMedia || !album || albumTransition?.busy || pendingAlbumNavigation) return;
+  if (!pendingAlbumMedia || !album || albumTransition?.busy || albumScroll?.busy || pendingAlbumNavigation) return;
   const media = pendingAlbumMedia; pendingAlbumMedia = null;
   album.setMedia(media);
 }
@@ -314,7 +316,7 @@ function enterAlbum() {
 }
 
 function prepareIntroOffscreen() {
-  if (!introEntrance || currentIndex === 1 || introInWipe || MODELS[modelId].preview) return;
+  if (!introEntrance || currentIndex === 1 || introInWipe || albumScroll?.busy || MODELS[modelId].preview) return;
   const rect = $('#hello').getBoundingClientRect();
   if (rect.bottom <= 0 || rect.top >= innerHeight) introEntrance.prepare();
 }
@@ -327,12 +329,12 @@ navigator = createSectionNavigator({
     const previousIndex = currentIndex;
     currentIndex = index;
     if (index !== 1 && previousIndex === 1) introEntrance?.finish();
-    else if (index === 1 && previousIndex !== 1 && !introInWipe && !MODELS[modelId].preview) {
+    else if (index === 1 && previousIndex !== 1 && !introInWipe && !albumScroll?.busy && !MODELS[modelId].preview) {
       introEntrance?.prepare(); void introEntrance?.enter();
     }
     // Native touch scrolling has no intercepted navigation preparation. It
     // starts the same paper choreography after the chapter becomes current.
-    if (!MODELS[modelId].preview && !pendingAlbumNavigation) {
+    if (!MODELS[modelId].preview && !pendingAlbumNavigation && !albumScroll?.busy) {
       if (index === 2 && previousIndex !== 2) enterAlbum();
       else if (previousIndex === 2 && index !== 2) albumTransition?.reset({prepare:true});
     }
@@ -353,9 +355,20 @@ navigator = createSectionNavigator({
   onProgress(progress) {
     if(progress !== 0)finishIntro();
     root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress));
-    if (currentIndex === 1 && !MODELS[modelId].preview) albumTransition?.setProgress(Math.max(0,progress) * .3);
+    if (currentIndex === 1 && !MODELS[modelId].preview && !albumScroll?.busy) albumTransition?.setProgress(Math.max(0,progress) * .3);
+  },
+  onChapterWheel(details) {
+    if (MODELS[modelId].preview) return false;
+    const handled=albumScroll?.wheel(details) || false;
+    if(handled){finishIntro();introEntrance?.finish();}
+    return handled;
+  },
+  onInterrupt() {
+    if(albumScroll?.busy){albumScroll.cancel();flushAlbumMedia();}
   },
   async onBeforeNavigate(index,{source,from,signal}) {
+    if(source==='album-scroll')return {animate:false};
+    if(albumScroll?.busy)albumScroll.cancel();
     ownerProfile?.close();
     if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');}
     finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
@@ -384,7 +397,8 @@ navigator = createSectionNavigator({
     if (index === 1 && from !== index && source !== 'explore' && !MODELS[modelId].preview) introEntrance?.prepare();
     if(source === 'explore') await runExploreWipe(signal);
   },
-  onSettled(index) {
+  onSettled(index,{source}) {
+    if(source==='album-scroll')return;
     finishWipe();
     if (index !== 1 && !MODELS[modelId].preview) introEntrance?.prepare();
     const pending = pendingAlbumNavigation;
@@ -457,6 +471,7 @@ $$('[data-model]').forEach((button) => button.addEventListener('click', () => { 
 function applyTheme() {
   const model=MODELS[modelId];
   introEntrance?.finish();
+  albumScroll?.cancel();
   pendingAlbumNavigation = null;
   albumTransition?.cancel();
   root.style.setProperty('--theme',model.theme);root.style.setProperty('--theme-rgb',model.rgb);root.style.setProperty('--theme-dark',model.dark);root.style.setProperty('--paper',model.paper);
@@ -495,7 +510,7 @@ function applyTheme() {
 }
 
 $('#language-toggle').addEventListener('click', () => {
-  finishIntro();introEntrance?.finish();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();
+  finishIntro();introEntrance?.finish();if(albumScroll?.busy)albumScroll.cancel();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();
 });
 $$('[data-lightbox]').forEach((button) => button.addEventListener('click', () => {
   finishIntro();
@@ -512,8 +527,8 @@ window.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
   if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
-document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);contrastLayer?.refresh();queueMicrotask(prepareIntroOffscreen);});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();};
+document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();queueMicrotask(prepareIntroOffscreen);});
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
@@ -533,6 +548,9 @@ album=createAlbum({container:$('#album-showcase'),language,modelId,media:ALBUM_M
   if (albumTransition) albumTransition.reset({prepare:currentIndex !== 2});
 }});
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
+albumScroll=createAlbumScroll({transition:albumTransition,reducedMotion,navigate(index){
+  return navigator.goTo(index,{source:'album-scroll',animate:false});
+}});
 // The public manifest is the content boundary for a future authenticated CMS.
 // Relative media URLs resolve against this page on project GitHub Pages too.
 if (location.protocol !== 'file:') fetch('./data/album.json').then(response=>{

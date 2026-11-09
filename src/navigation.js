@@ -30,6 +30,8 @@ export function createSectionNavigator({
   onProgress = () => {},
   onBeforeNavigate = () => {},
   onSettled = () => {},
+  onChapterWheel = () => false,
+  onInterrupt = () => {},
   reducedMotion = () => false,
 } = {}) {
   if (!sections?.length) throw new TypeError('At least one section is required.');
@@ -95,6 +97,7 @@ export function createSectionNavigator({
     clearResistance();
     gestureLocked = false;
     spy('interrupt');
+    onInterrupt();
   };
 
   function goTo(index, { animate = true, source = 'nav' } = {}) {
@@ -234,6 +237,10 @@ export function createSectionNavigator({
     if (!Number.isFinite(delta) || !delta || Math.abs(horizontal) > Math.abs(delta)) return;
     if (event.cancelable === false) { interrupt(); return; }
     if (!desktopInput() || nativeWheelTarget(event.target)) { interrupt(); return; }
+    if (onChapterWheel({delta,from:activeIndex,destination:wheelDestination(Math.sign(delta))})) {
+      event.preventDefault();
+      return;
+    }
     if (operation && operation.source !== 'wheel') { interrupt(); return; }
     const timestamp = now();
     if (timestamp - lastWheelAt > gestureGap && !operation) {

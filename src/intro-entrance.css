@@ -1,5 +1,5 @@
 /* Entry uses individual transforms, independent from the outfit's press/flip. */
-.intro-enter-managed .outfit-stage {
+.intro-enter-managed .outfit-pair {
   opacity: var(--intro-actor-alpha, 1);
   translate: 0 var(--intro-actor-y, 0px);
   scale: var(--intro-actor-scale, 1);
@@ -19,7 +19,7 @@
   scale: var(--intro-decor-scale, 1);
   transform-origin: 50% 65%;
 }
-.page-section.is-current.intro-float-ready .outfit-stage {
+.page-section.is-current.intro-float-ready .outfit-pair {
   animation: introSurfaceFloat 6.4s ease-in-out -1.6s infinite alternate;
 }
 @keyframes introSurfaceFloat {
@@ -27,7 +27,7 @@
   to { translate: 0 1.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .intro-enter-managed .outfit-stage {
+  .intro-enter-managed .outfit-pair {
     opacity: 1; translate: none; scale: none; rotate: none;
   }
   .intro-enter-managed :is(.outfit-footer, .outfit-cue, .primary-intro > .section-footer, .model-intro-copy > .section-number, .model-intro-title h2, .model-intro-reading, .model-intro-lead, .model-intro-description, .model-intro-copy > .text-link, .model-intro-title > span:first-child, .intro-quote-mark) {

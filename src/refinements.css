@@ -1,6 +1,19 @@
 /* 0.2: clean typography, overlapping clovers and a stable side-navigation scene. */
 
 /* Start with video alone, including before the deferred application is ready. */
+/* Hold each navbar child at its entry pose before the parent becomes visible.
+   Otherwise the text phase reveals a bar whose children are only then hiding. */
+html:is([data-phase="video"], [data-phase="veil"], [data-phase="text"]) :is(.top-links > a, .topbar > .owner-profile) {
+  opacity: 0;
+  pointer-events: none;
+  transition: none;
+}
+
+html:is([data-phase="video"], [data-phase="veil"], [data-phase="text"]) .topbar-surface {
+  transform: scaleX(0);
+  transition: none;
+}
+
 html:is([data-phase="video"], [data-phase="veil"]) .hero-copy,
 html:is([data-phase="video"], [data-phase="veil"], [data-phase="text"]) .language-control {
   opacity: 0;

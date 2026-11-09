@@ -1,10 +1,31 @@
 .primary-album.album-inner {
+  --album-inset-top: 8svh;
+  --album-bleed-left: 19vw;
+  --album-bleed-bottom: 20svh;
+  width: 84vw;
+  margin-left: 14vw;
   min-height: 100svh;
-  padding-block: 145px 90px;
-  padding-right: 50px;
+  padding-block: var(--album-inset-top) 8svh;
+  padding-right: 3vw;
 }
+/* The paper continues beyond the viewport; its contents keep their reading area. */
+.primary-album .album-paper.layer-front {
+  left: calc(-1 * var(--album-bleed-left));
+  bottom: calc(-1 * var(--album-bleed-bottom));
+  padding-left: calc(var(--album-bleed-left) + 44px);
+  padding-bottom: calc(var(--album-bleed-bottom) + 32px);
+}
+.primary-album .album-paper.layer-middle {
+  left: calc(5px - var(--album-bleed-left));
+  bottom: calc(4px - var(--album-bleed-bottom));
+}
+.primary-album .album-paper.layer-back {
+  left: calc(14px - var(--album-bleed-left));
+  bottom: calc(14px - var(--album-bleed-bottom));
+}
+body:not(.theme-preview) #moments { overflow: clip; }
 .primary-album .album-photo-image { object-fit: cover; }
-body.on-album .side-highlight { color: var(--paper); }
+body.on-album .side-highlight { color: var(--theme); }
 /* The first-use cue sits on the character, inside a familiar clover. */
 .outfit-cue {
   left: 50%; right: auto; top: 50%;
@@ -13,20 +34,22 @@ body.on-album .side-highlight { color: var(--paper); }
   justify-content: center; gap: 0;
 }
 .outfit-cue-art { width: 86px; height: 86px; opacity: .96; }
-.outfit-cue-arrow { left: 30px; top: 21px; }
-.outfit-cue-label {
-  position: absolute; top: 54px; left: 50%;
-  transform: translateX(-50%); white-space: nowrap;
-  color: var(--ink); font-size: 9px; line-height: 1.4;
-}
 @media (max-width: 760px) {
   /* WebKit mandatory snapping can skip the lower controls of a tall chapter. */
   html { scroll-snap-type: y proximity; }
-  .primary-album.album-inner { padding: 150px 35px 90px 25px; }
+  .primary-album.album-inner { --album-inset-top: 100px; --album-bleed-left: 45px; --album-bleed-bottom: 15svh; width: auto; margin-left: 0; padding: var(--album-inset-top) 35px 90px 25px; }
+  .primary-album .album-paper.layer-front {
+    left: auto; bottom: auto;
+    width: calc(100% + var(--album-bleed-left));
+    margin-left: calc(-1 * var(--album-bleed-left));
+    margin-bottom: calc(-1 * var(--album-bleed-bottom));
+    min-height: calc(660px + var(--album-bleed-bottom));
+    padding-left: calc(var(--album-bleed-left) + 17px);
+    padding-bottom: calc(var(--album-bleed-bottom) + 25px);
+  }
   .outfit-cue { left: 50%; right: auto; }
   .outfit-cue-art { width: 86px; height: 86px; }
-  .outfit-cue-arrow { left: 30px; top: 21px; }
 }
 @media (max-height: 700px) and (min-width: 761px) {
-  .primary-album.album-inner { padding-top: 125px; padding-bottom: 65px; }
+  .primary-album.album-inner { --album-inset-top: 8svh; padding-top: var(--album-inset-top); padding-bottom: 8svh; }
 }

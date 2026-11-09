@@ -1,0 +1,14 @@
+/* The native top layer is reserved during the source print's short charge. */
+.album-player.album-player-motion-charging { opacity: 0; pointer-events: none; }
+.album-player.album-player-motion-charging::backdrop { opacity: 0; }
+.album-player.album-player-motion-opening { transform-origin: 50% 50%; will-change: transform, opacity; }
+.album-player.album-player-motion-opening::backdrop { animation: albumPlayerBackdropIn .18s ease-out both; }
+.album-player.album-player-motion-closing { will-change: opacity; }
+.album-player.album-player-motion-closing::backdrop { animation: albumPlayerBackdropOut .18s ease-out both; }
+.album-photo-charging { will-change: scale; }
+@keyframes albumPlayerBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes albumPlayerBackdropOut { from { opacity: var(--album-player-backdrop-from, 1); } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .album-player.album-player-motion-opening::backdrop,
+  .album-player.album-player-motion-closing::backdrop { animation: none; }
+}

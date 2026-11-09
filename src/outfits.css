@@ -8,12 +8,23 @@
   align-items: center;
 }
 
-.outfit-stage {
+.outfit-pair {
   position: relative;
-  display: block;
   width: 100%;
   height: min(65svh, 650px);
   min-height: 350px;
+  isolation: isolate;
+}
+
+.outfit-stage,
+.outfit-back-stage {
+  position: absolute;
+  display: block;
+  top: 0;
+  left: 50%;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 9 / 16;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -25,7 +36,18 @@
   user-select: none;
 }
 
-.outfit-stage:focus-visible {
+.outfit-stage { translate: -70% 0; z-index: 2; }
+.outfit-back-stage {
+  translate: -30% 0;
+  z-index: 1;
+  filter: saturate(.35) contrast(.65) brightness(1.15);
+  opacity: .65;
+  transition: filter .45s var(--water-easing, var(--easing)), opacity .45s var(--water-easing, var(--easing));
+}
+.outfit-pair.is-back-inspected .outfit-back-stage { z-index: 3; filter: none; opacity: 1; }
+
+.outfit-stage:focus-visible,
+.outfit-back-stage:focus-visible {
   outline: 2px dashed var(--theme-dark);
   outline-offset: 4px;
   border-radius: 45%;
@@ -33,7 +55,8 @@
 
 .outfit-stage:disabled { opacity: 1; }
 
-.outfit-art {
+.outfit-art,
+.outfit-back-art {
   position: absolute;
   inset: 0;
   display: block;
@@ -42,6 +65,7 @@
 }
 
 .outfit-image,
+.outfit-back-image,
 .outfit-shadow {
   position: absolute;
   inset: 0;
@@ -52,7 +76,8 @@
   pointer-events: none;
 }
 
-.outfit-image { z-index: 1; }
+.outfit-image,
+.outfit-back-image { z-index: 1; }
 
 .outfit-shadow {
   color: var(--theme-dark);
@@ -82,20 +107,27 @@
   transform: rotate(12deg);
 }
 
-.outfit-cue-arrow {
+.outfit-cue-icon {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  width: 26px;
-  height: 26px;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
   color: var(--ink);
-  transform: rotate(-12deg);
+  transform: translate(-50%, -50%) rotate(-12deg);
 }
 
-.outfit-cue-label {
-  font-size: 9px;
-  color: var(--theme-dark);
-  letter-spacing: .08em;
+.page-section.is-current.intro-float-ready .outfit-cue-art {
+  animation: outfitCueBreathe 3.4s ease-in-out infinite;
+}
+
+body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
+  animation-play-state: paused;
+}
+
+@keyframes outfitCueBreathe {
+  0%, 100% { opacity: .96; }
+  50% { opacity: .52; }
 }
 
 .outfit-footer {
@@ -167,7 +199,7 @@
 }
 
 @media (max-width: 760px) {
-  .outfit-stage {
+  .outfit-pair {
     height: min(53svh, 500px);
     min-height: 300px;
   }
@@ -175,16 +207,17 @@
   .outfit-footer { padding-top: 12px; }
   .outfit-cue { right: 7%; }
   .outfit-cue-art { width: 57px; height: 57px; }
-  .outfit-cue-arrow { top: 16px; left: 16px; }
 }
 
 @media (max-height: 680px) and (min-width: 761px) {
-  .outfit-stage { min-height: 280px; height: 62svh; }
+  .outfit-pair { min-height: 280px; height: 62svh; }
   .outfit-footer { padding-top: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .outfit-stage,
+  .outfit-back-stage,
   .outfit-cue-art,
   .outfit-dot-circle { transition: none; }
+  .outfit-cue-art { animation: none !important; }
 }

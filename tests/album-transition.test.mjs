@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition } from '../src/album-transition.js';
+import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition, ALBUM_STATIC_RADIUS_RATIO } from '../src/album-transition.js';
 
 test('large circles retain fixed square-grid centers and fully cover desktop/mobile corners', () => {
   for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
@@ -109,12 +109,13 @@ function fixture(t, { reduced = false } = {}) {
       const animation = { node, keyframes, options, at: clock, cancelled: false, finished: new Promise((yes, no) => { resolve = yes; reject = no; }),
         cancel() { if (this.cancelled) return; this.cancelled = true; reject(new Error('cancelled')); },
         finish() { resolve(); },
+        pause() { this.paused = true; },currentTime:0,
       };
       animations.push(animation); return animation;
     };
     return node;
   };
-  for (const selector of ['.album-paper.layer-back', '.album-paper.layer-middle', '.album-paper.layer-front', '.album-cover', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note']) {
+  for (const selector of ['.album-paper.layer-back', '.album-paper.layer-middle', '.album-paper.layer-front', '.album-cover', '.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note']) {
     const node = make(); section.queries.set(selector, [node]);
     if (selector.startsWith('.album-paper.')) section.queries.set('.album-paper', [...(section.queries.get('.album-paper') || []), node]);
   }
@@ -125,7 +126,7 @@ function fixture(t, { reduced = false } = {}) {
   function step(time) {
     clock = time;
     const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((callback) => callback(time));
-    for (const animation of animations) if (!animation.cancelled && time >= animation.at + animation.options.delay + animation.options.duration) animation.finish();
+    for (const animation of animations) if (!animation.cancelled && !animation.paused && time >= animation.at + animation.options.delay + animation.options.duration) animation.finish();
   }
   t.after(() => controller.destroy());
   return { controller, section, desk, previous, content, win, doc, overlay, field, animations, frames, step };
@@ -227,4 +228,44 @@ test('resize and visibility complete an in-flight operation without freezing a n
   assert.equal(await entrance, true);
   assert.equal(f.overlay.hidden, true);
   assert.equal(f.frames.size, 0);
+});
+
+test('smaller resting dots keep a narrow gap while the independent transition still covers the screen', (t)=>{
+  const f=fixture(t);
+  assert.equal(ALBUM_STATIC_RADIUS_RATIO,.46);
+  const circles=f.field.children[0].children;
+  const pitch=Number(circles[1].getAttribute('cx'))-Number(circles[0].getAttribute('cx'));
+  const radius=Number(circles[0].getAttribute('r'));
+  assert.ok(pitch<createAlbumCircleGrid().pitch,'resting dots use a smaller scale than the covering transition');
+  assert.ok(pitch>radius*2,'individual circles remain separated');
+  assert.ok(pitch/(radius*2)<1.1,'the center distance stays only slightly larger than the diameter');
+});
+
+test('scroll entrance pauses exactly at input and rewinds the same actor timelines', (t)=>{
+  const f=fixture(t);
+  f.controller.seekEnter(.2);
+  assert.equal(f.controller.phase,'cover-seek');
+  assert.equal(f.overlay.hidden,false);
+  assert.ok(f.animations.every(a=>a.paused));
+  f.controller.seekEnter(.7);
+  const animations=f.animations.slice();const times=animations.map(a=>a.currentTime);
+  assert.equal(f.overlay.hidden,true);
+  f.step(4000);
+  assert.deepEqual(animations.map(a=>a.currentTime),times,'time cannot advance without wheel input');
+  f.controller.seekEnter(.5);
+  assert.equal(f.animations.length,animations.length,'reverse input reuses the paused animations');
+  assert.ok(animations.every((a,i)=>a.currentTime<times[i]));
+  f.controller.seekEnter(1);
+  assert.equal(f.desk.inert,false);assert.equal(f.controller.busy,false);
+  assert.ok(animations.every(a=>a.cancelled));
+});
+
+test('scroll exit can reverse across a held cover and cancellation restores readable controls', (t)=>{
+  const f=fixture(t);
+  f.controller.seekExit(.8);assert.equal(f.controller.phase,'reveal-seek');
+  assert.equal(f.overlay.hidden,false);
+  f.controller.holdCover();assert.ok(f.overlay.children[0].children.every(c=>Number(c.getAttribute('r'))>0));
+  f.controller.seekExit(.4);assert.equal(f.controller.phase,'leave-seek');assert.equal(f.overlay.hidden,true);
+  f.controller.cancel();assert.equal(f.desk.inert,false);assert.equal(f.overlay.hidden,true);assert.equal(f.controller.busy,false);
+  assert.equal(f.section.classList.contains('album-exit-playing'),false);
 });

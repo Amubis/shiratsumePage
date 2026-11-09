@@ -98,19 +98,21 @@ function fixture(t, { docSetup, ...options } = {}) {
   const changed = [];
   const api = createOutfitShowcase({ container, reducedMotion: () => true, onChange: (index) => changed.push(index), ...options });
   t.after(() => api.destroy());
-  return { doc, container, api, changed, stage: container.find('outfit-stage'), image: container.find('outfit-image'), dots: container.all((node) => node.classList.contains('outfit-dot')), rail: container.find('outfit-dots'), clover: container.find('outfit-rail-clover'), cue: container.find('outfit-cue'), status: container.find('outfit-status') };
+  return { doc, container, api, changed, pair:container.find('outfit-pair'), stage: container.find('outfit-stage'), backStage:container.find('outfit-back-stage'), image: container.find('outfit-image'), backImage:container.find('outfit-back-image'), dots: container.all((node) => node.classList.contains('outfit-dot')), rail: container.find('outfit-dots'), clover: container.find('outfit-rail-clover'), cue: container.find('outfit-cue'), status: container.find('outfit-status') };
 }
 
 async function settle() { for (let i = 0; i < 10; i += 1) await Promise.resolve(); }
 
-test('four real front assets are configured in both languages without manufactured back views', async () => {
+test('four supplied matching front/back pairs are configured with both languages and real assets', async () => {
   assert.equal(OUTFITS.length, 4);
   assert.equal(new Set(OUTFITS.map(({ id }) => id)).size, 4);
   for (const outfit of OUTFITS) {
-    assert.equal(outfit.back, null);
+    assert.ok(outfit.back);
     assert.ok(outfit.label.zh);
     assert.ok(outfit.label.ja);
     assert.ok((await stat(new URL(`../${outfit.front}`, import.meta.url))).size > 1000);
+    assert.ok((await stat(new URL(`../${outfit.back}`, import.meta.url))).size > 1000);
+    assert.equal(outfit.front.replace('-front.png',''),outfit.back.replace('-back.png',''));
   }
   for (const locale of ['zh', 'ja']) for (const key of ['heading', 'lead', 'description']) assert.ok(MODEL_PROFILE[locale][key]);
   assert.equal(wrapOutfitIndex(-1), 3);
@@ -129,12 +131,13 @@ test('stage cycles through every outfit, loops, and keeps one selected dot and f
     await settle();
     assert.equal(f.api.index, expected);
     assert.equal(f.image.src, OUTFITS[expected].front);
+    assert.equal(f.backImage.src, OUTFITS[expected].back, 'rear follows the selected outfit, not the next option');
     assert.equal(f.dots.filter((dot) => dot.getAttribute('aria-pressed') === 'true').length, 1);
     assert.equal(f.dots[expected].getAttribute('aria-pressed'), 'true');
   }
   assert.deepEqual(f.changed, [1, 2, 3, 0]);
   assert.equal(f.cue.hidden, true);
-  assert.equal(f.container.all((node) => node.localName === 'img').length, 1);
+  assert.equal(f.container.all((node) => node.localName === 'img').length, 2);
 });
 
 test('dots select directly and language changes preserve the outfit and update accessible names', async (t) => {
@@ -146,6 +149,7 @@ test('dots select directly and language changes preserve the outfit and update a
   f.api.setLanguage('ja');
   assert.equal(f.api.index, 3);
   assert.ok(f.image.alt.includes('ブルーのギンガムコーデ'));
+  assert.ok(f.backImage.alt.includes('ブルーのギンガムコーデ') && f.backImage.alt.includes('背面'));
   assert.ok(f.stage.getAttribute('aria-label').includes('タップして次のコーデへ'));
   assert.ok(f.dots[3].getAttribute('aria-label').includes('(4 / 4)'));
   assert.equal(f.cue.hidden, true);
@@ -179,6 +183,75 @@ test('failed image decoding keeps the existing portrait visible and allows a lat
   assert.equal(f.api.index, 2);
 });
 
+test('a failed rear decode retains the entire selected pair and a retry can load both views', async (t) => {
+  const f = fixture(t);
+  await settle();
+  f.doc.failedImages.add(OUTFITS[2].back);
+  assert.equal(await f.api.goTo(2), false);
+  assert.equal(f.api.index, 0);
+  assert.equal(f.image.src, OUTFITS[0].front);
+  assert.equal(f.backImage.src, OUTFITS[0].back);
+  assert.equal(f.backStage.getAttribute('aria-busy'), 'false');
+  f.doc.failedImages.clear();
+  assert.equal(await f.api.goTo(2), true);
+  assert.equal(f.image.src, OUTFITS[2].front);
+  assert.equal(f.backImage.src, OUTFITS[2].back);
+});
+
+test('both views decode before either displayed image or its shadow switches', async (t) => {
+  let completeBack;
+  const loading = new Promise(resolve => { completeBack = resolve; });
+  const f = fixture(t, {docSetup:doc=>doc.delayedImages.set(OUTFITS[2].back,loading)});
+  const pending = f.api.goTo(2);
+  await settle();
+  assert.equal(f.image.src,OUTFITS[0].front);
+  assert.equal(f.backImage.src,OUTFITS[0].back);
+  assert.equal(f.stage.getAttribute('aria-busy'),'true');
+  assert.equal(f.backStage.getAttribute('aria-busy'),'true');
+  completeBack();
+  assert.equal(await pending,true);
+  const sources=f.container.all(node=>node.localName==='image');
+  assert.deepEqual(sources.map(node=>node.getAttribute('href')),[OUTFITS[2].front,OUTFITS[2].back]);
+});
+
+test('rear inspection has its own native button, hover and keyboard focus without advancing the outfit', (t) => {
+  const f = fixture(t);
+  assert.deepEqual(f.pair.children.map(node=>node.localName),['button','button']);
+  assert.equal(f.stage.children.some(node=>node.localName==='button'),false);
+  assert.equal(f.backStage.getAttribute('aria-pressed'),'false');
+  assert.ok(f.backStage.getAttribute('aria-label').includes('背面'));
+  f.backStage.emit('pointerenter',{pointerType:'mouse'});
+  assert.equal(f.pair.classList.contains('is-back-inspected'),true);
+  f.backStage.emit('click',{detail:1});
+  assert.equal(f.api.index,0);
+  f.backStage.emit('pointerleave');
+  assert.equal(f.pair.classList.contains('is-back-inspected'),false);
+  f.backStage.focus();
+  assert.equal(f.backStage.getAttribute('aria-pressed'),'true');
+  const escape=f.backStage.emit('keydown',{key:'Escape'});
+  assert.equal(escape.stopped,true);
+  assert.equal(f.pair.classList.contains('is-back-inspected'),false);
+});
+
+test('touch can pin the rear view and the front still selects the next matching pair', async (t) => {
+  const f = fixture(t);
+  f.backStage.emit('pointerdown',{pointerType:'touch'});
+  f.backStage.emit('focus');
+  f.backStage.emit('pointerup',{pointerType:'touch'});
+  f.backStage.emit('click',{detail:1});
+  assert.equal(f.pair.classList.contains('is-back-inspected'),true);
+  assert.equal(f.api.index,0);
+  assert.equal(f.cue.hidden,true);
+  f.stage.emit('click'); await settle();
+  assert.equal(f.api.index,1);
+  assert.equal(f.backImage.src,OUTFITS[1].back);
+  assert.equal(f.pair.classList.contains('is-back-inspected'),false);
+  f.api.setEnabled(false);
+  f.backStage.emit('click');
+  assert.equal(f.backStage.disabled,true);
+  assert.equal(f.backStage.getAttribute('aria-pressed'),'false');
+});
+
 test('concurrent requests do not race or leave the stage busy; disabling blocks interactions', async (t) => {
   const f = fixture(t);
   const first = f.api.goTo(1);
@@ -200,14 +273,14 @@ test('stable silhouette masks use alpha, preserve source dimensions, and have di
   assert.notEqual(masks[0].getAttribute('id'), masks[1].getAttribute('id'));
   assert.equal(masks[0].getAttribute('mask-type'), 'alpha');
   const source = masks[0].children[0];
-  assert.equal(source.getAttribute('width'), '941');
-  assert.equal(source.getAttribute('height'), '1672');
+  assert.equal(source.getAttribute('width'), '1440');
+  assert.equal(source.getAttribute('height'), '2560');
   assert.equal(source.getAttribute('href'), OUTFITS[0].front);
   const group = a.container.all((node) => node.localName === 'g')[0];
   assert.equal(group.getAttribute('mask'), `url(#${masks[0].getAttribute('id')})`);
   assert.equal(group.getAttribute('opacity'), '.36');
   const pattern = a.container.all((node) => node.localName === 'pattern')[0];
-  assert.equal(pattern.getAttribute('width'), '34');
+  assert.equal(pattern.getAttribute('width'), '52');
   const diameter = Number(pattern.children[0].getAttribute('r')) * 2;
   assert.ok(diameter >= 24, 'shadow circles remain about twice the original prototype diameter');
   assert.ok(Number(pattern.getAttribute('width')) - diameter >= 8, 'visible round circles have a clear gap rather than forming a solid silhouette');

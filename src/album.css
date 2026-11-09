@@ -2,8 +2,8 @@
 .album-desk {
   position: relative;
   width: 100%;
-  height: min(72svh, 720px);
-  min-height: 600px;
+  height: 84svh;
+  min-height: 550px;
   isolation: isolate;
   perspective: 1500px;
 }
@@ -18,27 +18,29 @@
 }
 .album-paper.layer-back { --paper-rotation: 2.2deg; inset: -7px -10px 14px 14px; z-index: 0; background: #e8e4d6; }
 .album-paper.layer-middle { --paper-rotation: -.9deg; inset: -1px -5px 4px 5px; z-index: 1; background: #f1eee2; }
-.album-paper.layer-front { --paper-rotation: .7deg; z-index: 2; padding: 88px 43px 45px; display: flex; flex-direction: column; }
+.album-paper.layer-front { --paper-rotation: .7deg; z-index: 2; padding: 43px 44px 32px; display: flex; flex-direction: column; }
 .album-cover {
   position: absolute;
-  top: -29px;
-  left: 14px;
+  top: calc(-1 * var(--album-inset-top, 8svh) - 300px);
+  left: calc(-14vw - 32px);
   z-index: 6;
-  width: min(360px, 55%);
-  min-height: 83px;
-  padding: 18px 24px 15px 62px;
+  width: min(1450px, 95vw);
+  height: 400px;
+  pointer-events: none;
   background: #e6e6c5;
   border: 1px solid #9295674d;
   box-shadow: 0 6px 0 #bdbf9866, 0 10px 22px #3439231c;
-  transform: rotate(-6deg);
+  transform: rotate(-8deg);
+  transform-origin: left bottom;
 }
 .album-cover-clover { position: absolute; top: 24px; left: 21px; width: 25px; height: 25px; color: var(--theme-dark); }
+.album-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 17px; margin-bottom: 13px; }
 .album-title { font-size: clamp(18px, 1.9vw, 27px); line-height: 1.4; letter-spacing: .09em; margin: 0; }
-.album-cover-note { display: block; font-size: 6px; letter-spacing: .2em; color: var(--theme-dark); margin-top: 5px; }
+.album-cover-note { display: block; font-size: 6px; letter-spacing: .2em; color: var(--theme-dark); }
 .album-filter-tab {
   position: absolute;
   left: 20px;
-  top: -61px;
+  top: -25px;
   z-index: 7;
   min-height: 44px;
   padding: 10px 21px;
@@ -57,16 +59,17 @@
 .album-group-count { font-size: 8px; letter-spacing: .1em; color: var(--muted); }
 .album-photo-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  gap: 18px 22px;
+  grid-template-columns: repeat(3, minmax(0, 300px));
+  grid-auto-rows: clamp(156px, 22svh, 216px);
+  gap: 24px 25px;
   flex: 1;
   min-height: 0;
-  padding: 4px 3%;
-  align-content: center;
+  padding: 4px 1%;
+  align-content: start;
+  justify-content: space-between;
 }
-.view-month .album-photo-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 165px); align-content: start; }
-.view-year .album-photo-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(0, 130px); align-content: start; gap: 15px; }
+.view-month .album-photo-grid { grid-template-columns: repeat(3, minmax(0, 240px)); grid-auto-rows: clamp(112px, 16.8svh, 160px); gap: 18px 25px; }
+.view-year .album-photo-grid { grid-template-columns: repeat(4, minmax(0, 180px)); grid-auto-rows: clamp(96px, 14svh, 132px); gap: 16px 22px; }
 .album-photo { position: relative; min-width: 0; min-height: 0; z-index: var(--photo-depth, 2); }
 .album-photo.is-inspected { z-index: 50; }
 .album-photo-card {
@@ -74,7 +77,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 100px;
+  min-height: 0;
   padding: 11px 11px 32px;
   background: #fffefb;
   box-shadow: 1px 5px 12px #363a272b, 0 1px 2px #363a2724;
@@ -127,28 +130,30 @@
 .album-player-previous:active, .album-player-next:active { scale: .94; }
 
 @media (max-width: 1100px) and (min-width: 761px) {
-  .album-desk { min-height: 550px; }
   .album-paper.layer-front { padding-inline: 28px; }
+  .album-photo-grid { gap: 22px 19px; }
   .album-tabs { right: -32px; }
   .album-tab { min-width: 68px; font-size: 9px; padding-inline: 11px; }
 }
 @media (max-width: 760px) {
-  .album-desk { height: 630px; min-height: 0; width: calc(100% - 14px); margin-left: 1px; }
+  .album-desk { height: auto; min-height: 660px; width: calc(100% - 14px); margin-left: 1px; }
   .album-paper.layer-back { inset: -5px -5px 9px 8px; }
   .album-paper.layer-middle { inset: -1px -3px 3px 3px; }
-  .album-paper.layer-front { padding: 78px 17px 25px; }
-  .album-cover { left: 0; top: -20px; width: 84%; padding: 16px 15px 15px 47px; min-height: 78px; }
+  .album-paper.layer-front { position: relative; min-height: 660px; padding: 45px 17px 25px; }
+  .album-cover { left: -59px; top: calc(-1 * var(--album-inset-top, 100px) - 319px); width: 115vw; }
+  .album-heading { display: block; margin-bottom: 18px; }
   .album-title { font-size: 19px; }.album-cover-note { font-size: 5px; }
+  .album-cover-note { margin-top: 5px; }
   .album-cover-clover { width: 21px; height: 21px; left: 15px; top: 23px; }
-  .album-filter-tab { top: -51px; left: 6px; min-height: 41px; padding: 10px 17px; font-size: 9px; }
+  .album-filter-tab { top: -26px; left: 6px; min-height: 41px; padding: 10px 17px; font-size: 9px; }
   .album-group-heading { margin-bottom: 19px; gap: 8px; }
   .album-group-title { font-size: 12px; }.album-group-count { font-size: 7px; }
-  .album-photo-grid { gap: 18px 11px; padding-inline: 1px; }
+  .album-photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 174px; min-height: 370px; gap: 22px 12px; padding-inline: 1px; }
   .album-photo-card { padding: 7px 7px 28px; }
   .album-photo-label { font-size: 5px; left: 8px; bottom: 9px; }
   .view-month .album-photo-grid, .view-year .album-photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .view-month .album-photo-grid { grid-auto-rows: 184px; }.view-year .album-photo-grid { grid-auto-rows: 148px; }
-  .album-paper-footer { flex-direction: column; align-items: flex-start; gap: 7px; padding-top: 19px; }
+  .view-month .album-photo-grid { grid-auto-rows: 144px; }.view-year .album-photo-grid { grid-auto-rows: 116px; }
+  .album-paper-footer { flex-direction: column; align-items: flex-start; gap: 7px; padding-top: 25px; margin-top: auto; }
   .album-source-note { font-size: 6px; text-align: left; }
   .album-tabs { right: -23px; top: 116px; gap: 13px; }
   .album-tab { min-width: 52px; min-height: 52px; padding: 10px 8px; font-size: 8px; writing-mode: vertical-rl; letter-spacing: .1em; }
@@ -159,9 +164,13 @@
   .album-player-caption { font-size: 8px; }
 }
 @media (max-height: 700px) and (min-width: 761px) {
-  .album-desk { height: 490px; min-height: 490px; }
-  .album-paper.layer-front { padding-top: 85px; padding-bottom: 25px; }
+  .album-desk { height: 84svh; min-height: 490px; }
+  .album-paper.layer-front { padding-top: 35px; padding-bottom: 25px; }
   .album-group-heading { margin-bottom: 15px; }
+  .album-heading { margin-bottom: 9px; }
+  .album-photo-grid { grid-auto-rows: 154px; gap: 19px 22px; }
+  .view-month .album-photo-grid { grid-auto-rows: 104px; gap: 14px 22px; }
+  .view-year .album-photo-grid { grid-auto-rows: 96px; gap: 12px 18px; }
   .album-photo-card { padding-bottom: 27px; }
   .album-paper-footer { padding-top: 16px; }
 }

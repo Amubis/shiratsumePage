@@ -1,4 +1,5 @@
 import { cloverSVG, seededRandom } from './scene.js';
+import { createAlbumPlayerMotion } from './album-player-motion.js';
 
 /** Public content records; a future CMS can replace this array through setMedia(). */
 export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) => Object.freeze({
@@ -107,9 +108,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const front = element('div', 'album-paper layer-front');
   back.setAttribute('aria-hidden', 'true'); middle.setAttribute('aria-hidden', 'true');
   const cover = element('div', 'album-cover');
+  cover.setAttribute('aria-hidden', 'true');
   const coverIcon = element('span', 'album-cover-clover'); coverIcon.innerHTML = cloverSVG({ className: 'clover-svg' });
   const title = element('h2', 'album-title'); const coverSmall = element('small', 'album-cover-note'); coverSmall.textContent = 'LITTLE CLOVER MEMORIES';
-  cover.append(coverIcon, title, coverSmall);
+  cover.append(coverIcon);
+  const albumHeading = element('div', 'album-heading');
+  albumHeading.append(title, coverSmall);
   const filterButton = button('album-filter-tab');
   const heading = element('div', 'album-group-heading');
   const groupTitle = element('p', 'album-group-title'); const groupCount = element('span', 'album-group-count');
@@ -120,7 +124,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const pageStatus = element('span', 'album-page-status');
   pageStatus.setAttribute('role', 'status'); pageStatus.setAttribute('aria-live', 'polite'); pageStatus.setAttribute('aria-atomic', 'true');
   const sourceNote = element('span', 'album-source-note'); footer.append(pageStatus, sourceNote);
-  front.append(heading, grid, empty, footer);
+  front.append(albumHeading, heading, grid, empty, footer);
   const tabs = element('div', 'album-tabs'); const previous = button('album-tab album-previous'); const mode = button('album-tab album-view'); const next = button('album-tab album-next');
   tabs.append(previous, mode, next); root.append(back, middle, front, cover, filterButton, tabs); container.replaceChildren(root); container.classList.add('album-showcase');
 
@@ -128,6 +132,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');
   const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerCaption = element('figcaption', 'album-player-caption');
   playerFigure.append(playerImage, playerCaption); dialog.append(playerClose, playerPrevious, playerFigure, playerNext); doc.body.append(dialog);
+  const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion});
 
   function clearInspection() {
     if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
@@ -178,8 +183,10 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     if (returnFocus?.isConnected !== false) returnFocus?.focus?.({ preventScroll: true });
     returnFocus = null;
   }
-  function closePlayer() {
-    if (dialog.open) dialog.close();
+  function closePlayer(immediate = false) {
+    const hide = () => { if(dialog.open)dialog.close();else restorePlayerFocus(); };
+    if (immediate === true) { playerMotion.cancel({hide}); return; }
+    if (dialog.open) void playerMotion.close({hide});
     else restorePlayerFocus();
   }
   function openPlayer(idOrIndex = 0) {
@@ -190,7 +197,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     playerIndex = playerItems.findIndex((item) => item.id === id); if (playerIndex < 0) return false;
     const existing = doc.querySelector?.('dialog[open]'); if (existing && existing !== dialog) return false;
     clearInspection(); returnFocus = doc.activeElement; renderPlayer();
-    if (!dialog.open) dialog.showModal(); doc.body.classList.add('modal-open'); playerClose.focus?.(); return true;
+    const card = cards[current.items.findIndex(item=>item.id===id)];
+    void playerMotion.open({source:card,image:card?.children[0],show(){
+      if (!dialog.open) dialog.showModal();
+      doc.body.classList.add('modal-open');playerClose.focus?.();
+    }});
+    return true;
   }
   function changePlayer(direction) {
     if (!playerItems.length) return;
@@ -255,12 +267,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   return {
     get state() { return { pageIndex, pageCount: pages.length, view, filter, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
     setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; render(); },
-    setModel(nextModel) { if (destroyed) return; closePlayer(); modelId = String(nextModel); pageIndex = 0; render(); },
-    setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(); render(); },
-    setMedia(nextMedia) { if (destroyed) return; closePlayer(); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; render(); },
+    setModel(nextModel) { if (destroyed) return; closePlayer(true); modelId = String(nextModel); pageIndex = 0; render(); },
+    setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(true); render(); },
+    setMedia(nextMedia) { if (destroyed) return; closePlayer(true); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; render(); },
     setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; render(); return true; },
     setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; render(); return true; },
     goToPage, openPlayer, closePlayer,
-    destroy() { if (destroyed) return; closePlayer(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
+    destroy() { if (destroyed) return; closePlayer(true); playerMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

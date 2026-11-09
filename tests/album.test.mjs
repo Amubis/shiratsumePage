@@ -32,7 +32,7 @@ class Element {
 function fixture(t, options = {}) {
   const doc = new Element('document'); doc.ownerDocument = doc; doc.body = new Element('body', doc); doc.append(doc.body);
   const frames = new Map(); let serial = 0;
-  doc.defaultView = { requestAnimationFrame(fn) { const id = ++serial; frames.set(id, fn); return id; }, cancelAnimationFrame(id) { frames.delete(id); } };
+  doc.defaultView = { requestAnimationFrame(fn) { const id = ++serial; frames.set(id, fn); return id; }, cancelAnimationFrame(id) { frames.delete(id); },addEventListener(){},removeEventListener(){},getComputedStyle(){return {opacity:'1',transform:'none'};} };
   doc.createElement = (tag) => new Element(tag, doc);
   doc.querySelector = (selector) => selector === 'dialog[open]' ? doc.body.all((node) => node.localName === 'dialog' && node.open)[0] || null : null;
   const container = doc.createElement('div'); doc.body.append(container);

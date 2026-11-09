@@ -88,7 +88,7 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
     }
     const result = {
       scope,
-      stage: query(scope, '.outfit-stage'), footer: query(scope, '.outfit-footer'),
+      stage: query(scope, '.outfit-pair') || query(scope, '.outfit-stage'), footer: query(scope, '.outfit-footer'),
       cue: query(scope, '.outfit-cue'), meta: query(scope, '.primary-intro > .section-footer'),
       texts: ['.model-intro-copy > .section-number', '.model-intro-title h2', '.model-intro-reading', '.model-intro-lead', '.model-intro-description', '.model-intro-copy > .text-link'].map((selector) => query(scope, selector)).filter(Boolean),
       decorations: all(scope, '.model-intro-title > span:first-child, .intro-quote-mark'),

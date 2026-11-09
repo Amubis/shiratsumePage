@@ -93,6 +93,40 @@ test('scroll spy uses a stable upper-third boundary and handles tall final conte
   assert.equal(determineActiveIndex(0, [], 800), -1);
 });
 
+test('chapter wheel hooks own progress without cancelling their covered navigation handoff', async (t) => {
+  const samples=[];
+  let resolveCover;
+  const f=browserFixture(t,{
+    onChapterWheel(details){samples.push(details);return true;},
+    onBeforeNavigate(){return new Promise(resolve=>{resolveCover=resolve;});},
+  },{initialY:800});
+  await f.step();
+  assert.equal(f.fire('wheel',{deltaY:120}).defaultPrevented,true);
+  assert.deepEqual(samples.at(-1),{delta:120,from:1,destination:2});
+  assert.equal(f.writes.length,0);
+  const handoff=f.nav.goTo(2,{source:'album-scroll',animate:false});
+  assert.equal(f.fire('wheel',{deltaY:80}).defaultPrevented,true);
+  assert.equal(f.nav.transitioning,true,'ongoing progress input must not abort its own handoff');
+  resolveCover({animate:false});
+  assert.equal(await handoff,true);
+  assert.equal(f.win.scrollY,1600);
+  const count=samples.length;
+  assert.equal(f.fire('wheel',{deltaY:50,ctrlKey:true}).defaultPrevented,false);
+  assert.equal(f.fire('wheel',{deltaY:20,deltaX:80}).defaultPrevented,false);
+  assert.equal(samples.length,count,'zoom and horizontal input stay outside the hook');
+});
+
+test('reading stays native before a tall chapter reaches the next boundary', async(t)=>{
+  const samples=[];
+  let interrupted=0;
+  const f=browserFixture(t,{onChapterWheel(details){samples.push(details);return false;},onInterrupt(){interrupted++;}},{tops:[0,800,2000,2800],initialY:800});
+  await f.step();
+  assert.equal(f.fire('wheel',{deltaY:60}).defaultPrevented,false);
+  assert.equal(samples.at(-1).destination,null);
+  f.fire('pointerdown');
+  assert.equal(interrupted,1);
+});
+
 test('wheel shows short resistance, then advances exactly one chapter per gesture', async (t) => {
   const f = browserFixture(t);
   assert.equal(f.fire('wheel', { deltaY: 24 }).defaultPrevented, true);

@@ -3,12 +3,14 @@ const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(mi
 const smooth = (value) => { const t = clamp(value); return t * t * (3 - 2 * t); };
 
 export const ALBUM_TRANSITION_TIMING = Object.freeze({ cover: 680, reveal: 620, paperBack: 380, paperMiddle: 460, paperFront: 560 });
+export const ALBUM_SCROLL_PHASE = Object.freeze({ enterHandoff: .36, exitHandoff: .62 });
+export const ALBUM_STATIC_RADIUS_RATIO = .46;
 
 /** Fixed centers, with an extra row/column outside the viewport for complete cover. */
-export function createAlbumCircleGrid({ width = 1440, height = 900 } = {}) {
+export function createAlbumCircleGrid({ width = 1440, height = 900, spacing } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
-  const pitch = Math.max(96, Math.min(220, width / 8));
+  const pitch = Number.isFinite(spacing) && spacing > 0 ? spacing : Math.max(96, Math.min(220, width / 8));
   const columns = Math.ceil(width / pitch) + 2;
   const rows = Math.ceil(height / pitch) + 2;
   const maxRadius = pitch / Math.SQRT2 + 1;
@@ -43,7 +45,7 @@ export function createAlbumEnterPlan(photoCount = 4) {
     { selector: '.album-paper.layer-front', kind: 'paper-front', delay: 130, duration: 560 },
     { selector: '.album-cover', kind: 'cover', delay: 710, duration: 550 },
     ...Array.from({ length: count }, (_, index) => ({ selector: '.album-photo', index, kind: 'photo', delay: 850 + index * 58, duration: 380 })),
-    ...['.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note'].map((selector, index) => ({ selector, kind: 'ui', delay: 920 + index * 38, duration: 260 })),
+    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note'].map((selector, index) => ({ selector, kind: 'ui', delay: 920 + index * 38, duration: 260 })),
   ];
 }
 
@@ -53,7 +55,7 @@ export function createAlbumExitPlan(photoCount = 4) {
   const coverDelay = Math.max(190, photoEnd - 110);
   const paperDelay = coverDelay + 90;
   return [
-    ...['.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note'].map((selector) => ({ selector, kind: 'ui', delay: 0, duration: 180 })),
+    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note'].map((selector) => ({ selector, kind: 'ui', delay: 0, duration: 180 })),
     ...Array.from({ length: count }, (_, order) => ({ selector: '.album-photo', index: count - 1 - order, kind: 'photo', delay: order * 42, duration: 240 })),
     { selector: '.album-cover', kind: 'cover', delay: coverDelay, duration: 300 },
     { selector: '.album-paper.layer-front', kind: 'paper-front', delay: paperDelay, duration: 380 },
@@ -62,7 +64,7 @@ export function createAlbumExitPlan(photoCount = 4) {
   ];
 }
 
-const ACTORS = '.album-paper, .album-cover, .album-photo, .album-tabs, .album-filter-tab, .album-group-heading, .album-page-status, .album-source-note';
+const ACTORS = '.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-filter-tab, .album-group-heading, .album-page-status, .album-source-note';
 
 /** Owns only decorative transitions; navigation and data remain with their controllers. */
 export function createAlbumTransition({ section, previous, reducedMotion = () => false } = {}) {
@@ -82,6 +84,9 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   const field = doc.createElement('div');
   field.className = 'album-static-field';
   field.setAttribute('aria-hidden', 'true');
+  const fieldSVG = doc.createElementNS(SVG_NS, 'svg');
+  fieldSVG.setAttribute('preserveAspectRatio', 'none');
+  field.append(fieldSVG);
   section.prepend(field);
   section.classList.add('has-album-transition');
   let grid;
@@ -91,6 +96,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   let enabled = true;
   let destroyed = false;
   let operation = null;
+  let seeking = null;
   let deferredReset = null;
   let heldSignal = null;
   let heldAbort = null;
@@ -122,12 +128,22 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     if (!deskStates.has(desk)) deskStates.set(desk, Boolean(desk.inert));
     desk.inert = true;
   }
-  function prepare() {
-    if (destroyed || !enabled) return;
+  function prepareActors() {
     restoreActors();
     for (const node of section.querySelectorAll(ACTORS)) actorStyles.set(node, { opacity: node.style.opacity || '', transform: node.style.transform || '' });
     section.classList.add('album-entry-prepared');
     blockDesk();
+  }
+  function clearSeek() {
+    if (!seeking) return;
+    seeking.animations.forEach(({ animation }) => animation.cancel());
+    seeking = null;
+    restoreActors();
+  }
+  function prepare() {
+    if (destroyed || !enabled) return;
+    clearSeek();
+    prepareActors();
   }
   function draw(value, mode = 'grow') {
     progress = clamp(value);
@@ -147,6 +163,15 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       return node;
     });
     svg.replaceChildren(...circleNodes);
+    const staticGrid = createAlbumCircleGrid({ width: grid.width, height: Math.max(grid.height, section.scrollHeight || 0, section.clientHeight || 0), spacing:Math.max(48,Math.min(120,grid.width/14)) });
+    fieldSVG.setAttribute('viewBox', `0 0 ${staticGrid.width} ${staticGrid.height}`);
+    fieldSVG.replaceChildren(...staticGrid.circles.map((circle) => {
+      const node = doc.createElementNS(SVG_NS, 'circle');
+      node.setAttribute('cx', String(circle.x));
+      node.setAttribute('cy', String(circle.y));
+      node.setAttribute('r', String(staticGrid.pitch * ALBUM_STATIC_RADIUS_RATIO));
+      return node;
+    }));
     draw(progress);
   }
   function hold(signal) {
@@ -168,12 +193,14 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   function cancel() {
     clearDeferred();
     clearHeld();
+    clearSeek();
     operation?.end(false);
     clearVisuals();
   }
   function begin({ signal, finish, abort = clearVisuals } = {}) {
     clearDeferred();
     clearHeld();
+    clearSeek();
     operation?.end(false);
     let resolve;
     const promise = new Promise((done) => { resolve = done; });
@@ -210,7 +237,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     return current.promise;
   }
   function setProgress(value) {
-    if (destroyed || !enabled || operation || ['covered', 'active'].includes(phase)) return;
+    if (destroyed || !enabled || operation || seeking || ['covered', 'active'].includes(phase)) return;
     if (!(value > 0)) {
       // goTo resets resistance immediately before calling cover(); one frame of
       // grace preserves that preview instead of flashing an empty field.
@@ -266,6 +293,101 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     return entering ? [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: rest }]
       : [{ opacity: 1, transform: rest }, { opacity: 0, transform: 'translateY(5px)' }];
   }
+  function seekActors(direction, value) {
+    const entering = direction === 'enter';
+    if (seeking?.direction !== direction) {
+      clearSeek();
+      operation?.end(false);
+      prepareActors();
+      if (!entering) section.classList.remove('album-entry-prepared');
+      section.classList.add(entering ? 'album-entry-playing' : 'album-exit-playing');
+      const count = section.querySelectorAll('.album-photo').length;
+      const plans = entering ? createAlbumEnterPlan(count) : createAlbumExitPlan(count);
+      seeking = { direction, value: 0, animations: [], fallback: [], duration: Math.max(0, ...plans.map((plan) => plan.delay + plan.duration)) };
+      for (const plan of plans) {
+        const matches = Array.from(section.querySelectorAll(plan.selector));
+        const nodes = plan.index === undefined ? matches : [matches[plan.index]].filter(Boolean);
+        for (const node of nodes) {
+          const keyframes = actorFrames(node, plan.kind, entering);
+          if (instant() || typeof node.animate !== 'function') {
+            seeking.fallback.push({ node, plan, keyframes });
+            continue;
+          }
+          const animation = node.animate(keyframes, { duration: plan.duration, delay: plan.delay,
+            easing: plan.kind.startsWith('paper') ? 'cubic-bezier(.12,.78,.18,1)' : 'cubic-bezier(.2,.65,.3,1)', fill: 'both' });
+          // A paused WAAPI timeline renders exactly the input position; its
+          // clock never progresses while the visitor stops scrolling.
+          animation.finished.catch(() => {});
+          animation.pause();
+          seeking.animations.push({ animation, node, plan });
+        }
+      }
+    }
+    const time = clamp(value) * seeking.duration;
+    seeking.animations.forEach(({ animation }) => { animation.currentTime = time; });
+    seeking.fallback.forEach(({ node, plan, keyframes }) => {
+      const local = smooth((time - plan.delay) / plan.duration);
+      node.style.opacity = String(Number(keyframes[0].opacity) + (Number(keyframes.at(-1).opacity) - Number(keyframes[0].opacity)) * local);
+      node.style.transform = entering ? keyframes.at(-1).transform : keyframes[0].transform;
+    });
+    return seeking;
+  }
+  function seekEnter(value) {
+    if (destroyed || !enabled) return false;
+    const amount = clamp(value);
+    clearDeferred(); clearHeld();
+    operation?.end(false);
+    if (amount === 0 || amount === 1) {
+      clearSeek();
+      overlay.hidden = true; draw(0); restorePrevious();
+      if (amount === 0) { prepareActors(); phase = 'idle'; }
+      else { restoreActors(); phase = 'active'; }
+      return true;
+    }
+    const actors = clamp((amount - ALBUM_SCROLL_PHASE.enterHandoff) / (1 - ALBUM_SCROLL_PHASE.enterHandoff));
+    seekActors('enter', actors).value = amount;
+    if (amount <= ALBUM_SCROLL_PHASE.enterHandoff) {
+      overlay.hidden = false;
+      draw(amount / ALBUM_SCROLL_PHASE.enterHandoff);
+      fadePrevious(amount / ALBUM_SCROLL_PHASE.enterHandoff);
+      phase = 'cover-seek';
+    } else {
+      overlay.hidden = true; draw(1); restorePrevious();
+      phase = 'enter-seek';
+    }
+    return true;
+  }
+  function seekExit(value) {
+    if (destroyed || !enabled) return false;
+    const amount = clamp(value);
+    clearDeferred(); clearHeld();
+    operation?.end(false);
+    if (amount === 0 || amount === 1) {
+      clearSeek();
+      overlay.hidden = true; draw(0); restorePrevious();
+      if (amount === 0) { restoreActors(); phase = 'active'; }
+      else { prepareActors(); phase = 'idle'; }
+      return true;
+    }
+    seekActors('exit', amount / ALBUM_SCROLL_PHASE.exitHandoff).value = amount;
+    restorePrevious();
+    if (amount < ALBUM_SCROLL_PHASE.exitHandoff) {
+      overlay.hidden = true; draw(1);
+      phase = 'leave-seek';
+    } else {
+      overlay.hidden = false;
+      draw((amount - ALBUM_SCROLL_PHASE.exitHandoff) / (1 - ALBUM_SCROLL_PHASE.exitHandoff), 'shrink');
+      phase = 'reveal-seek';
+    }
+    return true;
+  }
+  function holdCover() {
+    if (destroyed || !enabled) return false;
+    clearDeferred(); clearHeld();
+    operation?.end(false);
+    overlay.hidden = false; draw(1); phase = 'covered';
+    return true;
+  }
   function runActors(entering, { signal } = {}) {
     if (destroyed || !enabled) return Promise.resolve(false);
     const current = begin({ signal,
@@ -318,14 +440,24 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       finish() { overlay.hidden = true; progress = 0; phase = 'idle'; restorePrevious(); restoreActors(); },
     });
   }
-  const resize = () => { operation?.end(true); measure(); if (phase === 'covered') { overlay.hidden = false; draw(1); } };
+  const resize = () => {
+    const seek = seeking && { direction: seeking.direction, value: seeking.value };
+    const held = phase === 'covered';
+    operation?.end(true);
+    // Recreate spatial keyframes at the same input position after resizing.
+    clearSeek(); measure();
+    if (seek) {
+      if (seek.direction === 'enter') seekEnter(seek.value); else seekExit(seek.value);
+    }
+    if (held || phase === 'covered') { overlay.hidden = false; draw(1); phase = 'covered'; }
+  };
   const visibility = () => { if (doc.hidden) operation?.end(true); };
   win.addEventListener('resize', resize, { passive: true });
   doc.addEventListener('visibilitychange', visibility);
   measure();
   prepare();
   return {
-    setProgress, cover, enter, leave, reveal, prepare, cancel,
+    setProgress, cover, enter, leave, reveal, prepare, cancel, seekEnter, seekExit, holdCover,
     reset({ prepare: pending = false } = {}) { cancel(); if (pending) prepare(); },
     setEnabled(value) {
       enabled = Boolean(value);
@@ -335,7 +467,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     },
     get phase() { return phase; },
     get progress() { return progress; },
-    get busy() { return operation !== null; },
+    get busy() { return operation !== null || seeking !== null; },
     destroy() {
       if (destroyed) return;
       cancel();
