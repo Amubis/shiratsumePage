@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
-import { OUTFITS, MODEL_PROFILE, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, createOutfitShowcase } from '../src/outfits.js';
+import { OUTFITS, MODEL_PROFILE, OUTFIT_HINT_TIMING, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, createOutfitShowcase } from '../src/outfits.js';
 
 class Element {
   constructor(tag, doc) {
@@ -76,13 +76,31 @@ class Element {
 
 function fixture(t, { docSetup, ...options } = {}) {
   const doc = { failedImages: new Set(), delayedImages: new Map(), animations: [] };
+  const events = new Map();
+  doc.addEventListener = (type, callback) => { if (!events.has(type)) events.set(type, new Set()); events.get(type).add(callback); };
+  doc.removeEventListener = (type, callback) => events.get(type)?.delete(callback);
+  doc.emit = (type, event = {}) => events.get(type)?.forEach(callback => callback(event));
   let clock = 0;
   let frameSerial = 0;
+  let timerSerial = 0;
   const frames = new Map();
+  const timers = new Map();
   doc.defaultView = {
     requestAnimationFrame(callback) { const id = ++frameSerial; frames.set(id, callback); return id; },
     cancelAnimationFrame(id) { frames.delete(id); },
+    setTimeout(callback, delay) { const id = ++timerSerial; timers.set(id, { at: clock + delay, callback }); return id; },
+    clearTimeout(id) { timers.delete(id); },
   };
+  doc.advanceTimers = (milliseconds) => {
+    const end = clock + milliseconds;
+    for (;;) {
+      const next = [...timers].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!next) break;
+      clock = next[1].at; timers.delete(next[0]); next[1].callback();
+    }
+    clock = end;
+  };
+  doc.pendingTimers = () => timers.size;
   doc.tick = (milliseconds) => {
     for (let elapsed = 0; elapsed < milliseconds; elapsed += 1000 / 60) {
       clock += 1000 / 60;
@@ -142,7 +160,7 @@ test('four supplied matching front/back pairs are configured with both languages
 test('stage cycles through every outfit, loops, and keeps one selected dot and front image', async (t) => {
   const f = fixture(t);
   assert.equal(f.api.index, 0);
-  assert.equal(f.cue.hidden, false);
+  assert.equal(f.cue.hidden, true);
   assert.equal(f.image.src, OUTFITS[0].front);
   for (const expected of [1, 2, 3, 0]) {
     f.stage.emit('click');
@@ -156,6 +174,110 @@ test('stage cycles through every outfit, loops, and keeps one selected dot and f
   assert.deepEqual(f.changed, [1, 2, 3, 0]);
   assert.equal(f.cue.hidden, true);
   assert.equal(f.container.all((node) => node.localName === 'img').length, 2);
+});
+
+test('an idle hint waits for the active chapter, appears once, and quietly expires', (t) => {
+  const f = fixture(t);
+  f.doc.advanceTimers(10000);
+  assert.equal(f.cue.hidden, true);
+  assert.equal(f.doc.pendingTimers(), 0);
+  f.api.setHintActive(true);
+  f.doc.advanceTimers(2000);
+  f.api.setHintActive(true);
+  f.api.setLanguage('ja');
+  f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay - 2001);
+  assert.equal(f.cue.hidden, true);
+  f.doc.advanceTimers(1);
+  assert.equal(f.cue.hidden, false);
+  assert.equal(f.cue.classList.contains('is-hint-visible'), true);
+  f.doc.advanceTimers(OUTFIT_HINT_TIMING.duration);
+  assert.equal(f.cue.hidden, true);
+  assert.equal(f.doc.pendingTimers(), 0);
+  f.api.setHintActive(false); f.api.setHintActive(true); f.api.setLanguage('zh');
+  f.doc.advanceTimers(20000);
+  assert.equal(f.cue.hidden, true, 'the same page cannot repeatedly prompt an idle visitor');
+});
+
+test('hover and keyboard focus postpone the hint until a fresh quiet interval', (t) => {
+  const f = fixture(t);
+  f.api.setHintActive(true); f.doc.advanceTimers(2200);
+  f.pair.emit('pointerenter', { pointerType: 'mouse' });
+  f.doc.advanceTimers(10000);
+  assert.equal(f.cue.hidden, true);
+  f.pair.emit('pointerleave'); f.doc.advanceTimers(3000);
+  f.stage.emit('focus'); f.doc.advanceTimers(10000);
+  assert.equal(f.cue.hidden, true);
+  f.stage.emit('blur'); f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay - 1);
+  assert.equal(f.cue.hidden, true);
+  f.doc.advanceTimers(1);
+  assert.equal(f.cue.hidden, false);
+  f.pair.emit('pointerenter', { pointerType: 'mouse' });
+  assert.equal(f.cue.hidden, true);
+  f.pair.emit('pointerleave'); f.doc.advanceTimers(10000);
+  assert.equal(f.cue.hidden, true, 'an already displayed hint does not return after hover');
+});
+
+test('leaving, changing model, or hiding the document releases pending hints', (t) => {
+  const f = fixture(t);
+  f.api.setHintActive(true); f.doc.advanceTimers(3000);
+  f.api.setHintActive(false); f.doc.advanceTimers(5000);
+  assert.equal(f.cue.hidden, true); assert.equal(f.doc.pendingTimers(), 0);
+  f.api.setHintActive(true); f.doc.advanceTimers(3000);
+  f.api.setEnabled(false); f.doc.advanceTimers(5000);
+  assert.equal(f.cue.hidden, true); assert.equal(f.doc.pendingTimers(), 0);
+  f.api.setEnabled(true); f.doc.advanceTimers(3000);
+  f.doc.hidden = true; f.doc.emit('visibilitychange'); f.doc.advanceTimers(5000);
+  assert.equal(f.cue.hidden, true); assert.equal(f.doc.pendingTimers(), 0);
+  f.doc.hidden = false; f.doc.emit('visibilitychange');
+  f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay);
+  assert.equal(f.cue.hidden, false);
+  f.doc.hidden = true; f.doc.emit('visibilitychange');
+  assert.equal(f.cue.hidden, true); assert.equal(f.doc.pendingTimers(), 0);
+});
+
+test('a late cancelled hint callback cannot reveal early or consume a newer waiting timer', (t) => {
+  const callbacks = [];
+  const f = fixture(t, { docSetup(doc) {
+    const schedule = doc.defaultView.setTimeout;
+    doc.defaultView.setTimeout = (callback, delay) => { callbacks.push(callback); return schedule(callback, delay); };
+  } });
+  f.api.setHintActive(true);
+  const stale = callbacks[0];
+  f.doc.advanceTimers(1500);
+  f.api.setHintActive(false); f.api.setHintActive(true);
+  stale();
+  assert.equal(f.cue.hidden, true);
+  assert.equal(f.doc.pendingTimers(), 1);
+  f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay);
+  assert.equal(f.cue.hidden, false);
+  f.api.destroy();
+  callbacks.at(-1)();
+  assert.equal(f.cue.hidden, true);
+  assert.equal(f.doc.pendingTimers(), 0);
+});
+
+test('clicking before the hint suppresses it even after language and activity changes', async (t) => {
+  const f = fixture(t);
+  f.api.setHintActive(true); f.doc.advanceTimers(1000);
+  f.dots[1].emit('click'); await settle();
+  f.api.setHintActive(false); f.api.setHintActive(true); f.api.setLanguage('ja');
+  f.doc.advanceTimers(20000);
+  assert.equal(f.api.index, 1); assert.equal(f.cue.hidden, true);
+  assert.equal(f.doc.pendingTimers(), 0);
+});
+
+test('holding a portrait keeps the hint quiet; destruction clears idle and visible timers', (t) => {
+  const f = fixture(t);
+  f.api.setHintActive(true); f.doc.advanceTimers(3000);
+  f.stage.emit('pointerdown', { pointerId: 1 }); f.doc.advanceTimers(5000);
+  assert.equal(f.cue.hidden, true);
+  f.stage.emit('pointercancel'); f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay);
+  assert.equal(f.cue.hidden, false);
+  assert.equal(f.doc.pendingTimers(), 1);
+  f.api.destroy(); f.doc.advanceTimers(20000);
+  assert.equal(f.cue.hidden, true); assert.equal(f.doc.pendingTimers(), 0);
+  f.api.setHintActive(true);
+  assert.equal(f.doc.pendingTimers(), 0);
 });
 
 test('dots select directly and language changes preserve the outfit and update accessible names', async (t) => {

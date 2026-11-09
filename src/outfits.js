@@ -87,6 +87,8 @@ function railPositionAtX(x, count) {
   return (lower + upper) / 2;
 }
 
+export const OUTFIT_HINT_TIMING = Object.freeze({ delay: 4000, duration: 2800 });
+
 /** One selected outfit with independently accessible front and rear views. */
 export function createOutfitShowcase({ container, language = 'zh', reducedMotion = () => false, onChange = () => {} } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An outfit showcase container is required.');
@@ -101,6 +103,13 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   let enabled = true;
   let busy = false;
   let interacted = false;
+  let hintActive = false;
+  let hintShown = false;
+  let hintHovered = false;
+  let hintFocused = false;
+  let hintTimer = null;
+  let hintEndTimer = null;
+  let hintSerial = 0;
   let destroyed = false;
   let serial = 0;
   let pressAnimation;
@@ -174,6 +183,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   art.append(image);
   const cue = element('span', 'outfit-cue');
   cue.setAttribute('aria-hidden', 'true');
+  cue.hidden = true;
+  cue.style.setProperty('--hint-duration', `${OUTFIT_HINT_TIMING.duration}ms`);
   const cueArt = element('span', 'outfit-cue-art');
   cueArt.innerHTML = `${cloverSVG({ className: 'clover-svg', variant: 'small' })}<svg class="outfit-cue-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12V5a2 2 0 0 1 4 0v6l1.8-1a2 2 0 0 1 1.7-.1l3.2 1.3A2.2 2.2 0 0 1 20 13.3V17a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2L4.6 14a1.7 1.7 0 0 1 2.6-2.2L8 13"/><path d="M3.5 5.5 2 4M6 2.3V1M14 3l1.5-1.5"/></svg>`;
   cue.append(cueArt);
@@ -357,7 +368,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       pair.style.setProperty(`--back-${mode}-y`, `${geometry[`${mode}Y`]}%`);
     }
     syncBackInspection();
-    cue.hidden = interacted;
+    refreshHint();
     dots.setAttribute('aria-label', copy.choose);
     dotButtons.forEach((button, index) => {
       button.setAttribute('aria-label', `${OUTFITS[index].label[locale]} (${index + 1} / ${OUTFITS.length})`);
@@ -489,7 +500,35 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
 
   function markInteracted() {
     interacted = true;
+    hideHint();
+  }
+
+  function hideHint() {
+    hintSerial += 1;
+    if (hintTimer !== null) win.clearTimeout(hintTimer);
+    if (hintEndTimer !== null) win.clearTimeout(hintEndTimer);
+    hintTimer = hintEndTimer = null;
+    cue.classList.remove('is-hint-visible');
     cue.hidden = true;
+  }
+
+  function canWaitForHint() {
+    return !destroyed && enabled && hintActive && !doc.hidden && !interacted && !hintShown && !busy && !pressed && !hintHovered && !hintFocused;
+  }
+
+  function refreshHint() {
+    if (!canWaitForHint()) { hideHint(); return; }
+    if (hintTimer !== null) return;
+    const generation = hintSerial;
+    hintTimer = win.setTimeout(() => {
+      if (generation !== hintSerial) return;
+      hintTimer = null;
+      if (!canWaitForHint()) return;
+      hintShown = true;
+      cue.hidden = false;
+      cue.classList.add('is-hint-visible');
+      hintEndTimer = win.setTimeout(() => { if (generation === hintSerial) hideHint(); }, OUTFIT_HINT_TIMING.duration);
+    }, OUTFIT_HINT_TIMING.delay);
   }
 
   function preload(index) {
@@ -574,6 +613,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     trackSharedShadow();
     stage.setAttribute('aria-busy', 'false');
     backStage.setAttribute('aria-busy', 'false');
+    refreshHint();
     void preload(currentIndex + 1);
     return true;
   }
@@ -584,6 +624,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     backPressAnimation?.cancel();
     if (target !== backStage) resetBackInspection();
     pressed = true;
+    hideHint();
     pressReleased = false;
     stage.classList.add('is-pressed');
     stage.style.transform = 'scale(.94)';
@@ -620,6 +661,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     stage.style.transform = '';
     backStage.style.transform = '';
     trackSharedShadow();
+    refreshHint();
   }
 
   function reboundPress() {
@@ -736,10 +778,27 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       event.preventDefault(); event.stopPropagation(); resetBackInspection();
     }
   });
+  for (const target of [pair, dots]) {
+    bind(target, 'pointerenter', (event) => {
+      if (event.pointerType === 'touch') return;
+      hintHovered = true;
+      refreshHint();
+    });
+    bind(target, 'pointerleave', () => { hintHovered = false; refreshHint(); });
+  }
+  for (const target of [stage, backStage, ...dotButtons]) {
+    bind(target, 'focus', () => { hintFocused = true; refreshHint(); });
+    bind(target, 'blur', () => { hintFocused = false; refreshHint(); });
+  }
   if (win?.addEventListener) bind(win, 'resize', () => trackSharedShadow());
   if (doc.addEventListener) bind(doc, 'visibilitychange', () => {
     if (doc.hidden) stopSharedShadow(); else trackSharedShadow();
+    refreshHint();
   });
+  if (win?.addEventListener) {
+    bind(win, 'pagehide', hideHint);
+    bind(win, 'pageshow', refreshHint);
+  }
   if (typeof win?.ResizeObserver === 'function') {
     shadowResizeObserver = new win.ResizeObserver(() => trackSharedShadow());
     shadowResizeObserver.observe(pair);
@@ -754,6 +813,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     goTo,
     next() { return goTo(currentIndex + 1); },
     previous() { return goTo(currentIndex - 1); },
+    setHintActive(value) {
+      if (destroyed || hintActive === Boolean(value)) return;
+      hintActive = Boolean(value);
+      refreshHint();
+    },
     setLanguage(nextLanguage) {
       if (destroyed) return;
       locale = nextLanguage === 'ja' ? 'ja' : 'zh';
@@ -763,6 +827,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       if (destroyed) return;
       enabled = Boolean(nextEnabled);
       if (!enabled) {
+        hintHovered = hintFocused = false;
         serial += 1;
         busy = false;
         animations.forEach((animation) => animation.cancel());
@@ -782,6 +847,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      hideHint();
       serial += 1;
       listeners.splice(0).forEach((dispose) => dispose());
       animations.forEach((animation) => animation.cancel());

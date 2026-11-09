@@ -545,6 +545,13 @@ contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'
 ownerProfile=createOwnerProfile({root:$('#owner-profile'),language});
 outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
 introEntrance=createIntroEntrance({section:$('#hello'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview});
+// The reminder starts only once the real chapter has completed its entrance;
+// snapshots and chapters outside the viewport cannot start its idle timer.
+const outfitHintSection=$('#hello');
+const refreshOutfitHint=()=>outfitShowcase?.setHintActive?.(outfitHintSection.classList.contains('is-current')&&outfitHintSection.classList.contains('intro-float-ready'));
+const outfitHintObserver=new MutationObserver(refreshOutfitHint);
+outfitHintObserver.observe(outfitHintSection,{attributes:true,attributeFilter:['class']});
+refreshOutfitHint();
 album=createAlbum({container:$('#album-showcase'),language,modelId,media:ALBUM_MEDIA,reducedMotion,onReady(){
   $('.album-title').id='album-heading';
   if (albumTransition) albumTransition.reset({prepare:currentIndex !== 2});

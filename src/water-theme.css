@@ -7,6 +7,20 @@
    Keep it at its starting opacity throughout boot/video/veil, rather than
    revealing it as soon as the video treatment appears. */
 .halftone-vignette { transition: opacity .85s var(--water-easing); }
+/* Give the small, translucent dots their own readable arrival. The early
+   hold and slower rise keep their fade visible beside the jumping clovers. */
+html[data-phase="ready"]:not(.is-booting) body.on-home:not(.theme-preview):not(.watch-mode) .halftone-vignette {
+  animation: homeDotEntry 1.6s cubic-bezier(.35, 0, .45, 1) .08s backwards;
+}
+@keyframes homeDotEntry {
+  0%, 10% { opacity: 0; }
+  45% { opacity: .095; }
+  100% { opacity: .33; }
+}
+/* Keep a partially arrived field steady while the stable circular clip erases
+   it; watch-mode then removes the entry animation before opacity:0 commits. */
+body.watch-reveal-animating .halftone-vignette { animation-play-state: paused !important; }
+body.is-background .halftone-vignette { animation-play-state: paused !important; }
 html:is(.is-booting, :not([data-phase="ready"])) :is(.halftone-vignette, .hero-edge-shade) {
   opacity: 0;
   transition: none;
@@ -107,4 +121,5 @@ body.is-background :is(.hero-clovers .scene-clover, .hero .explore-flower) { ani
   body:not(.theme-preview) .section-clover { animation: none !important; translate: none; }
   .hero-edge-shade { transition: none; }
   .hero .explore-flower { animation: none !important; }
+  .halftone-vignette { animation: none !important; }
 }

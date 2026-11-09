@@ -143,17 +143,14 @@
   transform: translate(-50%, -50%) rotate(-12deg);
 }
 
-.page-section.is-current.intro-float-ready .outfit-cue-art {
-  animation: outfitCueBreathe 3.4s ease-in-out infinite;
+.outfit-cue.is-hint-visible .outfit-cue-art {
+  animation: outfitHintVisit var(--hint-duration, 2800ms) ease-in-out both;
 }
 
-body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
-  animation-play-state: paused;
-}
-
-@keyframes outfitCueBreathe {
-  0%, 100% { opacity: .96; }
-  50% { opacity: .52; }
+@keyframes outfitHintVisit {
+  0% { opacity: 0; transform: translateY(5px) rotate(12deg) scale(.94); }
+  20%, 68% { opacity: .68; transform: translateY(0) rotate(12deg) scale(1); }
+  100% { opacity: 0; transform: translateY(-2px) rotate(12deg) scale(.98); }
 }
 
 .outfit-footer {
@@ -250,4 +247,5 @@ body.is-background .page-section.is-current.intro-float-ready .outfit-cue-art {
   .outfit-cue-art,
   .outfit-dot-circle { transition: none; }
   .outfit-cue-art { animation: none !important; }
+  .outfit-cue.is-hint-visible .outfit-cue-art { opacity: .68; }
 }
