@@ -2,10 +2,10 @@ import { cloverSVG } from './scene.js';
 
 /** Each pair uses the supplied front and back of the same outfit. */
 export const OUTFITS = Object.freeze([
-  Object.freeze({ id: 'sailor', label: Object.freeze({ zh: '深色水手服', ja: 'ダークカラーのセーラー服' }), front: './assets/outfits/outfit-v2-01-front.png', back: './assets/outfits/outfit-v2-01-back.png', frontBounds: Object.freeze([396,192,1128,2507]), backBounds: Object.freeze([278,127,1056,2518]) }),
-  Object.freeze({ id: 'lace', label: Object.freeze({ zh: '黑色蕾丝套装', ja: '黒いレースのコーデ' }), front: './assets/outfits/outfit-v2-02-front.png', back: './assets/outfits/outfit-v2-02-back.png', frontBounds: Object.freeze([247,146,1182,2519]), backBounds: Object.freeze([267,175,1239,2425]) }),
-  Object.freeze({ id: 'hoodie', label: Object.freeze({ zh: '黄色连帽衫', ja: '黄色いパーカー' }), front: './assets/outfits/outfit-v2-03-front.png', back: './assets/outfits/outfit-v2-03-back.png', frontBounds: Object.freeze([146,143,1290,2401]), backBounds: Object.freeze([320,154,1340,2385]) }),
-  Object.freeze({ id: 'gingham', label: Object.freeze({ zh: '蓝白格套装', ja: 'ブルーのギンガムコーデ' }), front: './assets/outfits/outfit-v2-04-front.png', back: './assets/outfits/outfit-v2-04-back.png', frontBounds: Object.freeze([380,98,1060,2509]), backBounds: Object.freeze([348,89,1056,2533]) }),
+  Object.freeze({ id: 'sailor', label: Object.freeze({ zh: 'Noir Academy', ja: 'Noir Academy' }), front: './assets/outfits/outfit-v2-01-front.png', back: './assets/outfits/outfit-v2-01-back.png', frontBounds: Object.freeze([396,192,1128,2507]), backBounds: Object.freeze([278,127,1056,2518]) }),
+  Object.freeze({ id: 'lace', label: Object.freeze({ zh: '本命Knit', ja: '本命ニット' }), front: './assets/outfits/outfit-v2-02-front.png', back: './assets/outfits/outfit-v2-02-back.png', frontBounds: Object.freeze([247,146,1182,2519]), backBounds: Object.freeze([267,175,1239,2425]) }),
+  Object.freeze({ id: 'hoodie', label: Object.freeze({ zh: '小黄鸭', ja: 'ディフォルト' }), front: './assets/outfits/outfit-v2-03-front.png', back: './assets/outfits/outfit-v2-03-back.png', frontBounds: Object.freeze([146,143,1290,2401]), backBounds: Object.freeze([320,154,1340,2385]) }),
+  Object.freeze({ id: 'gingham', label: Object.freeze({ zh: 'My Sunny Femme', ja: 'My Sunny Femme' }), front: './assets/outfits/outfit-v2-04-front.png', back: './assets/outfits/outfit-v2-04-back.png', frontBounds: Object.freeze([380,98,1060,2509]), backBounds: Object.freeze([348,89,1056,2533]) }),
 ]);
 
 /** The introduction and outfit list can share this configuration with a future CMS. */
