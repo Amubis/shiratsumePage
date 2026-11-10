@@ -19,8 +19,8 @@ export const MODELS = {
 export const SECTION_IDS = ['home', 'hello', 'moments', 'collection'];
 export const COPY = {
   zh: {
-    skip: '跳过开场，开始探索', navHome: '庭院入口', navHello: '认识一下', navMoments: '可爱瞬间', navCollection: '关于我', personalHome: '回到主页', previewNavCollection: '日常收藏',
-    heroDescription: '把可爱，藏进每一个日常。', explore: '开始探索', watch: '看一会儿视频', returnHome: '返回庭院', pause: '暂停视频', play: '播放视频',
+    skip: '跳过开场，开始探索', navHome: '入口', navHello: '模型介绍', navMoments: '超级相册', navCollection: '关于Amubis', personalHome: '回到主页', previewNavCollection: '日常收藏',
+    heroDescription: '我家孩子的可爱程度是天下无敌的。', explore: '开始探索', watch: '看一会儿视频', returnHome: '返回主页', pause: '暂停视频', play: '播放视频',
     helloHeading: '你好呀，<br>又见面了。', helloLead: '一蹦一跳的日常，<br>都想好好留下。', helloDescription: '这里是一座小小的庭院。收集微笑、目光，还有那些不经意间，让人心软的瞬间。',
     frameLabel: '影像摘帧', handNote: '今天也，要开心呀。', seeMoments: '去看看那些瞬间', momentsHeading: '心动，<br>有迹可循。', momentsNote: '一个眼神，一次回眸。<br>都是想收藏的理由。',
     momentOne: '视线交会的那一秒', momentTwo: '把笑容留在这里', collectionHeading: '慢慢收集，<br>小小的喜欢。', collectionDescription: '让每一个平常的日子，<br>都有值得回看的理由。',
@@ -34,8 +34,8 @@ export const COPY = {
     openVideo: '单独打开视频', videoLoading: '正在加载视频…', videoBlocked: '自动播放受限，点击播放视频。', videoTimeout: '视频加载较慢，可以重试或单独打开。', videoError: '视频暂时无法播放，可以重试或单独打开。', videoPaused: '视频已暂停。', videoReduced: '已按减少动态效果设置暂停自动播放。', videoReady: '点击播放视频。',
   },
   ja: {
-    skip: 'オープニングをスキップ', navHome: '庭の入り口', navHello: 'はじめまして', navMoments: 'ときめき', navCollection: 'この庭のひと', personalHome: 'ホームへ', previewNavCollection: '日々のかけら',
-    heroDescription: 'かわいいを、毎日のすみっこに。', explore: '庭をのぞいてみる', watch: '映像をながめる', returnHome: '庭にもどる', pause: '映像を一時停止', play: '映像を再生',
+    skip: 'オープニングをスキップ', navHome: '入り口', navHello: 'アバターについて', navMoments: '超アルバム', navCollection: 'Amubisについて', personalHome: 'ホームへ', previewNavCollection: '日々のかけら',
+    heroDescription: 'かわいいを、毎日のすみっこに。', explore: 'ここから', watch: '映像をながめる', returnHome: '入り口にもどる', pause: '映像を一時停止', play: '映像を再生',
     helloHeading: 'こんにちは、<br>また会えたね。', helloLead: 'ぴょんとはずむ毎日を、<br>ひとつずつ、大切に。', helloDescription: 'ここは、小さな庭。笑顔も、まなざしも、ふと心がほどける瞬間も、そっと集めています。',
     frameLabel: '映像のひとこま', handNote: '今日も、いい日になりますように。', seeMoments: 'ときめきを見つけに', momentsHeading: 'ときめきは、<br>ここにある。', momentsNote: 'ふと合った目も、振り向いた顔も。<br>残しておきたい理由になる。',
     momentOne: '目が合った、その瞬間', momentTwo: '笑顔を、ここに', collectionHeading: '好きなかけらを、<br>少しずつ。', collectionDescription: '何気ない毎日にも、<br>また見返したくなる瞬間を。',
