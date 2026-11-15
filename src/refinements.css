@@ -357,6 +357,11 @@ body.on-home #model-toggle small {
     width .28s var(--easing), height .28s var(--easing);
 }
 
+/* Let the quieter resting gaps settle as gently as the clover's size. */
+@media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
+  .side-nav .side-links:not(.is-pointer-tracking) > a { transition-duration: .4s; }
+}
+
 .nav-bubbles {
   overflow: visible;
   z-index: 3;

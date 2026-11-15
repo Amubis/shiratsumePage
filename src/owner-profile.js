@@ -8,10 +8,15 @@ export const DEFAULT_OWNER_PROFILE = Object.freeze({
   contacts: Object.freeze([]),
 });
 
-const OWNER_COPY = {
-  zh: { contacts: '联系方式', empty: '暂未公开联系方式' },
-  ja: { contacts: '連絡先', empty: '連絡先はまだ公開していません' },
-};
+export const OWNER_COPY = Object.freeze({
+  zh: Object.freeze({ contacts: '联系方式', empty: '暂未公开联系方式' }),
+  ja: Object.freeze({ contacts: '連絡先', empty: '連絡先はまだ公開していません' }),
+});
+
+const ownerCopy = (input) => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
+  Object.fromEntries(Object.entries(OWNER_COPY[locale]).map(([key, fallback]) =>
+    [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
+]));
 let ownerProfileSerial = 0;
 
 /** Public build-time data is a fallback when the separately editable JSON is unavailable. */
@@ -53,7 +58,7 @@ export function safeOwnerURL(value, kind = 'contact') {
 }
 
 /** Non-modal owner disclosure. No persistence or fabricated contact data. */
-export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, language = 'zh' } = {}) {
+export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, language = 'zh', copy } = {}) {
   if (!root?.ownerDocument) throw new TypeError('An owner profile root is required.');
   const doc = root.ownerDocument;
   const win = doc.defaultView;
@@ -61,6 +66,7 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
   const disposers = [];
   let data = profile && typeof profile === 'object' ? profile : DEFAULT_OWNER_PROFILE;
   let locale = language === 'ja' ? 'ja' : 'zh';
+  let dictionary = ownerCopy(copy);
   let opened = false;
   let openedBy = null;
   let closeTimer = null;
@@ -155,8 +161,8 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
       }, { once: true });
       button.replaceChildren(image);
     } else button.replaceChildren(fallbackAvatar());
-    contactsHeading.textContent = OWNER_COPY[locale].contacts;
-    empty.textContent = OWNER_COPY[locale].empty;
+    contactsHeading.textContent = dictionary[locale].contacts;
+    empty.textContent = dictionary[locale].empty;
     const items = [];
     for (const contact of Array.isArray(data.contacts) ? data.contacts : []) {
       if (!contact || typeof contact !== 'object') continue;
@@ -216,6 +222,11 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
     setLanguage(nextLanguage) {
       if (destroyed) return;
       locale = nextLanguage === 'ja' ? 'ja' : 'zh';
+      render();
+    },
+    setCopy(nextCopy) {
+      if (destroyed) return;
+      dictionary = ownerCopy(nextCopy);
       render();
     },
     update(nextProfile) {

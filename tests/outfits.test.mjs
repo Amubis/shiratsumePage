@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stat } from 'node:fs/promises';
-import { OUTFITS, MODEL_PROFILE, OUTFIT_HINT_TIMING, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, createOutfitShowcase } from '../src/outfits.js';
+import { stat, readFile } from 'node:fs/promises';
+import { OUTFITS, OUTFIT_COPY, normalizeOutfits, MODEL_PROFILE, OUTFIT_HINT_TIMING, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, createOutfitShowcase } from '../src/outfits.js';
 
 class Element {
   constructor(tag, doc) {
@@ -35,6 +35,7 @@ class Element {
     if (name === 'class') this.className = String(value);
   }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
+  removeAttribute(name) { this.attributes.delete(name); if (name === 'src') delete this.src; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(type, handler) {
@@ -285,11 +286,11 @@ test('dots select directly and language changes preserve the outfit and update a
   f.dots[3].emit('click');
   await settle();
   assert.equal(f.api.index, 3);
-  assert.ok(f.status.textContent.includes('蓝白格套装'));
+  assert.ok(f.status.textContent.includes(OUTFITS[3].label.zh));
   f.api.setLanguage('ja');
   assert.equal(f.api.index, 3);
-  assert.ok(f.image.alt.includes('ブルーのギンガムコーデ'));
-  assert.ok(f.backImage.alt.includes('ブルーのギンガムコーデ') && f.backImage.alt.includes('背面'));
+  assert.ok(f.image.alt.includes(OUTFITS[3].label.ja));
+  assert.ok(f.backImage.alt.includes(OUTFITS[3].label.ja) && f.backImage.alt.includes('背面'));
   assert.ok(f.stage.getAttribute('aria-label').includes('タップして次のコーデへ'));
   assert.ok(f.dots[3].getAttribute('aria-label').includes('(4 / 4)'));
   assert.equal(f.cue.hidden, true);
@@ -499,7 +500,7 @@ test('the indicator replaces the visible caption with one small clover and influ
   assert.equal(geometry.dots[2].influence, 0, 'influence extends slightly beyond one gap');
   assert.ok(geometry.dots[1].x - geometry.dots[0].x > geometry.dots[3].x - geometry.dots[2].x, 'far circles are more tightly packed');
   assert.equal(f.dots[0].getAttribute('aria-pressed'), 'true');
-  assert.ok(f.dots[0].getAttribute('aria-label').includes('深色水手服'));
+  assert.ok(f.dots[0].getAttribute('aria-label').includes(OUTFITS[0].label.zh));
 });
 
 test('pointer follows continuously between snap zones, snaps near a circle, and returns to selected on leave', async (t) => {
@@ -703,4 +704,128 @@ test('destroy removes all handlers and prevents asynchronous changes', async (t)
   assert.equal(f.container.children.length, 0);
   assert.equal(await f.api.next(), false);
   assert.equal(f.api.index, 0);
+});
+
+
+test('the editable manifest preserves all four supplied pairs and normalization is repeatable', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../data/outfits.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.schemaVersion, 1);
+  assert.deepEqual(normalizeOutfits(manifest), normalizeOutfits(OUTFITS));
+  assert.deepEqual(normalizeOutfits(normalizeOutfits(manifest)), normalizeOutfits(manifest));
+  assert.deepEqual(outfitRailGeometry(0, 0).dots, []);
+  assert.equal(nearestOutfitDot(20, outfitRailGeometry(0, 0)), -1);
+});
+
+test('outfit configuration rejects unsafe media, deduplicates ids and supplies valid image bounds', () => {
+  const records = normalizeOutfits([
+    { id: 'unsafe', front: 'javascript:alert(1)' }, { id: 'data', front: 'data:image/png;base64,abc' },
+    { id: 'protocol-relative', front: '//example.org/front.png' }, { id: 'broken', front: 'x\n.png' },
+    { id: 'valid', front: 'https://media.example.org/front.webp', back: 'javascript:alert(1)', label: { ja: '新しい服' }, imageWidth: .2, imageHeight: 0, frontBounds: [99, 5, 1, 2] },
+    { id: 'valid', front: './assets/other.png' },
+  ]);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].back, null);
+  assert.deepEqual(records[0].label, { zh: '新しい服', ja: '新しい服' });
+  assert.deepEqual(records[0].frontBounds, [0, 0, 1440, 2560]);
+  assert.deepEqual(records[0].frontSize, [1440, 2560]);
+  assert.deepEqual(normalizeOutfits(null), []);
+});
+
+test('different image sizes use a contain canvas while keeping the front and rear aligned', () => {
+  const [outfit] = normalizeOutfits([{ id: 'sizes', front: './front.png', back: './back.png', frontSize: [1000, 1000], backSize: [500, 1000], frontBounds: [100, 50, 900, 950], backBounds: [50, 20, 450, 980] }]);
+  const geometry = outfitViewGeometry(outfit);
+  const frontHeight = 900 * 1.44, frontBottom = 950 * 1.44 + 560;
+  const backHeight = 960 * 2.56, backBottom = 980 * 2.56;
+  assert.ok(Math.abs(backHeight * geometry.previewScale - frontHeight) < 1e-8);
+  assert.ok(Math.abs(1280 + (backBottom - 1280) * geometry.previewScale + geometry.previewY / 100 * 2560 - frontBottom) < 1e-8);
+});
+
+test('empty and single-outfit states remain readable and can grow back into a complete carousel', async t => {
+  const f = fixture(t, { outfits: [] });
+  assert.equal(f.api.index, -1);
+  assert.equal(f.container.all(node => node.localName === 'img').length, 0);
+  assert.equal(f.container.find('outfit-empty').textContent, '还没有服装展示。');
+  assert.equal(await f.api.next(), false);
+  f.api.setLanguage('ja');
+  assert.equal(f.container.find('outfit-empty').textContent, 'コーデはまだ登録されていません。');
+  f.api.setOutfits([OUTFITS[1]]);
+  assert.equal(f.api.index, 0);
+  assert.equal(f.container.find('outfit-stage').disabled, true);
+  assert.equal(f.container.find('outfit-dots').hidden, true);
+  const rear = f.container.find('outfit-back-stage');
+  assert.equal(rear.disabled, false);
+  rear.emit('pointerenter', { pointerType: 'mouse' });
+  assert.equal(f.container.find('outfit-pair').classList.contains('is-back-inspected'), true);
+  assert.equal(await f.api.next(), true);
+  assert.equal(f.api.index, 0);
+  f.api.setEnabled(false); f.api.setOutfits(OUTFITS);
+  assert.equal(f.container.find('outfit-stage').disabled, true);
+  f.api.setEnabled(true);
+  assert.equal(f.container.find('outfit-stage').disabled, false);
+  assert.equal(f.container.all(node => node.classList.contains('outfit-dot')).length, 4);
+  assert.ok(f.container.find('outfit-stage').getAttribute('aria-label').includes('タップ'));
+});
+
+test('unchanged configuration is a no-op, while renaming and reordering retain selection by id', async t => {
+  const f = fixture(t);
+  assert.equal(f.api.setOutfits(OUTFITS), false);
+  assert.equal(f.container.find('outfit-stage'), f.stage);
+  await f.api.goTo(2, { animate: false });
+  f.api.setLanguage('ja');
+  const updated = [{ ...OUTFITS[2], label: { zh: '新的名字', ja: '新しい名前' } }, OUTFITS[0]];
+  assert.equal(f.api.setOutfits(updated), true);
+  assert.equal(f.api.index, 0);
+  assert.equal(f.api.outfitId, 'hoodie');
+  assert.equal(f.container.find('outfit-image').src, OUTFITS[2].front);
+  assert.ok(f.container.find('outfit-stage').getAttribute('aria-label').includes('新しい名前'));
+  f.api.setOutfits([OUTFITS[0]]);
+  assert.equal(f.api.index, 0);
+  assert.equal(f.api.outfitId, 'sailor');
+  f.api.setOutfits([]);
+  assert.equal(f.api.index, -1);
+  assert.equal(f.container.all(node => node.localName === 'img').length, 0);
+});
+
+test('configuration replacement ignores an obsolete image decode and its stale event handlers', async t => {
+  let resolve;
+  const delayed = new Promise(done => { resolve = done; });
+  const f = fixture(t, { docSetup: doc => doc.delayedImages.set(OUTFITS[2].front, delayed) });
+  const oldTurn = f.api.goTo(2);
+  await settle();
+  f.api.setOutfits([OUTFITS[1]]);
+  resolve();
+  assert.equal(await oldTurn, false);
+  f.stage.emit('click'); await settle();
+  assert.equal(f.api.outfitId, 'lace');
+  assert.equal(f.container.find('outfit-image').src, OUTFITS[1].front);
+  assert.deepEqual(f.changed, []);
+});
+
+test('a missing rear image hides both its bitmap and projection without faking a back view', async t => {
+  const frontOnly = { id: 'front-only', front: './assets/front-only.png', label: { zh: '仅正面', ja: '正面だけ' } };
+  const f = fixture(t, { outfits: [OUTFITS[0], frontOnly] });
+  assert.equal(await f.api.goTo(1), true);
+  assert.equal(f.backStage.hidden, true);
+  assert.equal(f.backStage.disabled, true);
+  assert.equal(f.backImage.src, undefined);
+  const sources = f.container.all(node => node.localName === 'image');
+  assert.equal(sources[1].getAttribute('href'), null);
+  assert.equal(sources[1].style.display, 'none');
+  assert.equal(await f.api.goTo(0), true);
+  assert.equal(f.backStage.hidden, false);
+  assert.equal(f.backImage.src, OUTFITS[0].back);
+  assert.equal(sources[1].getAttribute('href'), OUTFITS[0].back);
+});
+
+test('managed copy changes labels without reconstructing the carousel and remains literal text', t => {
+  const f = fixture(t, { copy: { zh: { next: '试试另一套' } } });
+  assert.ok(f.stage.getAttribute('aria-label').includes('试试另一套'));
+  f.api.setCopy({ zh: { next: '<script>plain text</script>' }, ja: { next: 'ほかの服へ' } });
+  assert.equal(f.container.find('outfit-stage'), f.stage);
+  assert.ok(f.stage.getAttribute('aria-label').includes('<script>plain text</script>'));
+  f.api.setLanguage('ja');
+  assert.ok(f.stage.getAttribute('aria-label').includes('ほかの服へ'));
+  f.api.setOutfits([]); f.api.setCopy({ ja: { empty: '<b>準備中</b>' } });
+  assert.equal(f.container.find('outfit-empty').textContent, '<b>準備中</b>');
+  assert.ok(OUTFIT_COPY.zh.next.includes('点击'));
 });

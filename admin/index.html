@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="robots" content="noindex,nofollow">
+    <title>四叶草花园 · 内容管理</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="admin-shell">
+      <aside class="sidebar">
+        <a class="brand" href="../" target="_blank" rel="noopener"><span class="clover" aria-hidden="true">✤</span><span>四叶草花园<small>内容管理室</small></span></a>
+        <div class="sidebar-caption">让每一片日常，长成喜欢的样子。</div>
+        <nav id="navigation" aria-label="管理栏目"></nav>
+        <div class="sidebar-bottom"><span id="connection-dot" class="connection-dot"></span><span id="connection-label">正在连接…</span><button id="logout" class="text-button" hidden>退出登录</button></div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar"><div><span class="eyebrow">SHIRATSUME GARDEN</span><h1 id="page-title">花园概览</h1></div><div class="topbar-actions"><span id="save-state" class="save-state" role="status">正在读取</span><button id="preview-toggle" class="button secondary">打开预览</button><button id="save-draft" class="button secondary" disabled>保存草稿</button><button id="publish" class="button primary" disabled>发布到网站</button></div></header>
+        <div id="banner" class="banner" role="status" hidden></div>
+        <div id="auth-panel" class="auth-panel" hidden></div>
+        <div class="content-layout"><main id="editor" tabindex="-1" aria-live="off"><p class="loading">正在打开花园…</p></main><aside id="preview-pane" class="preview-pane" hidden><div class="preview-toolbar"><strong>网站预览</strong><select id="preview-target" aria-label="预览章节"><option value="home">首页</option><option value="hello">模型与服装</option><option value="moments">相册</option><option value="collection">作者与碎碎念</option></select><button id="preview-close" class="icon-button" aria-label="关闭预览">×</button></div><p class="preview-note">预览显示已勾选发布的照片和碎碎念；尚未发布的编辑仅在这里可见。</p><iframe id="site-preview" title="当前草稿的网站预览" referrerpolicy="same-origin"></iframe></aside></div>
+        <section id="upload-panel" class="upload-panel" aria-label="上传进度" hidden><div class="upload-heading"><strong id="upload-summary">导入任务</strong><button id="clear-uploads" class="text-button">收起已完成</button></div><div id="upload-list"></div></section>
+        <footer class="workspace-footer">✤ 草稿与发布分开保存 · 删除内容只移除引用，不清理图片文件</footer>
+      </div>
+    </div>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <dialog id="confirm-dialog"><form method="dialog"><h2 id="dialog-title">确认操作</h2><p id="dialog-body"></p><div class="dialog-actions"><button class="button secondary" value="cancel">取消</button><button id="dialog-confirm" class="button primary" value="confirm">确认</button></div></form></dialog>
+    <input id="json-import" type="file" accept="application/json,.json" hidden>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

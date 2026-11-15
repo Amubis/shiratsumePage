@@ -1,0 +1,577 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "mediaBaseUrl": "",
+    "publicSiteUrl": "https://amubis.github.io/shiratsumePage/",
+    "defaultModelId": "shiratsume"
+  },
+  "texts": {
+    "site": {
+      "zh": {
+        "skip": "跳过开场，开始探索",
+        "navHome": "入口",
+        "navHello": "模型介绍",
+        "navMoments": "超级相册",
+        "navCollection": "关于Amubis",
+        "personalHome": "回到主页",
+        "previewNavCollection": "日常收藏",
+        "heroDescription": "我家孩子的可爱程度是天下无敌的。",
+        "explore": "开始探索",
+        "watch": "看一会儿视频",
+        "returnHome": "返回主页",
+        "pause": "暂停视频",
+        "play": "播放视频",
+        "helloHeading": "你好呀，<br>又见面了。",
+        "helloLead": "一蹦一跳的日常，<br>都想好好留下。",
+        "helloDescription": "这里是一座小小的庭院。收集微笑、目光，还有那些不经意间，让人心软的瞬间。",
+        "frameLabel": "影像摘帧",
+        "handNote": "今天也，要开心呀。",
+        "seeMoments": "去看看那些瞬间",
+        "momentsHeading": "心动，<br>有迹可循。",
+        "momentsNote": "一个眼神，一次回眸。<br>都是想收藏的理由。",
+        "momentOne": "视线交会的那一秒",
+        "momentTwo": "把笑容留在这里",
+        "collectionHeading": "慢慢收集，<br>小小的喜欢。",
+        "collectionDescription": "让每一个平常的日子，<br>都有值得回看的理由。",
+        "collectionLabel": "影像手记",
+        "sampleNotice": "视频摘帧 · 相册预览",
+        "collectionOne": "小小的问候",
+        "collectionTwo": "留住这一刻",
+        "collectionThree": "下一次，也一起吧",
+        "footerLine": "一片幸运，一点日常。",
+        "backTop": "回到庭院入口",
+        "chooseModel": "选择一座小庭院",
+        "originalTheme": "四叶草庭院",
+        "previewThemeName": "紫藤色小庭院<small>第二主题预览</small>",
+        "anotherGarden": "ANOTHER LITTLE GARDEN",
+        "switchModel": "切换主题",
+        "previewNotice": "第二主题预览 · 等待新的模型素材",
+        "previewHero": "另一片风景，等你来填满。",
+        "previewHelloHeading": "新的庭院，<br>慢慢生长。",
+        "previewHelloDescription": "这里先留一点空白，等待下一位主角的名字、照片与故事。",
+        "previewMomentsHeading": "新的故事，<br>还在路上。",
+        "previewMomentsNote": "为下一次相遇，<br>留一片小小的空白。",
+        "previewCollectionHeading": "下一页，<br>由你写下。",
+        "previewFrameLabel": "主题色预览",
+        "close": "关闭大图",
+        "switchLanguage": "切换至日本語",
+        "scrollExplore": "向下探索",
+        "scrollHint": "轻滚一下，翻开下一页",
+        "menu": "章节导航",
+        "frame1Alt": "用户测试视频的第一个摘帧",
+        "frame2Alt": "用户测试视频的第二个摘帧",
+        "frame3Alt": "用户测试视频的第三个摘帧",
+        "frame4Alt": "用户测试视频的第四个摘帧",
+        "previewAlt": "紫藤色四叶草主题占位画面",
+        "openVideo": "单独打开视频",
+        "videoLoading": "正在加载视频…",
+        "videoBlocked": "自动播放受限，点击播放视频。",
+        "videoTimeout": "视频加载较慢，可以重试或单独打开。",
+        "videoError": "视频暂时无法播放，可以重试或单独打开。",
+        "videoPaused": "视频已暂停。",
+        "videoReduced": "已按减少动态效果设置暂停自动播放。",
+        "videoReady": "点击播放视频。"
+      },
+      "ja": {
+        "skip": "オープニングをスキップ",
+        "navHome": "入り口",
+        "navHello": "アバターについて",
+        "navMoments": "超アルバム",
+        "navCollection": "Amubisについて",
+        "personalHome": "ホームへ",
+        "previewNavCollection": "日々のかけら",
+        "heroDescription": "かわいいを、毎日のすみっこに。",
+        "explore": "ここから",
+        "watch": "映像をながめる",
+        "returnHome": "入り口にもどる",
+        "pause": "映像を一時停止",
+        "play": "映像を再生",
+        "helloHeading": "こんにちは、<br>また会えたね。",
+        "helloLead": "ぴょんとはずむ毎日を、<br>ひとつずつ、大切に。",
+        "helloDescription": "ここは、小さな庭。笑顔も、まなざしも、ふと心がほどける瞬間も、そっと集めています。",
+        "frameLabel": "映像のひとこま",
+        "handNote": "今日も、いい日になりますように。",
+        "seeMoments": "ときめきを見つけに",
+        "momentsHeading": "ときめきは、<br>ここにある。",
+        "momentsNote": "ふと合った目も、振り向いた顔も。<br>残しておきたい理由になる。",
+        "momentOne": "目が合った、その瞬間",
+        "momentTwo": "笑顔を、ここに",
+        "collectionHeading": "好きなかけらを、<br>少しずつ。",
+        "collectionDescription": "何気ない毎日にも、<br>また見返したくなる瞬間を。",
+        "collectionLabel": "日々の映像帖",
+        "sampleNotice": "映像のひとこま · アルバムプレビュー",
+        "collectionOne": "小さなごあいさつ",
+        "collectionTwo": "この瞬間を残して",
+        "collectionThree": "次も、いっしょに",
+        "footerLine": "小さな幸運、ささやかな日々。",
+        "backTop": "庭の入り口にもどる",
+        "chooseModel": "小さな庭を選ぶ",
+        "originalTheme": "クローバーの庭",
+        "previewThemeName": "藤色の小さな庭<small>第2テーマのプレビュー</small>",
+        "anotherGarden": "ANOTHER LITTLE GARDEN",
+        "switchModel": "テーマを切り替え",
+        "previewNotice": "第2テーマのプレビュー · 素材を準備中",
+        "previewHero": "もうひとつの景色を、あなたの手で。",
+        "previewHelloHeading": "新しい庭が、<br>育つまで。",
+        "previewHelloDescription": "次の主役の名前も、写真も、物語も。ここに小さな余白を残しておきます。",
+        "previewMomentsHeading": "新しい物語は、<br>これから。",
+        "previewMomentsNote": "次の出会いのために、<br>小さな余白を。",
+        "previewCollectionHeading": "次のページは、<br>あなたと。",
+        "previewFrameLabel": "テーマ色のプレビュー",
+        "close": "拡大画像を閉じる",
+        "switchLanguage": "切换至中文",
+        "scrollExplore": "下へ進む",
+        "scrollHint": "スクロールして、次のページへ",
+        "menu": "ページ案内",
+        "frame1Alt": "テスト映像から切り出した1枚目の画像",
+        "frame2Alt": "テスト映像から切り出した2枚目の画像",
+        "frame3Alt": "テスト映像から切り出した3枚目の画像",
+        "frame4Alt": "テスト映像から切り出した4枚目の画像",
+        "previewAlt": "藤色のクローバーテーマの仮画像",
+        "openVideo": "映像を別に開く",
+        "videoLoading": "映像を読み込み中…",
+        "videoBlocked": "自動再生できません。ボタンで再生できます。",
+        "videoTimeout": "読み込みに時間がかかっています。再試行するか、映像を別に開いてください。",
+        "videoError": "映像を再生できません。再試行するか、別に開いてください。",
+        "videoPaused": "映像は一時停止中です。",
+        "videoReduced": "視差効果を減らす設定に合わせ、自動再生を停止しています。",
+        "videoReady": "ボタンで映像を再生できます。"
+      }
+    },
+    "album": {
+      "zh": {
+        "title": "日常影像册",
+        "unknown": "日期待补充",
+        "current": "当前模型",
+        "all": "全部照片",
+        "toggle": "切换当前模型与全部照片",
+        "day": "按日",
+        "month": "按月",
+        "year": "按年",
+        "view": "切换照片分组密度",
+        "previous": "上一页",
+        "next": "下一页",
+        "empty": "这里还没有照片。",
+        "source": "测试视频摘帧 · 拍摄日期待补充",
+        "mixedSource": "按已有拍摄信息整理",
+        "open": "查看照片",
+        "close": "关闭照片播放器",
+        "photoPrevious": "上一张照片",
+        "photoNext": "下一张照片",
+        "player": "照片播放器",
+        "defaultAlt": "相册照片",
+        "undated": "未标注拍摄日期",
+        "photoCount": "张影像",
+        "noPhoto": "没有可显示的照片"
+      },
+      "ja": {
+        "title": "日々のアルバム",
+        "unknown": "日付未設定",
+        "current": "このモデル",
+        "all": "すべての写真",
+        "toggle": "このモデルとすべての写真を切り替え",
+        "day": "日ごと",
+        "month": "月ごと",
+        "year": "年ごと",
+        "view": "写真のグループと密度を切り替え",
+        "previous": "前のページ",
+        "next": "次のページ",
+        "empty": "写真はまだありません。",
+        "source": "テスト映像のひとこま · 撮影日を準備中",
+        "mixedSource": "登録された撮影情報で整理",
+        "open": "写真を見る",
+        "close": "写真ビューアを閉じる",
+        "photoPrevious": "前の写真",
+        "photoNext": "次の写真",
+        "player": "写真ビューア",
+        "defaultAlt": "アルバムの写真",
+        "undated": "撮影日未設定",
+        "photoCount": "枚",
+        "noPhoto": "表示する写真がありません"
+      }
+    },
+    "outfits": {
+      "zh": {
+        "choose": "选择服装",
+        "next": "点击切换下一套服装",
+        "front": "正面",
+        "back": "背面",
+        "inspect": "查看这套服装的背面",
+        "failure": "这套服装暂时加载失败，请再试一次。",
+        "empty": "还没有服装展示。"
+      },
+      "ja": {
+        "choose": "コーデを選ぶ",
+        "next": "タップして次のコーデへ",
+        "front": "正面",
+        "back": "背面",
+        "inspect": "このコーデの後ろ姿を見る",
+        "failure": "画像を読み込めませんでした。もう一度お試しください。",
+        "empty": "コーデはまだ登録されていません。"
+      }
+    },
+    "owner": {
+      "zh": {
+        "contacts": "联系方式",
+        "empty": "暂未公开联系方式"
+      },
+      "ja": {
+        "contacts": "連絡先",
+        "empty": "連絡先はまだ公開していません"
+      }
+    },
+    "personal": {
+      "zh": {
+        "eyebrow": "THE PERSON BEHIND THIS LITTLE GARDEN.",
+        "avatar": "作者头像",
+        "links": "在别处找到我",
+        "pending": "个人主页链接待补充",
+        "journal": "碎碎念",
+        "journalNote": "想到什么，就写一点。",
+        "journalEmpty": "还没有公开的文章",
+        "soon": "准备中",
+        "journalMore": "加载更多",
+        "journalLoaded": "已显示全部碎碎念",
+        "viewImage": "查看图片",
+        "closeImage": "关闭图片",
+        "imageUnavailable": "图片暂时无法加载"
+      },
+      "ja": {
+        "eyebrow": "THE PERSON BEHIND THIS LITTLE GARDEN.",
+        "avatar": "庭の主のアイコン",
+        "links": "ほかの場所でも",
+        "pending": "プロフィールのリンクは準備中です",
+        "journal": "ひとりごと",
+        "journalNote": "思いついたことを、少しずつ。",
+        "journalEmpty": "公開された記事はまだありません",
+        "soon": "準備中",
+        "journalMore": "もっと見る",
+        "journalLoaded": "すべてのひとりごとを表示しました",
+        "viewImage": "画像を見る",
+        "closeImage": "画像を閉じる",
+        "imageUnavailable": "画像を読み込めませんでした"
+      }
+    },
+    "comments": {
+      "zh": {
+        "title": "留言",
+        "note": "无需登录。留言审核后显示。",
+        "unavailable": "评论暂未开放",
+        "loading": "正在读取留言…",
+        "empty": "还没有留言，留下一点想法吧。",
+        "loadError": "留言暂时无法读取。",
+        "retry": "重新读取",
+        "nickname": "昵称（选填）",
+        "nicknamePlaceholder": "匿名访客",
+        "body": "想说的话",
+        "bodyPlaceholder": "留下一点想法…",
+        "submit": "发送留言",
+        "submitting": "正在发送…",
+        "pending": "留言已收到，审核后显示。",
+        "submitError": "发送失败，文字已保留，请稍后重试。",
+        "rateLimited": "发送得有些频繁，文字已保留，请稍后再试。",
+        "invalidBody": "请填写 1 至 2000 字的留言。",
+        "invalidNickname": "昵称请保持在 40 字以内。",
+        "anonymous": "匿名访客",
+        "owner": "作者",
+        "reply": "回复",
+        "replyTo": "正在回复",
+        "replyLoading": "正在确认回复对象，请稍候或取消回复。",
+        "replyUnavailable": "暂时无法回复这条留言，请重新读取或取消回复。",
+        "cancelReply": "取消回复",
+        "website": "网站（请留空）",
+        "count": "字",
+        "open": "查看留言"
+      },
+      "ja": {
+        "title": "コメント",
+        "note": "ログイン不要です。承認後に表示されます。",
+        "unavailable": "コメントは準備中です",
+        "loading": "コメントを読み込み中…",
+        "empty": "最初のひとことを残してみませんか。",
+        "loadError": "コメントを読み込めませんでした。",
+        "retry": "もう一度読み込む",
+        "nickname": "お名前（任意）",
+        "nicknamePlaceholder": "匿名の訪問者",
+        "body": "メッセージ",
+        "bodyPlaceholder": "ひとことをどうぞ…",
+        "submit": "コメントを送る",
+        "submitting": "送信中…",
+        "pending": "コメントを受け付けました。承認後に表示されます。",
+        "submitError": "送信できませんでした。入力は残っています。しばらくしてからお試しください。",
+        "rateLimited": "送信が続いています。入力は残っています。少し待ってからお試しください。",
+        "invalidBody": "1〜2000文字のコメントを入力してください。",
+        "invalidNickname": "お名前は40文字以内で入力してください。",
+        "anonymous": "匿名の訪問者",
+        "owner": "作者",
+        "reply": "返信",
+        "replyTo": "返信先",
+        "replyLoading": "返信先を確認中です。少し待つか、返信を取り消してください。",
+        "replyUnavailable": "このコメントには返信できません。再読み込みするか、返信を取り消してください。",
+        "cancelReply": "返信を取り消す",
+        "website": "ウェブサイト（入力しないでください）",
+        "count": "文字",
+        "open": "コメントを見る"
+      }
+    },
+    "fixed": {
+      "zh": {
+        "homeEyebrow": "A LITTLE LUCK, A LITTLE EVERYDAY.",
+        "coordinate": "SHIRATSUME'S LITTLE GARDEN",
+        "coordinatePages": "01 — 04",
+        "navHomeSubtitle": "HOME",
+        "navHelloSubtitle": "HELLO",
+        "navMomentsSubtitle": "MOMENTS",
+        "navCollectionSubtitle": "ABOUT",
+        "modelReading": "SHIRATSUME",
+        "modelFooter": "A LITTLE CLOVER, MANY LITTLE SIDES.",
+        "modelPage": "01 / 03",
+        "primaryModelName": "しらつめ",
+        "videoLabel": "首页视频"
+      },
+      "ja": {
+        "homeEyebrow": "A LITTLE LUCK, A LITTLE EVERYDAY.",
+        "coordinate": "SHIRATSUME'S LITTLE GARDEN",
+        "coordinatePages": "01 — 04",
+        "navHomeSubtitle": "HOME",
+        "navHelloSubtitle": "HELLO",
+        "navMomentsSubtitle": "MOMENTS",
+        "navCollectionSubtitle": "ABOUT",
+        "modelReading": "SHIRATSUME",
+        "modelFooter": "A LITTLE CLOVER, MANY LITTLE SIDES.",
+        "modelPage": "01 / 03",
+        "primaryModelName": "しらつめ",
+        "videoLabel": "ホームの映像"
+      }
+    }
+  },
+  "modelProfile": {
+    "name": "しらつめ",
+    "zh": {
+      "eyebrow": "MEET SHIRATSUME.",
+      "heading": "しらつめ",
+      "lead": "换一身喜欢的衣服，\n出发收集今天的小小幸运。",
+      "description": "轻轻晃动的发梢、软软的猫耳，还有一蹦一跳的日常。\n在不同的衣装之间，遇见同一个可爱的她。"
+    },
+    "ja": {
+      "eyebrow": "MEET SHIRATSUME.",
+      "heading": "しらつめ",
+      "lead": "お気に入りの服に着替えたら、\n今日の小さな幸運を探しに。",
+      "description": "揺れる髪も、ふわふわの猫耳も、弾むような毎日も。\nいろいろな装いの中で、いつものかわいい彼女に出会って。"
+    }
+  },
+  "owner": {
+    "schemaVersion": 1,
+    "avatar": "./assets/owner-avatar.png",
+    "name": "Amubis",
+    "bio": "Chaotic Good",
+    "contacts": [],
+    "socials": {
+      "xiaohongshu": "https://xhslink.cn/o/5Edl2I5FOIJ",
+      "x": "https://x.com/amubis1",
+      "vrchat": "https://vrchat.com/home/user/usr_6d804734-2944-478b-a1bd-eb37cd14dbf9",
+      "pixiv": "https://www.pixiv.net/users/9527287"
+    },
+    "journal": {
+      "mode": "placeholder",
+      "url": null
+    }
+  },
+  "outfits": [
+    {
+      "id": "sailor",
+      "label": {
+        "zh": "Noir Academy",
+        "ja": "Noir Academy"
+      },
+      "front": "./assets/outfits/outfit-v2-01-front.png",
+      "back": "./assets/outfits/outfit-v2-01-back.png",
+      "imageWidth": 1440,
+      "imageHeight": 2560,
+      "frontBounds": [
+        396,
+        192,
+        1128,
+        2507
+      ],
+      "backBounds": [
+        278,
+        127,
+        1056,
+        2518
+      ]
+    },
+    {
+      "id": "lace",
+      "label": {
+        "zh": "本命Knit",
+        "ja": "本命ニット"
+      },
+      "front": "./assets/outfits/outfit-v2-02-front.png",
+      "back": "./assets/outfits/outfit-v2-02-back.png",
+      "imageWidth": 1440,
+      "imageHeight": 2560,
+      "frontBounds": [
+        247,
+        146,
+        1182,
+        2519
+      ],
+      "backBounds": [
+        267,
+        175,
+        1239,
+        2425
+      ]
+    },
+    {
+      "id": "hoodie",
+      "label": {
+        "zh": "小黄鸭",
+        "ja": "ディフォルト"
+      },
+      "front": "./assets/outfits/outfit-v2-03-front.png",
+      "back": "./assets/outfits/outfit-v2-03-back.png",
+      "imageWidth": 1440,
+      "imageHeight": 2560,
+      "frontBounds": [
+        146,
+        143,
+        1290,
+        2401
+      ],
+      "backBounds": [
+        320,
+        154,
+        1340,
+        2385
+      ]
+    },
+    {
+      "id": "gingham",
+      "label": {
+        "zh": "My Sunny Femme",
+        "ja": "My Sunny Femme"
+      },
+      "front": "./assets/outfits/outfit-v2-04-front.png",
+      "back": "./assets/outfits/outfit-v2-04-back.png",
+      "imageWidth": 1440,
+      "imageHeight": 2560,
+      "frontBounds": [
+        380,
+        98,
+        1060,
+        2509
+      ],
+      "backBounds": [
+        348,
+        89,
+        1056,
+        2533
+      ]
+    }
+  ],
+  "media": [
+    {
+      "id": "still-01",
+      "url": "./assets/frame-01.jpg",
+      "thumbnail": "./assets/frame-01.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 1 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した1枚目の画像"
+      },
+      "caption": "",
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "worldName": "",
+      "worldId": "",
+      "sourceKind": "video-still",
+      "enabled": true,
+      "width": 0,
+      "height": 0,
+      "timeZone": "",
+      "originalKey": null,
+      "originalName": "",
+      "metadataSource": {},
+      "warnings": []
+    },
+    {
+      "id": "still-02",
+      "url": "./assets/frame-02.jpg",
+      "thumbnail": "./assets/frame-02.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 2 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した2枚目の画像"
+      },
+      "caption": "",
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "worldName": "",
+      "worldId": "",
+      "sourceKind": "video-still",
+      "enabled": true,
+      "width": 0,
+      "height": 0,
+      "timeZone": "",
+      "originalKey": null,
+      "originalName": "",
+      "metadataSource": {},
+      "warnings": []
+    },
+    {
+      "id": "still-03",
+      "url": "./assets/frame-03.jpg",
+      "thumbnail": "./assets/frame-03.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 3 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した3枚目の画像"
+      },
+      "caption": "",
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "worldName": "",
+      "worldId": "",
+      "sourceKind": "video-still",
+      "enabled": true,
+      "width": 0,
+      "height": 0,
+      "timeZone": "",
+      "originalKey": null,
+      "originalName": "",
+      "metadataSource": {},
+      "warnings": []
+    },
+    {
+      "id": "still-04",
+      "url": "./assets/frame-04.jpg",
+      "thumbnail": "./assets/frame-04.jpg",
+      "alt": {
+        "zh": "しらつめ测试视频的第 4 个摘帧",
+        "ja": "しらつめのテスト映像から切り出した4枚目の画像"
+      },
+      "caption": "",
+      "modelIds": [
+        "shiratsume"
+      ],
+      "takenAt": null,
+      "worldName": "",
+      "worldId": "",
+      "sourceKind": "video-still",
+      "enabled": true,
+      "width": 0,
+      "height": 0,
+      "timeZone": "",
+      "originalKey": null,
+      "originalName": "",
+      "metadataSource": {},
+      "warnings": []
+    }
+  ],
+  "journal": []
+}

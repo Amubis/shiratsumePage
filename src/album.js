@@ -1,5 +1,6 @@
 import { cloverSVG, seededRandom } from './scene.js';
 import { createAlbumPlayerMotion } from './album-player-motion.js';
+import { createAnonymousComments } from './comments.js';
 
 /** Public content records; a future CMS can replace this array through setMedia(). */
 export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) => Object.freeze({
@@ -12,10 +13,13 @@ export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) =>
 
 export const ALBUM_VIEWS = Object.freeze(['day', 'month', 'year']);
 const PAGE_SIZES = Object.freeze({ day: 6, month: 9, year: 12 });
-const COPY = Object.freeze({
+export const ALBUM_COPY = Object.freeze({
   zh: { title: '日常影像册', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片' },
   ja: { title: '日々のアルバム', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません' },
 });
+const albumCopyDictionary = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
+  Object.fromEntries(Object.entries(ALBUM_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
+]));
 
 function dateKey(value, view) {
   const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|$)/);
@@ -69,13 +73,14 @@ export function albumPhotoPose(id, slot = 0) {
     rotation: (random() * 2 - 1) * 5.5, depth: 2 + Math.floor(random() * 8) };
 }
 
-export function createAlbum({ container, language = 'zh', modelId = 'shiratsume', media = ALBUM_MEDIA, reducedMotion = () => false, onReady = () => {} } = {}) {
+export function createAlbum({ container, language = 'zh', modelId = 'shiratsume', media = ALBUM_MEDIA, copy, commentsService = null, commentsCopy, reducedMotion = () => false, onReady = () => {} } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An album container is required.');
   const doc = container.ownerDocument;
   const win = doc.defaultView;
   const bindings = [];
   let cardBindings = [];
   let locale = language === 'ja' ? 'ja' : 'zh';
+  let dictionary = albumCopyDictionary(copy);
   let records = normalizeAlbumMedia(media);
   let filter = 'model';
   let view = 'day';
@@ -99,7 +104,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     list.push(() => node.removeEventListener(name, handler));
   };
   const button = (className) => { const node = element('button', className); node.type = 'button'; return node; };
-  const text = () => COPY[locale];
+  const text = () => dictionary[locale];
   const altFor = (item) => typeof item.alt === 'string' ? item.alt : item.alt?.[locale] || item.alt?.zh || text().defaultAlt;
   const groupLabel = (key) => key === 'undated' ? text().unknown : key.replaceAll('-', ' / ');
   const root = element('div', 'album-desk');
@@ -130,8 +135,10 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
 
   const dialog = element('dialog', 'album-player');
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');
+  const playerContent = element('div', 'album-player-content'); const playerStage = element('div', 'album-player-stage'); const playerComments = element('aside', 'album-player-comments');
   const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerCaption = element('figcaption', 'album-player-caption');
-  playerFigure.append(playerImage, playerCaption); dialog.append(playerClose, playerPrevious, playerFigure, playerNext); doc.body.append(dialog);
+  playerFigure.append(playerImage, playerCaption); playerStage.append(playerPrevious, playerFigure, playerNext); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent); doc.body.append(dialog);
+  const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
   const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion});
 
   function clearInspection() {
@@ -177,13 +184,16 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const date = dateKey(item.takenAt, 'day');
     playerCaption.textContent = `${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')} · ${date === 'undated' ? text().undated : groupLabel(date)}`;
     playerPrevious.disabled = playerNext.disabled = playerItems.length < 2;
+    commentPanel.setTarget('photo', item.id);
   }
   function restorePlayerFocus() {
+    commentPanel.setActive(false);
     if (!doc.querySelector?.('dialog[open]')) doc.body.classList.remove('modal-open');
     if (returnFocus?.isConnected !== false) returnFocus?.focus?.({ preventScroll: true });
     returnFocus = null;
   }
   function closePlayer(immediate = false) {
+    commentPanel.setActive(false);
     const hide = () => { if(dialog.open)dialog.close();else restorePlayerFocus(); };
     if (immediate === true) { playerMotion.cancel({hide}); return; }
     if (dialog.open) void playerMotion.close({hide});
@@ -196,7 +206,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const id = typeof idOrIndex === 'number' ? current.items[idOrIndex]?.id : idOrIndex;
     playerIndex = playerItems.findIndex((item) => item.id === id); if (playerIndex < 0) return false;
     const existing = doc.querySelector?.('dialog[open]'); if (existing && existing !== dialog) return false;
-    clearInspection(); returnFocus = doc.activeElement; renderPlayer();
+    clearInspection(); returnFocus = doc.activeElement; renderPlayer(); commentPanel.setActive(true);
     const card = cards[current.items.findIndex(item=>item.id===id)];
     void playerMotion.open({source:card,image:card?.children[0],show(){
       if (!dialog.open) dialog.showModal();
@@ -260,19 +270,23 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   bind(playerClose, 'click', closePlayer); bind(playerPrevious, 'click', () => changePlayer(-1)); bind(playerNext, 'click', () => changePlayer(1));
   bind(dialog, 'close', restorePlayerFocus); bind(dialog, 'click', (event) => { if (event.target === dialog) closePlayer(); });
   bind(dialog, 'keydown', (event) => {
+    if (['input', 'textarea', 'select'].includes(event.target?.localName) || event.target?.isContentEditable) return;
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault(); event.stopPropagation(); changePlayer(event.key === 'ArrowLeft' ? -1 : 1);
   });
   render();
   return {
     get state() { return { pageIndex, pageCount: pages.length, view, filter, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
-    setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; render(); },
+    setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; commentPanel.setLanguage(locale); render(); },
+    setCopy(nextCopy) { if (destroyed) return; dictionary = albumCopyDictionary(nextCopy); render(); },
+    setCommentsService(next) { if (!destroyed) commentPanel.setService(next); },
+    setCommentsCopy(next) { if (!destroyed) commentPanel.setCopy(next); },
     setModel(nextModel) { if (destroyed) return; closePlayer(true); modelId = String(nextModel); pageIndex = 0; render(); },
     setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(true); render(); },
     setMedia(nextMedia) { if (destroyed) return; closePlayer(true); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; render(); },
     setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; render(); return true; },
     setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; render(); return true; },
     goToPage, openPlayer, closePlayer,
-    destroy() { if (destroyed) return; closePlayer(true); playerMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
+    destroy() { if (destroyed) return; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

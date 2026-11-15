@@ -133,6 +133,48 @@ test('a sanitized wipe snapshot shares the same time and source radii without re
   f.controller.destroy();
 });
 
+test('Explore can hold the prepared frame until the clover opens and stretch both paints by 25 percent', async () => {
+  const f = fixture(); f.controller.prepare();
+  const snapshot = sectionFixture(f.doc, { blank: true, noBandData: true });
+  f.controller.attach(snapshot.section);
+  const delay = 328, durationScale = 1.25;
+  const done = f.controller.enter({ delay, durationScale });
+  f.at(delay - 1);
+  assert.equal(f.controller.elapsed, 0);
+  assert.ok(f.circles.every((circle) => radius(circle) === 0));
+  assert.equal(value(f.section, '--intro-actor-alpha'), 0);
+  assert.equal(f.stage.inert, true);
+  f.at(820);
+  assert.equal(f.controller.elapsed, (820 - delay) / durationScale);
+  assert.ok(f.controller.elapsed < INTRO_ENTRANCE_TIMING.actorDelay + INTRO_ENTRANCE_TIMING.actorDuration * .44,
+    'the portrait has not reached its first peak at the wipe handoff');
+  assert.deepEqual(snapshot.circles.map(radius), f.circles.map(radius));
+  assert.equal(snapshot.section.values.get('--intro-actor-y'), f.section.values.get('--intro-actor-y'));
+  f.at(delay + INTRO_ENTRANCE_TIMING.total);
+  assert.equal(f.controller.state, 'playing', 'the original duration must not finish a stretched entrance');
+  f.at(delay + INTRO_ENTRANCE_TIMING.total * durationScale);
+  assert.equal(await done, true);
+  assert.equal(f.controller.state, 'complete');
+  assert.equal(f.stage.inert, false);
+  assert.equal(f.footer.inert, false);
+  f.controller.destroy();
+});
+
+test('a delayed resumed entrance holds its requested pose without rewinding and keyboard input finishes it', async () => {
+  const f = fixture(); f.controller.prepare();
+  const done = f.controller.enter({ fromTime: 500, delay: 300, durationScale: 1.25 });
+  const pose = f.section.values.get('--intro-actor-y');
+  f.at(250);
+  assert.equal(f.controller.elapsed, 500);
+  assert.equal(f.section.values.get('--intro-actor-y'), pose);
+  f.at(425);
+  assert.equal(f.controller.elapsed, 600);
+  f.doc.emit('keydown', { key: 'Tab' });
+  assert.equal(await done, true);
+  assert.equal(f.controller.state, 'complete');
+  f.controller.destroy();
+});
+
 test('replay restores full target radii instead of treating an interrupted small dot as its new size', async () => {
   const f = fixture(); f.controller.prepare(); const first = f.controller.enter(); f.at(90);
   assert.ok(radius(f.circles[0]) < 10);
@@ -150,7 +192,7 @@ test('replay restores full target radii instead of treating an interrupted small
 test('reduced motion, disabled model, interruption and keyboard escape leave readable content', async () => {
   for (const kind of ['reduced', 'disabled', 'resize', 'hidden', 'keyboard', 'motion-change']) {
     const f = fixture({ reduced: kind === 'reduced', enabled: kind !== 'disabled' });
-    f.controller.prepare(); const done = f.controller.enter();
+    f.controller.prepare(); const done = f.controller.enter({ delay: 328, durationScale: 1.25 });
     if (kind === 'resize') f.win.emit('resize');
     if (kind === 'hidden') { f.doc.hidden = true; f.doc.emit('visibilitychange'); }
     if (kind === 'keyboard') f.doc.emit('keydown', { key: 'Tab' });

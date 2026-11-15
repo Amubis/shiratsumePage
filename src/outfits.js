@@ -15,28 +15,79 @@ export const MODEL_PROFILE = Object.freeze({
   ja: Object.freeze({ eyebrow: 'MEET SHIRATSUME.', heading: 'しらつめ', lead: 'お気に入りの服に着替えたら、\n今日の小さな幸運を探しに。', description: '揺れる髪も、ふわふわの猫耳も、弾むような毎日も。\nいろいろな装いの中で、いつものかわいい彼女に出会って。' }),
 });
 
-const OUTFIT_COPY = Object.freeze({
-  zh: Object.freeze({ choose: '选择服装', next: '点击切换下一套服装', front: '正面', back: '背面', inspect: '查看这套服装的背面', failure: '这套服装暂时加载失败，请再试一次。' }),
-  ja: Object.freeze({ choose: 'コーデを選ぶ', next: 'タップして次のコーデへ', front: '正面', back: '背面', inspect: 'このコーデの後ろ姿を見る', failure: '画像を読み込めませんでした。もう一度お試しください。' }),
+export const OUTFIT_COPY = Object.freeze({
+  zh: Object.freeze({ choose: '选择服装', next: '点击切换下一套服装', front: '正面', back: '背面', inspect: '查看这套服装的背面', failure: '这套服装暂时加载失败，请再试一次。', empty: '还没有服装展示。' }),
+  ja: Object.freeze({ choose: 'コーデを選ぶ', next: 'タップして次のコーデへ', front: '正面', back: '背面', inspect: 'このコーデの後ろ姿を見る', failure: '画像を読み込めませんでした。もう一度お試しください。', empty: 'コーデはまだ登録されていません。' }),
 });
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const IMAGE_WIDTH = 1440;
 const IMAGE_HEIGHT = 2560;
 let outfitSerial = 0;
 
+function normalizedCopy(input = OUTFIT_COPY) {
+  return Object.fromEntries(['zh', 'ja'].map(locale => [locale, Object.fromEntries(Object.entries(OUTFIT_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback]))]));
+}
+
+
+function safeOutfitURL(value) {
+  if (typeof value !== 'string') return null;
+  const url = value.trim();
+  if (!url || /[\u0000-\u001f\u007f\\]/.test(url) || /^(?:\/\/|#|\?)/.test(url)) return null;
+  try { return ['https:', 'http:'].includes(new URL(url, 'https://outfits.invalid/').protocol) ? url : null; }
+  catch { return null; }
+}
+const imageSize = (value, fallback) => Array.isArray(value) && value.length === 2 && value.every(number => Number.isFinite(number) && number >= 1 && number <= 32768) ? value.map(Math.round) : [...fallback];
+function normalizedBounds(bounds, [width, height]) {
+  if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite)) return [0, 0, width, height];
+  const result = [Math.max(0, Math.min(width, bounds[0])), Math.max(0, Math.min(height, bounds[1])), Math.max(0, Math.min(width, bounds[2])), Math.max(0, Math.min(height, bounds[3]))];
+  return result[2] > result[0] && result[3] > result[1] ? result : [0, 0, width, height];
+}
+/** Public outfit configuration; bounds stay in original-image pixels. */
+export function normalizeOutfits(input = OUTFITS) {
+  const items = Array.isArray(input) ? input : Array.isArray(input?.outfits) ? input.outfits : [];
+  const ids = new Set();
+  return items.flatMap((item, index) => {
+    const front = safeOutfitURL(item?.front);
+    const id = typeof item?.id === 'string' && item.id.trim() ? item.id.trim().slice(0, 160) : `outfit-${index + 1}`;
+    if (!front || ids.has(id)) return [];
+    ids.add(id);
+    const size = imageSize([item.imageWidth, item.imageHeight], [IMAGE_WIDTH, IMAGE_HEIGHT]);
+    const frontSize = imageSize(item.frontSize, size), backSize = imageSize(item.backSize, size);
+    const label = typeof item.label === 'string' ? { zh: item.label, ja: item.label } : item.label || {};
+    const zh = typeof label.zh === 'string' && label.zh.trim() ? label.zh.trim() : typeof label.ja === 'string' && label.ja.trim() ? label.ja.trim() : id;
+    const ja = typeof label.ja === 'string' && label.ja.trim() ? label.ja.trim() : zh;
+    const correction = item.backCalibration || {};
+    const finite = (value, fallback, minimum, maximum) => Number.isFinite(value) ? Math.max(minimum, Math.min(maximum, value)) : fallback;
+    return [{ id, label: { zh, ja }, front, back: safeOutfitURL(item.back), imageWidth: size[0], imageHeight: size[1], frontSize, backSize,
+      frontBounds: normalizedBounds(item.frontBounds, frontSize), backBounds: normalizedBounds(item.backBounds, backSize),
+      backCalibration: { scale: finite(correction.scale, 1, .2, 4), offsetX: finite(correction.offsetX, 0, -32768, 32768), offsetY: finite(correction.offsetY, 0, -32768, 32768) } }];
+  });
+}
+function canvasFit(size) {
+  const [width, height] = size;
+  const scale = Math.min(IMAGE_WIDTH / width, IMAGE_HEIGHT / height);
+  return { scale, x: (IMAGE_WIDTH - width * scale) / 2, y: (IMAGE_HEIGHT - height * scale) / 2 };
+}
+function canvasBounds(outfit, side) {
+  const size = imageSize(outfit[`${side}Size`], imageSize([outfit.imageWidth, outfit.imageHeight], [IMAGE_WIDTH, IMAGE_HEIGHT]));
+  const fit = canvasFit(size), bounds = normalizedBounds(outfit[`${side}Bounds`], size);
+  return [bounds[0] * fit.scale + fit.x, bounds[1] * fit.scale + fit.y, bounds[2] * fit.scale + fit.x, bounds[3] * fit.scale + fit.y];
+}
+
 /** Normalize the visible figures, rather than assuming equal PNG canvases mean equal height.
  * Optional per-outfit backCalibration: { scale, offsetX, offsetY } uses source-image
  * pixels for offsets, leaving room to correct pose/perspective by eye later. */
 export function outfitViewGeometry(outfit) {
-  const front = outfit.frontBounds;
-  const back = outfit.backBounds;
+  const front = canvasBounds(outfit, 'front');
+  const back = canvasBounds(outfit, 'back');
   const correction = outfit.backCalibration || {};
   const previewScale = (front[3] - front[1]) / Math.max(1, back[3] - back[1]) * (correction.scale ?? 1);
   const restScale = previewScale * .93;
   const frontCenter = (front[0] + front[2]) / (2 * IMAGE_WIDTH);
   const backCenter = (back[0] + back[2]) / (2 * IMAGE_WIDTH);
-  const offsetX = (correction.offsetX ?? 0) / IMAGE_WIDTH;
-  const offsetY = (correction.offsetY ?? 0) / IMAGE_HEIGHT;
+  const fit = canvasFit(imageSize(outfit.backSize, imageSize([outfit.imageWidth, outfit.imageHeight], [IMAGE_WIDTH, IMAGE_HEIGHT])));
+  const offsetX = (correction.offsetX ?? 0) * fit.scale / IMAGE_WIDTH;
+  const offsetY = (correction.offsetY ?? 0) * fit.scale / IMAGE_HEIGHT;
   const horizontal = (scale) => frontCenter - (.5 + (backCenter - .5) * scale) + offsetX;
   const vertical = (scale) => front[3] / IMAGE_HEIGHT - .5 - (back[3] / IMAGE_HEIGHT - .5) * scale + offsetY;
   return {
@@ -56,6 +107,8 @@ export function wrapOutfitIndex(index, length = OUTFITS.length) {
 
 /** Visual spacing is independent from the fixed, accessible 44px button slots. */
 export function outfitRailGeometry(position, count = OUTFITS.length, slot = 44) {
+  if (!Number.isInteger(count) || count < 0) throw new TypeError('An outfit count must be a non-negative integer.');
+  if (!count) return { position: 0, width: 0, dots: [], cloverX: 0, cloverSize: 26 };
   const focus = Math.max(-.12, Math.min(count - .88, Number(position) || 0));
   const influence = (distance) => Math.max(0, 1 - Math.abs(distance) / 1.3);
   const gaps = Array.from({ length: Math.max(0, count - 1) }, (_, index) => 24 + 16 * influence(index + .5 - focus));
@@ -73,6 +126,7 @@ export function outfitRailGeometry(position, count = OUTFITS.length, slot = 44) 
 
 /** Pointer clicks resolve against what is actually painted, including moving gaps. */
 export function nearestOutfitDot(x, geometry) {
+  if (!geometry?.dots?.length) return -1;
   return geometry.dots.reduce((best, dot) => Math.abs(dot.x - x) < Math.abs(best.x - x) ? dot : best).index;
 }
 
@@ -90,8 +144,13 @@ function railPositionAtX(x, count) {
 export const OUTFIT_HINT_TIMING = Object.freeze({ delay: 4000, duration: 2800 });
 
 /** One selected outfit with independently accessible front and rear views. */
-export function createOutfitShowcase({ container, language = 'zh', reducedMotion = () => false, onChange = () => {} } = {}) {
+function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = () => false, onChange = () => {}, outfits = OUTFITS, initialIndex = 0, copy = OUTFIT_COPY } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An outfit showcase container is required.');
+  const records = normalizeOutfits(outfits);
+  let messages = normalizedCopy(copy);
+  if (!records.length) return createEmptyOutfitShowcase({ container, language, copy: messages });
+  const wrap = index => wrapOutfitIndex(index, records.length);
+  const railGeometry = position => outfitRailGeometry(position, records.length);
   const doc = container.ownerDocument;
   const win = doc.defaultView;
   const uid = `outfit-showcase-${++outfitSerial}`;
@@ -99,7 +158,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   const preloads = new Map();
   const animations = new Set();
   let locale = language === 'ja' ? 'ja' : 'zh';
-  let currentIndex = 0;
+  let currentIndex = Number.isInteger(initialIndex) ? wrap(initialIndex) : 0;
   let enabled = true;
   let busy = false;
   let interacted = false;
@@ -125,8 +184,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   let pressBounds = null;
   let keyboardHeld = false;
   let suppressClick = false;
-  let railPosition = 0;
-  let railTarget = 0;
+  let railPosition = currentIndex;
+  let railTarget = currentIndex;
   let railVelocity = 0;
   let railRotation = 0;
   let railFrame = null;
@@ -165,7 +224,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   const shadow = svgElement('svg', { class: 'outfit-shadow outfit-shared-shadow', viewBox: `0 0 ${IMAGE_WIDTH} ${IMAGE_HEIGHT}`, 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'none' });
   const shadowDefs = svgElement('defs');
   const shadowMask = svgElement('mask', { id: `${uid}-mask`, maskUnits: 'userSpaceOnUse', x: '-320', y: '-320', width: IMAGE_WIDTH + 640, height: IMAGE_HEIGHT + 640, 'mask-type': 'alpha', style: 'mask-type:alpha', 'data-composite': 'alpha-union' });
-  const shadowSources = [OUTFITS[0].front, OUTFITS[0].back].map((source, index) => svgElement('image', { class: index ? 'outfit-projection-back' : 'outfit-projection-front', x: '0', y: '0', width: IMAGE_WIDTH, height: IMAGE_HEIGHT, preserveAspectRatio: 'xMidYMid meet', href: source }));
+  const shadowSources = [records[currentIndex].front, records[currentIndex].back].map((source, index) => svgElement('image', { class: index ? 'outfit-projection-back' : 'outfit-projection-front', x: '0', y: '0', width: IMAGE_WIDTH, height: IMAGE_HEIGHT, preserveAspectRatio: 'xMidYMid meet', ...(source ? { href: source } : {}) }));
   shadowMask.append(...shadowSources);
   const shadowPattern = svgElement('pattern', { id: `${uid}-dots`, width: '52', height: '52', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
   shadowPattern.append(svgElement('circle', { cx: '26', cy: '26', r: '19', fill: 'currentColor' }));
@@ -179,7 +238,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   image.height = IMAGE_HEIGHT;
   image.decoding = 'async';
   image.draggable = false;
-  image.src = OUTFITS[0].front;
+  image.src = records[currentIndex].front;
   art.append(image);
   const cue = element('span', 'outfit-cue');
   cue.setAttribute('aria-hidden', 'true');
@@ -197,17 +256,19 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   backImage.height = IMAGE_HEIGHT;
   backImage.decoding = 'async';
   backImage.draggable = false;
-  backImage.src = OUTFITS[0].back;
+  if (records[currentIndex].back) backImage.src = records[currentIndex].back;
   backArt.append(backImage);
   backStage.append(backArt);
   pair.append(shadow, stage, backStage);
   const footer = element('div', 'outfit-footer');
+  footer.style.width = '100%'; footer.style.maxWidth = '100%';
+  footer.style.overflowX = 'auto'; footer.style.overflowY = 'hidden';
   const dots = element('div', 'outfit-dots');
   dots.setAttribute('role', 'group');
   const railClover = element('span', 'outfit-rail-clover');
   railClover.setAttribute('aria-hidden', 'true');
   railClover.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'small' });
-  const dotButtons = OUTFITS.map((outfit, index) => {
+  const dotButtons = records.map((outfit, index) => {
     const button = element('button', 'outfit-dot');
     button.type = 'button';
     button.style.left = `${index * 44}px`;
@@ -223,7 +284,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     bind(button, 'focus', () => { if (!railHovered) targetRail(index); });
     bind(button, 'blur', () => { if (!railHovered) targetRail(currentIndex); });
     bind(button, 'keydown', (event) => {
-      const targets = { ArrowLeft: wrapOutfitIndex(index - 1), ArrowRight: wrapOutfitIndex(index + 1), Home: 0, End: OUTFITS.length - 1 };
+      const targets = { ArrowLeft: wrap(index - 1), ArrowRight: wrap(index + 1), Home: 0, End: records.length - 1 };
       if (!Object.hasOwn(targets, event.key)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -260,12 +321,12 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     setShadowAttribute(shadow, 'viewBox', `0 0 ${viewWidth.toFixed(5)} ${IMAGE_HEIGHT}`);
     for (const node of [shadowMask, shadowPaint]) setShadowAttribute(node, 'width', (viewWidth + 640).toFixed(5));
     const inspecting = pair.classList.contains('is-back-inspected');
-    const geometry = outfitViewGeometry(OUTFITS[currentIndex]);
+    const geometry = outfitViewGeometry(records[currentIndex]);
     [stage, backStage].forEach((node, index) => {
       const style = win?.getComputedStyle?.(node);
       let width = IMAGE_WIDTH, height = IMAGE_HEIGHT;
       let x = viewWidth / 2, y = 0;
-      let tx = index ? geometry[inspecting ? 'previewX' : 'restX'] / 100 * IMAGE_WIDTH : (inspecting ? -.7 : -.62) * IMAGE_WIDTH;
+      let tx = index ? geometry[inspecting ? 'previewX' : 'restX'] / 100 * IMAGE_WIDTH : (records[currentIndex].back ? inspecting ? -.7 : -.62 : -.5) * IMAGE_WIDTH;
       let ty = index ? geometry[inspecting ? 'previewY' : 'restY'] / 100 * IMAGE_HEIGHT : 0;
       let sx = index ? geometry[inspecting ? 'previewScale' : 'restScale'] : 1;
       let sy = sx;
@@ -326,7 +387,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function syncBackInspection() {
-    const inspecting = enabled && !busy && (backHovered || backFocused);
+    const inspecting = enabled && Boolean(records[currentIndex].back) && !busy && (backHovered || backFocused);
     const changed = pair.classList.contains('is-back-inspected') !== inspecting;
     pair.classList.toggle('is-back-inspected', inspecting);
     if (changed) trackSharedShadow();
@@ -347,20 +408,24 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function renderLabels(announce = false) {
-    const copy = OUTFIT_COPY[locale];
-    const outfit = OUTFITS[currentIndex];
+    const copy = messages[locale];
+    const outfit = records[currentIndex];
     const label = outfit.label[locale];
-    const number = `${String(currentIndex + 1).padStart(2, '0')} / ${String(OUTFITS.length).padStart(2, '0')}`;
-    stage.setAttribute('aria-label', `${label} · ${copy.next}`);
+    const number = `${String(currentIndex + 1).padStart(2, '0')} / ${String(records.length).padStart(2, '0')}`;
+    stage.setAttribute('aria-label', records.length > 1 ? `${label} · ${copy.next}` : `${label} · ${copy.front}`);
     stage.setAttribute('aria-busy', String(busy));
-    stage.disabled = !enabled;
-    backStage.disabled = !enabled;
-    backStage.setAttribute('aria-label', `${label} · ${copy.back} · ${copy.next}`);
+    stage.disabled = !enabled || records.length < 2;
+    backStage.disabled = !enabled || !outfit.back;
+    backStage.hidden = !outfit.back;
+    shadowSources[1].style.display = outfit.back ? '' : 'none';
+    stage.style.translate = outfit.back ? '' : '-50% 0';
+    dots.hidden = records.length < 2;
+    backStage.setAttribute('aria-label', records.length > 1 ? `${label} · ${copy.back} · ${copy.next}` : `${label} · ${copy.inspect}`);
     backStage.setAttribute('aria-busy', String(busy));
     image.alt = `しらつめ · ${label} · ${copy.front}`;
     backImage.alt = `しらつめ · ${label} · ${copy.back}`;
-    updateHitBounds(stage, outfit.frontBounds);
-    updateHitBounds(backStage, outfit.backBounds);
+    updateHitBounds(stage, canvasBounds(outfit, 'front'));
+    updateHitBounds(backStage, canvasBounds(outfit, 'back'));
     const geometry = outfitViewGeometry(outfit);
     for (const mode of ['rest', 'preview']) {
       pair.style.setProperty(`--back-${mode}-scale`, String(geometry[`${mode}Scale`]));
@@ -371,17 +436,17 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     refreshHint();
     dots.setAttribute('aria-label', copy.choose);
     dotButtons.forEach((button, index) => {
-      button.setAttribute('aria-label', `${OUTFITS[index].label[locale]} (${index + 1} / ${OUTFITS.length})`);
+      button.setAttribute('aria-label', `${records[index].label[locale]} (${index + 1} / ${records.length})`);
       button.setAttribute('aria-pressed', String(index === currentIndex));
       button.classList.toggle('is-selected', index === currentIndex);
-      button.disabled = !enabled;
+      button.disabled = !enabled || records.length < 2;
     });
     if (announce) status.textContent = `${label} · ${number}`;
     trackSharedShadow();
   }
 
   function paintRail() {
-    const geometry = outfitRailGeometry(railPosition);
+    const geometry = railGeometry(railPosition);
     dots.style.width = `${geometry.width}px`;
     geometry.dots.forEach((dot) => {
       const circle = dotButtons[dot.index].children[0];
@@ -402,14 +467,14 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function rollBetween(from, to) {
-    const previous = outfitRailGeometry(from);
-    const next = outfitRailGeometry(to);
+    const previous = railGeometry(from);
+    const next = railGeometry(to);
     return (next.cloverX - previous.cloverX) / (next.cloverSize / 2) * 180 / Math.PI;
   }
 
   function targetRail(target, immediate = false) {
     if (destroyed) return;
-    railTarget = Math.max(0, Math.min(OUTFITS.length - 1, target));
+    railTarget = Math.max(0, Math.min(records.length - 1, target));
     if (immediate || reducedMotion() || !win?.requestAnimationFrame) {
       stopRail();
       railRotation += rollBetween(railPosition, railTarget);
@@ -431,8 +496,8 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       railPosition += railVelocity * dt;
       // Pointer travel has firm end stops. Programmatic turns retain their
       // small water-like settling overshoot at either end of the rail.
-      if (railHovered && (railPosition < 0 || railPosition > OUTFITS.length - 1)) {
-        railPosition = Math.max(0, Math.min(OUTFITS.length - 1, railPosition));
+      if (railHovered && (railPosition < 0 || railPosition > records.length - 1)) {
+        railPosition = Math.max(0, Math.min(records.length - 1, railPosition));
         railVelocity = 0;
       }
       railRotation += rollBetween(before, railPosition);
@@ -452,25 +517,25 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
 
   function localRailX(clientX) {
     const bounds = dots.getBoundingClientRect();
-    return (clientX - bounds.left) * (OUTFITS.length * 44 / (bounds.width || OUTFITS.length * 44));
+    return (clientX - bounds.left) * (records.length * 44 / (bounds.width || records.length * 44));
   }
 
   function pickPointerDot(clientX) {
-    return nearestOutfitDot(localRailX(clientX), outfitRailGeometry(railPosition));
+    return nearestOutfitDot(localRailX(clientX), railGeometry(railPosition));
   }
 
   function followRailPointer(event) {
     if (!enabled || event.pointerType === 'touch' || !Number.isFinite(event.clientX)) return;
     railHovered = true;
-    if (railPosition < 0 || railPosition > OUTFITS.length - 1) {
-      const edge = Math.max(0, Math.min(OUTFITS.length - 1, railPosition));
+    if (railPosition < 0 || railPosition > records.length - 1) {
+      const edge = Math.max(0, Math.min(records.length - 1, railPosition));
       railRotation += rollBetween(railPosition, edge);
       railPosition = edge;
       railVelocity = 0;
       paintRail();
     }
     railPointerX = localRailX(event.clientX);
-    const geometry = outfitRailGeometry(railPosition);
+    const geometry = railGeometry(railPosition);
     const first = geometry.dots[0];
     const last = geometry.dots.at(-1);
     if (railPointerX <= first.x + 14) railMagnet = first.index;
@@ -482,7 +547,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     if (railMagnet !== null) { targetRail(railMagnet); return; }
     const nearest = geometry.dots[nearestOutfitDot(railPointerX, geometry)];
     if (Math.abs(railPointerX - nearest.x) <= 14) railMagnet = nearest.index;
-    targetRail(railMagnet ?? railPositionAtX(railPointerX, OUTFITS.length));
+    targetRail(railMagnet ?? railPositionAtX(railPointerX, records.length));
   }
 
   bind(dots, 'pointerenter', followRailPointer);
@@ -513,7 +578,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function canWaitForHint() {
-    return !destroyed && enabled && hintActive && !doc.hidden && !interacted && !hintShown && !busy && !pressed && !hintHovered && !hintFocused;
+    return !destroyed && enabled && records.length > 1 && hintActive && !doc.hidden && !interacted && !hintShown && !busy && !pressed && !hintHovered && !hintFocused;
   }
 
   function refreshHint() {
@@ -532,11 +597,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function preload(index) {
-    const outfit = OUTFITS[wrapOutfitIndex(index)];
+    const outfit = records[wrap(index)];
     if (preloads.has(outfit.id)) return preloads.get(outfit.id);
     const loading = (async () => {
       try {
-        return await Promise.all([outfit.front, outfit.back].map(async (source) => {
+        return await Promise.all([outfit.front, outfit.back].filter(Boolean).map(async (source) => {
           const loaded = doc.createElement('img');
           loaded.decoding = 'async';
           loaded.fetchPriority = 'low';
@@ -566,11 +631,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
 
   async function goTo(index, { animate = true, interaction = true } = {}) {
     if (destroyed || !enabled || busy || !Number.isInteger(index)) return false;
-    const destination = wrapOutfitIndex(index);
+    const destination = wrap(index);
     if (interaction) markInteracted();
     if (destination === currentIndex) { if (pressReleased) cancelPress(); return true; }
     const request = ++serial;
-    const direction = wrapOutfitIndex(destination - currentIndex) <= OUTFITS.length / 2 ? 1 : -1;
+    const direction = wrap(destination - currentIndex) <= records.length / 2 ? 1 : -1;
     busy = true;
     resetBackInspection();
     stage.setAttribute('aria-busy', 'true');
@@ -582,7 +647,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       cancelPress();
       stage.setAttribute('aria-busy', 'false');
       backStage.setAttribute('aria-busy', 'false');
-      status.textContent = OUTFIT_COPY[locale].failure;
+      status.textContent = messages[locale].failure;
       return false;
     }
     // A slow connection leaves the released portrait quietly compressed until
@@ -595,13 +660,13 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
     ], 190);
     if (destroyed || !enabled || request !== serial) return false;
     currentIndex = destination;
-    image.src = OUTFITS[currentIndex].front;
-    backImage.src = OUTFITS[currentIndex].back;
-    shadowSources[0].setAttribute('href', OUTFITS[currentIndex].front);
-    shadowSources[1].setAttribute('href', OUTFITS[currentIndex].back);
+    image.src = records[currentIndex].front;
+    if (records[currentIndex].back) backImage.src = records[currentIndex].back; else backImage.removeAttribute('src');
+    shadowSources[0].setAttribute('href', records[currentIndex].front);
+    if (records[currentIndex].back) shadowSources[1].setAttribute('href', records[currentIndex].back); else shadowSources[1].removeAttribute('href');
     renderLabels(true);
     if (!railHovered) targetRail(currentIndex);
-    onChange(currentIndex, OUTFITS[currentIndex]);
+    onChange(currentIndex, records[currentIndex]);
     if (animate && !reducedMotion()) await animateArt([
       { transform: `translateX(${direction * 22}px) rotateY(${direction * 66}deg)`, opacity: 0 },
       { transform: `translateX(${-direction * 2}px) rotateY(${-direction * 3}deg) rotateZ(${-direction * .8}deg)`, opacity: 1, offset: .8 },
@@ -619,7 +684,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
 
   function holdPress(target = stage) {
-    if (destroyed || !enabled || busy) return false;
+    if (destroyed || !enabled || busy || records.length < 2) return false;
     pressAnimation?.cancel();
     backPressAnimation?.cancel();
     if (target !== backStage) resetBackInspection();
@@ -738,7 +803,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
         if (!event.repeat && holdPress(target)) keyboardHeld = true;
         return;
       }
-      const targets = { ArrowLeft: currentIndex - 1, ArrowRight: currentIndex + 1, Home: 0, End: OUTFITS.length - 1 };
+      const targets = { ArrowLeft: currentIndex - 1, ArrowRight: currentIndex + 1, Home: 0, End: records.length - 1 };
       if (!Object.hasOwn(targets, event.key)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -806,10 +871,11 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
   }
   renderLabels();
   targetRail(currentIndex, true);
-  void preload(0).then(() => { if (!destroyed) void preload(1); });
+  void preload(currentIndex).then(() => { if (!destroyed && records.length > 1) void preload(currentIndex + 1); });
 
   return {
     get index() { return currentIndex; },
+    get outfitId() { return records[currentIndex].id; },
     goTo,
     next() { return goTo(currentIndex + 1); },
     previous() { return goTo(currentIndex - 1); },
@@ -818,6 +884,7 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       hintActive = Boolean(value);
       refreshHint();
     },
+    setCopy(next) { if (!destroyed) { messages = normalizedCopy(next); renderLabels(); } },
     setLanguage(nextLanguage) {
       if (destroyed) return;
       locale = nextLanguage === 'ja' ? 'ja' : 'zh';
@@ -858,5 +925,55 @@ export function createOutfitShowcase({ container, language = 'zh', reducedMotion
       container.replaceChildren();
       container.classList.remove('outfit-showcase');
     },
+  };
+}
+
+
+function createEmptyOutfitShowcase({ container, language, copy }) {
+  let messages = normalizedCopy(copy);
+  const message = container.ownerDocument.createElement('p');
+  message.className = 'outfit-empty'; message.setAttribute('role', 'status');
+  message.style.minHeight = 'min(60svh, 560px)'; message.style.display = 'grid'; message.style.placeItems = 'center';
+  let locale = language === 'ja' ? 'ja' : 'zh';
+  let destroyed = false;
+  const render = () => { message.textContent = messages[locale].empty; };
+  container.classList.add('outfit-showcase'); container.replaceChildren(message); render();
+  return {
+    get index() { return -1; }, get outfitId() { return null; },
+    async goTo() { return false; }, async next() { return false; }, async previous() { return false; },
+    setHintActive() {}, setEnabled() {},
+    setCopy(next) { if (!destroyed) { messages = normalizedCopy(next); render(); } },
+    setLanguage(next) { if (!destroyed) { locale = next === 'ja' ? 'ja' : 'zh'; render(); } },
+    destroy() { if (destroyed) return; destroyed = true; container.replaceChildren(); container.classList.remove('outfit-showcase'); },
+  };
+}
+
+/** Replacing a configuration invalidates old image work while retaining selection and controls. */
+export function createOutfitShowcase(options = {}) {
+  let records = normalizeOutfits(Object.hasOwn(options, 'outfits') ? options.outfits : OUTFITS);
+  let messages = normalizedCopy(options.copy);
+  let locale = options.language === 'ja' ? 'ja' : 'zh';
+  let enabled = true, hintActive = false, destroyed = false;
+  let view = createOutfitShowcaseView({ ...options, outfits: records, language: locale, copy: messages });
+  return {
+    get index() { return view.index; }, get outfitId() { return view.outfitId; },
+    goTo(...args) { return view.goTo(...args); }, next() { return view.next(); }, previous() { return view.previous(); },
+    setOutfits(input) {
+      if (destroyed) return false;
+      const next = normalizeOutfits(input);
+      if (JSON.stringify(records) === JSON.stringify(next)) return false;
+      const selectedId = view.outfitId, previousIndex = view.index;
+      const selected = next.findIndex(item => item.id === selectedId);
+      const initialIndex = selected >= 0 ? selected : Math.max(0, Math.min(previousIndex, next.length - 1));
+      view.destroy(); records = next;
+      view = createOutfitShowcaseView({ ...options, outfits: records, initialIndex, language: locale, copy: messages });
+      view.setEnabled(enabled); view.setHintActive(hintActive);
+      return true;
+    },
+    setCopy(next) { if (destroyed) return; messages = normalizedCopy(next); view.setCopy(messages); },
+    setLanguage(next) { if (destroyed) return; locale = next === 'ja' ? 'ja' : 'zh'; view.setLanguage(locale); },
+    setEnabled(value) { if (destroyed) return; enabled = Boolean(value); view.setEnabled(enabled); },
+    setHintActive(value) { if (destroyed) return; hintActive = Boolean(value); view.setHintActive(hintActive); },
+    destroy() { if (destroyed) return; destroyed = true; view.destroy(); },
   };
 }

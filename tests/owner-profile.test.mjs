@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_OWNER_PROFILE, localizeOwnerText, safeOwnerURL, createOwnerProfile,
+  DEFAULT_OWNER_PROFILE, localizeOwnerText, safeOwnerURL, createOwnerProfile, OWNER_COPY,
 } from '../src/owner-profile.js';
 
 class Element {
@@ -231,4 +231,23 @@ test('close/destroy clean pending timers and remove interaction listeners', (t) 
   f.tick(500);
   assert.equal(f.card.hidden, true);
   assert.ok([f.root, f.button, f.doc].every((node) => [...node.listeners.values()].every((listeners) => listeners.length === 0)));
+});
+
+test('owner hint copy is editable without changing defaults or disclosure state', (t) => {
+  const f = fixture(t, { copy: { zh: { contacts: '<b>找我</b>' } } });
+  assert.equal(f.root.querySelector('.owner-contacts-heading').textContent, '<b>找我</b>');
+  assert.equal(f.root.querySelectorAll('b').length, 0);
+  assert.equal(f.root.querySelector('.owner-empty').textContent, OWNER_COPY.zh.empty);
+  f.button.emit('click');
+  f.component.setCopy({ zh: { empty: '待补充\n联系方式' }, ja: { contacts: 'こちらから', empty: '' } });
+  assert.equal(f.card.hidden, false);
+  assert.equal(f.root.querySelector('.owner-empty').textContent, '待补充\n联系方式');
+  f.component.setLanguage('ja');
+  assert.equal(f.root.querySelector('.owner-contacts-heading').textContent, 'こちらから');
+  assert.equal(f.root.querySelector('.owner-empty').textContent, '');
+  f.component.setCopy(null);
+  assert.equal(f.root.querySelector('.owner-empty').textContent, OWNER_COPY.ja.empty);
+  assert.equal(OWNER_COPY.zh.contacts, '联系方式');
+  f.component.destroy(); f.component.setCopy({ ja: { empty: 'later' } });
+  assert.equal(f.root.querySelector('.owner-empty').textContent, OWNER_COPY.ja.empty);
 });

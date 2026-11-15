@@ -1,9 +1,9 @@
 import { cloverSVG, halftoneShadowSVG } from './scene.js';
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
-const offsetFromFocus = (distance) => {
+const offsetFromFocus = (distance, engaged = true) => {
   const steps = Math.abs(distance);
-  const gap = distance > 0 ? 68 : 62;
+  const gap = (distance > 0 ? 68 : 62) - (engaged ? 0 : 8);
   const distantGap = distance > 0 ? 26 : 24;
   return Math.sign(distance) * (Math.min(1, steps) * gap + Math.max(0, steps - 1) * distantGap);
 };
@@ -15,13 +15,13 @@ const interpolateFalloff = (distance, values) => {
 };
 
 /** Size and spacing share one visual focus; aria-current is managed separately. */
-export function getSidebarLayout(count, currentIndex, selectedIndex = currentIndex, { focusPosition = selectedIndex, anchors, range } = {}) {
+export function getSidebarLayout(count, currentIndex, selectedIndex = currentIndex, { focusPosition = selectedIndex, anchors, range, engaged = true } = {}) {
   count = Math.max(0, count);
   const selected = clamp(Math.round(selectedIndex), 0, count - 1);
   const focus = clamp(focusPosition, 0, count - 1);
-  let anchor = anchors?.[selected] ?? offsetFromFocus(selected - currentIndex);
-  const focusedOffset = offsetFromFocus(selected - focus);
-  const offsets = Array.from({ length: count }, (_, index) => offsetFromFocus(index - focus) - focusedOffset);
+  let anchor = anchors?.[selected] ?? offsetFromFocus(selected - currentIndex, engaged);
+  const focusedOffset = offsetFromFocus(selected - focus, engaged);
+  const offsets = Array.from({ length: count }, (_, index) => offsetFromFocus(index - focus, engaged) - focusedOffset);
   if (range && offsets.length) {
     // Asymmetric near gaps must not accumulate into off-panel drift when a
     // visitor repeatedly moves between the same two painted labels.
@@ -140,8 +140,10 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
   function render(source) {
     if (destroyed) return;
     const selected = selectedIndex();
+    const engaged = pointerIndex !== null || focusIndex !== null;
     const panelHeight = list.getBoundingClientRect().height;
     const layout = getSidebarLayout(rows.length, currentIndex, selected, {
+      engaged,
       focusPosition: pointerIndex !== null && modality === 'pointer' ? pointerPosition ?? selected : selected,
       anchors: pointerIndex !== null && modality === 'pointer' ? pointerAnchors : undefined,
       range: panelHeight > 36 ? { min: -panelHeight / 2 + 18, max: panelHeight / 2 - 18 } : undefined,
@@ -166,7 +168,7 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
       : Math.max(1, label.textContent.trim().length) * layout[selected].fontSize;
     const labelLeft = labelRect.left - listRect.left;
     const center = labelLeft + targetWidth / 2;
-    const size = Math.max(105, Math.min(115, targetWidth + 12));
+    const size = Math.max(105, Math.min(115, targetWidth + 12)) * (engaged ? 1 : .8);
     highlight.style.setProperty('--highlight-y', `${layout[selected].y}px`);
     highlight.style.setProperty('--highlight-x', `${center}px`);
     highlight.style.setProperty('--highlight-size', `${size}px`);

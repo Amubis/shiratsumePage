@@ -165,6 +165,34 @@ test('sidebar hierarchy has a pronounced size falloff and tighter distant spacin
   assert.deepEqual(items.slice(0, 4).map((item) => item.opacity), [0.55, 0.68, 0.85, 1]);
 });
 
+test('resting navigation tightens only the gaps around the current label and restores its active clover on interaction', (t) => {
+  const resting = getSidebarLayout(7, 3, 3, { engaged: false });
+  const active = getSidebarLayout(7, 3);
+  assert.equal(resting[3].y - resting[2].y, 54);
+  assert.equal(resting[4].y - resting[3].y, 60);
+  assert.equal(resting[1].y - resting[0].y, active[1].y - active[0].y);
+  assert.equal(resting[6].y - resting[5].y, active[6].y - active[5].y);
+  assert.deepEqual(resting.map((row) => row.fontSize), active.map((row) => row.fontSize));
+
+  const f = sidebarFixture(t);
+  f.sidebar.setCurrent(1);
+  const idleSize = parseFloat(f.highlight.style.getPropertyValue('--highlight-size'));
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 60);
+  assert.equal(idleSize, 92);
+  f.list.emit('pointerenter', { clientY: 140 });
+  assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), 115);
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 68);
+  f.list.emit('pointerleave');
+  assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), idleSize);
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 60);
+  f.doc.emit('keydown', { key: 'Tab' });
+  f.links[1].emit('focus');
+  assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), 115);
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 68);
+  f.list.emit('focusout');
+  assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), idleSize);
+});
+
 test('hover moves spacing and size together while the actual page remains distinct', (t) => {
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
@@ -205,21 +233,22 @@ test('fractional pointer proximity smoothly changes neighboring type and gaps', 
 test('painted labels own the next magnetic target and layout movement alone cannot reselect', (t) => {
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
+  const anchor = f.links[3].style.getPropertyValue('--nav-y');
   f.list.emit('pointerenter', { clientY: 234 });
   assert.equal(f.links[3].classList.contains('is-highlighted'), true);
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px');
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), anchor);
   const lastSelection = f.selected.length;
   f.links[1].emit('pointerenter', { clientY: 234 });
   f.list.emit('pointermove', { clientY: 234 });
   assert.equal(f.links[3].classList.contains('is-highlighted'), true);
   assert.equal(f.selected.length, lastSelection, 'moving rows cannot feed a selection loop');
   f.list.emit('pointermove', { clientY: 220 });
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px', 'the clover never follows a fractional pointer coordinate');
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), anchor, 'the clover never follows a fractional pointer coordinate');
   const secondY = parseFloat(f.links[2].style.getPropertyValue('--nav-y'));
   f.list.emit('pointermove', { clientY: 140 + secondY }); // Item 2 has moved from its original slot.
   assert.equal(f.links[2].classList.contains('is-highlighted'), true);
-  assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-y')), secondY);
-  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), secondY, 'the newly selected glyph remains exactly where it was painted');
+  assert.ok(Math.abs(parseFloat(f.highlight.style.getPropertyValue('--highlight-y')) - secondY) < 1e-8);
+  assert.ok(Math.abs(parseFloat(f.links[2].style.getPropertyValue('--nav-y')) - secondY) < 1e-8, 'the newly selected glyph remains exactly where it was painted');
   assert.equal(f.links[1].getAttribute('aria-current'), 'page');
   f.list.emit('pointerleave');
   assert.equal(f.links[1].classList.contains('is-highlighted'), true);
@@ -229,12 +258,13 @@ test('painted labels own the next magnetic target and layout movement alone cann
 test('a strongly latched item permits small movement without freely drifting neighboring type', (t) => {
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
+  const anchor = f.links[3].style.getPropertyValue('--nav-y');
   f.list.emit('pointerenter', { clientY: 234 });
   const count = f.selected.length;
   for (const offset of [-6, -2, 3, -7, 0]) {
     f.list.emit('pointermove', { clientY: 234 + offset });
     assert.equal(f.links[3].classList.contains('is-highlighted'), true);
-    assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), '94px');
+    assert.equal(f.highlight.style.getPropertyValue('--highlight-y'), anchor);
     assert.equal(f.links[3].style.getPropertyValue('--nav-font-size'), '27px');
     assert.ok(Math.abs(parseFloat(f.links[2].style.getPropertyValue('--nav-font-size')) - 15.5) <= 11.5 * .12 + 1e-8);
   }
@@ -434,10 +464,10 @@ test('refresh adapts the compact clover to translated label width and destructio
   const f = sidebarFixture(t);
   f.links[0].querySelector('span').textContent = '庭';
   f.sidebar.refresh();
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '105px');
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '84px');
   f.links[0].querySelector('span').textContent = '庭の入り口です';
   f.sidebar.refresh();
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '115px');
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '92px');
   assert.match(f.shape.innerHTML, /sidebar-clover-shadow/);
   f.links[2].emit('pointerenter');
   f.tick(500);

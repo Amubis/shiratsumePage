@@ -50,6 +50,8 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
   let frame = null;
   let startedAt = 0;
   let elapsedTime = 0;
+  let playbackOffset = 0;
+  let durationScale = 1;
   let state = 'idle';
   let destroyed = false;
   let lastPaint = -Infinity;
@@ -165,20 +167,25 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
   function tick(time) {
     frame = null;
     if (!canAnimate()) { finish(); return; }
-    elapsedTime = clamp(time - startedAt, 0, INTRO_ENTRANCE_TIMING.total);
+    elapsedTime = clamp(playbackOffset + Math.max(0, time - startedAt) / durationScale, 0, INTRO_ENTRANCE_TIMING.total);
     if (time - lastPaint >= 1000 / 60 || elapsedTime >= INTRO_ENTRANCE_TIMING.total) {
       paint(elapsedTime); lastPaint = time;
     }
     if (elapsedTime >= INTRO_ENTRANCE_TIMING.total) finish();
     else frame = win.requestAnimationFrame(tick);
   }
-  function enter({ fromTime = 0 } = {}) {
+  // Delay holds the prepared first frame; durationScale stretches the shared
+  // source/snapshot clock without changing any individual element's order.
+  function enter({ fromTime = 0, delay = 0, durationScale: requestedScale = 1 } = {}) {
     if (destroyed) return Promise.resolve(false);
     stop(); resolveCompletion(false);
     collect(section);
     if (!canAnimate()) { finish(); return Promise.resolve(true); }
+    durationScale = Number.isFinite(requestedScale) && requestedScale > 0 ? requestedScale : 1;
+    const startDelay = Number.isFinite(delay) ? Math.max(0, delay) : 0;
     elapsedTime = clamp(Number(fromTime) || 0, 0, INTRO_ENTRANCE_TIMING.total);
-    startedAt = now() - elapsedTime;
+    playbackOffset = elapsedTime;
+    startedAt = now() + startDelay;
     lastPaint = -Infinity;
     state = 'playing';
     paint(elapsedTime);
@@ -211,7 +218,7 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
       if (!canAnimate()) finish();
       else paint(elapsedTime);
     },
-    get elapsed() { return state === 'playing' ? clamp(now() - startedAt, 0, INTRO_ENTRANCE_TIMING.total) : elapsedTime; },
+    get elapsed() { return state === 'playing' ? clamp(playbackOffset + Math.max(0, now() - startedAt) / durationScale, 0, INTRO_ENTRANCE_TIMING.total) : elapsedTime; },
     get playing() { return state === 'playing'; },
     get state() { return state; },
     destroy() {

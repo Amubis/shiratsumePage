@@ -8,19 +8,33 @@ import { createVideoReveal } from './video-reveal.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
-import { createOutfitShowcase, MODEL_PROFILE } from './outfits.js';
+import { createOutfitShowcase, MODEL_PROFILE, OUTFITS, OUTFIT_COPY } from './outfits.js';
 import { createHeroInteractions } from './hero-interactions.js';
 import { createIntroEntrance } from './intro-entrance.js';
-import { createAlbum, ALBUM_MEDIA } from './album.js';
+import { createAlbum, ALBUM_MEDIA, ALBUM_COPY } from './album.js';
 import { createAlbumTransition } from './album-transition.js';
 import { createAlbumScroll } from './album-scroll.js';
 import { createPersonalPage, normalizePersonalProfile } from './personal-page.js';
 import { createTopbarDock } from './topbar-dock.js';
 import { createPersonalEntrance } from './personal-entrance.js';
+import { OWNER_COPY } from './owner-profile.js';
+import { PERSONAL_COPY } from './personal-page.js';
+import { COMMENTS_COPY, createCommentService } from './comments.js';
+import { normalizeGardenContent, resolveGardenMedia } from './garden-content.js';
+import { FIXED_COPY, readGardenData, setGardenText, loadPublishedGarden, acceptGardenPreview } from './garden-runtime.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const root = document.documentElement;
+const gardenDefaults = readGardenData(document, {
+  schemaVersion:1, texts:{site:COPY,album:ALBUM_COPY,outfits:OUTFIT_COPY,owner:OWNER_COPY,personal:PERSONAL_COPY,comments:COMMENTS_COPY,fixed:FIXED_COPY},
+  modelProfile:MODEL_PROFILE,owner:readOwnerProfileData(document),outfits:OUTFITS,media:ALBUM_MEDIA,journal:[],
+});
+let activeGarden = resolveGardenMedia(gardenDefaults);
+for (const locale of ['zh','ja']) Object.assign(COPY[locale],activeGarden.texts.site[locale]);
+const previewToken = new URLSearchParams(location.search).get('editor-preview');
+let previewReceived = false;
+const commentsService = createCommentService({baseUrl:null});
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = () => motionPreference.matches;
 let { model: modelId, language } = getSelection(location.search);
@@ -90,7 +104,8 @@ function applyURL() {
 
 function renderTitle() {
   const model=MODELS[modelId];
-  const name=typeof model.name==='object'?model.name[language]:model.name;
+  const configuredName=model.preview?model.name:activeGarden.modelProfile.name;
+  const name=typeof configuredName==='object'?(configuredName[language] || configuredName.zh):configuredName;
   $('#model-heading').textContent=name;
   document.title=`${name} · little clover garden`;
 }
@@ -104,7 +119,7 @@ function applyLanguage() {
   } : {};
   $$('[data-i18n]').forEach((element) => {
     const key = overrides[element.dataset.i18n] || element.dataset.i18n;
-    element.innerHTML = translate(key);
+    setGardenText(element,translate(key));
   });
   $$('[data-i18n-alt]').forEach((element) => { element.alt = translate(MODELS[modelId].preview ? 'previewAlt' : element.dataset.i18nAlt); });
   $('#language-label').textContent = language === 'zh' ? '中文' : '日本語';
@@ -120,10 +135,10 @@ function applyLanguage() {
   renderTitle();
   ownerProfile?.setLanguage(language);
   personalPage?.setLanguage(language);
-  $('.top-links a[data-go="3"] small').textContent = MODELS[modelId].preview ? 'COLLECTION' : 'ABOUT';
+  applyFixedText();
   outfitShowcase?.setLanguage(language);
   album?.setLanguage(language);
-  const profile = MODEL_PROFILE[language];
+  const profile = activeGarden.modelProfile[language];
   $('.model-intro-eyebrow').textContent = profile.eyebrow;
   $('#hello-heading').textContent = profile.heading;
   $('.model-intro-lead').textContent = profile.lead;
@@ -132,6 +147,19 @@ function applyLanguage() {
   prepareIntroOffscreen();
   sidebar?.refresh();
   contrastLayer?.refresh();
+}
+
+function applyFixedText() {
+  if (MODELS[modelId].preview) { $('.top-links a[data-go="3"] small').textContent='COLLECTION'; return; }
+  const copy = activeGarden.texts.fixed[language];
+  const targets = { homeEyebrow:'.hero-copy>.eyebrow', coordinatePages:'.hero-coordinate span', modelReading:'.model-intro-reading', modelFooter:'.primary-intro>.section-footer>span:first-child', modelPage:'.primary-intro>.section-footer>span:last-child' };
+  for (const [key,selector] of Object.entries(targets)) if ($(selector)) $(selector).textContent=copy[key] ?? FIXED_COPY[language][key];
+  const coordinate=$('.hero-coordinate');
+  coordinate.firstChild.textContent=`${copy.coordinate ?? FIXED_COPY[language].coordinate} `;
+  ['Home','Hello','Moments','Collection'].forEach((key,index)=>{$(`.top-links a[data-go="${index}"] small`).textContent=copy[`nav${key}Subtitle`] ?? FIXED_COPY[language][`nav${key}Subtitle`];});
+  $('.hero-native')?.setAttribute('aria-label',copy.videoLabel ?? FIXED_COPY[language].videoLabel);
+  const menuName=$('[data-model="shiratsume"]>span:nth-child(2)');
+  if(menuName?.firstChild)menuName.firstChild.textContent=copy.primaryModelName ?? FIXED_COPY[language].primaryModelName;
 }
 
 function updatePlaybackLabel(status) {
@@ -286,7 +314,7 @@ async function runExploreWipe(signal) {
   pageReveal=reveal;
   if (introInWipe) {
     detachIntroSnapshot = introEntrance?.attach(reveal.element.querySelector('.page-section'));
-    void introEntrance?.enter();
+    void introEntrance?.enter({delay:Math.round(EXPLORE_TIMING.grow*.4),durationScale:1.25});
   }
   reveal.start();
   animations.push(reveal.element.animate([
@@ -571,15 +599,15 @@ window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(loc
 
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
 contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
-const initialOwnerProfile=normalizePersonalProfile(readOwnerProfileData(document));
-ownerProfile=createOwnerProfile({root:$('#owner-profile'),profile:initialOwnerProfile,language});
-personalPage=createPersonalPage({root:$('#personal-page'),profile:initialOwnerProfile,language});
+const initialOwnerProfile=normalizePersonalProfile(activeGarden.owner);
+ownerProfile=createOwnerProfile({root:$('#owner-profile'),profile:initialOwnerProfile,language,copy:activeGarden.texts.owner});
+personalPage=createPersonalPage({root:$('#personal-page'),profile:initialOwnerProfile,language,copy:activeGarden.texts.personal,posts:activeGarden.journal,commentsService,commentsCopy:activeGarden.texts.comments});
 function applyOwnerProfile(profile) {
   if(profile?.schemaVersion!==1)return;
   const data=normalizePersonalProfile(profile);
   ownerProfile.update(data);personalPage.update(data);
 }
-outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion});
+outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits});
 introEntrance=createIntroEntrance({section:$('#hello'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview});
 // The reminder starts only once the real chapter has completed its entrance;
 // snapshots and chapters outside the viewport cannot start its idle timer.
@@ -588,7 +616,7 @@ const refreshOutfitHint=()=>outfitShowcase?.setHintActive?.(outfitHintSection.cl
 const outfitHintObserver=new MutationObserver(refreshOutfitHint);
 outfitHintObserver.observe(outfitHintSection,{attributes:true,attributeFilter:['class']});
 refreshOutfitHint();
-album=createAlbum({container:$('#album-showcase'),language,modelId,media:ALBUM_MEDIA,reducedMotion,onReady(){
+album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,reducedMotion,onReady(){
   $('.album-title').id='album-heading';
   if (albumTransition) albumTransition.reset({prepare:currentIndex !== 2});
 }});
@@ -630,15 +658,6 @@ albumScroll=createAlbumScroll({
     }
   },
 });
-// The public manifest is the content boundary for a future authenticated CMS.
-// Relative media URLs resolve against this page on project GitHub Pages too.
-if (location.protocol !== 'file:') fetch('./data/album.json').then(response=>{
-  if(!response.ok)throw new Error('Album manifest unavailable');
-  return response.json();
-}).then(manifest=>{
-  if(manifest.schemaVersion!==1 || !Array.isArray(manifest.media))return;
-  pendingAlbumMedia=manifest.media;flushAlbumMedia();
-}).catch(()=>{/* The bundled four-still preview also works offline. */});
 videoReveal=createVideoReveal({
   hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
   targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.hero-edge-shade'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
@@ -652,11 +671,35 @@ heroInteractions=createHeroInteractions({
 });
 personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview,theme:MODELS[modelId].theme,seed:modelId});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
-// A future authenticated CMS can publish the same JSON for both owner views.
-if(location.protocol!=='file:')fetch('./data/owner.json',{cache:'no-cache'}).then(response=>{
-  if(!response.ok)throw new Error('Owner profile unavailable');
-  return response.json();
-}).then(applyOwnerProfile).catch(()=>{/* Keep the public profile bundled with this build. */});
+function applyGardenContent(next) {
+  const previous=activeGarden;
+  activeGarden=resolveGardenMedia(normalizeGardenContent(next,gardenDefaults));
+  const changed=key=>JSON.stringify(previous[key])!==JSON.stringify(activeGarden[key]);
+  const changedCopy=key=>JSON.stringify(previous.texts[key])!==JSON.stringify(activeGarden.texts[key]);
+  if(changed('owner'))applyOwnerProfile(activeGarden.owner);
+  if(changedCopy('owner'))ownerProfile.setCopy(activeGarden.texts.owner);
+  if(changedCopy('personal'))personalPage.setCopy(activeGarden.texts.personal);
+  if(changed('journal'))personalPage.setPosts(activeGarden.journal);
+  if(changed('outfits') && outfitShowcase.setOutfits(activeGarden.outfits))introEntrance.refresh();
+  if(changedCopy('outfits'))outfitShowcase.setCopy(activeGarden.texts.outfits);
+  if(changedCopy('album'))album.setCopy(activeGarden.texts.album);
+  if(changed('media')){pendingAlbumMedia=activeGarden.media;flushAlbumMedia();}
+  if(changedCopy('comments')){album.setCommentsCopy(activeGarden.texts.comments);personalPage.setCommentsCopy(activeGarden.texts.comments);}
+  if(changedCopy('site') || changedCopy('fixed') || changed('modelProfile')) {
+    for(const locale of ['zh','ja'])Object.assign(COPY[locale],activeGarden.texts.site[locale]);
+    applyLanguage();
+  }
+  navigator.refresh();personalEntrance?.refresh();
+}
+window.addEventListener('message',event=>{
+  const content=acceptGardenPreview(event,{token:previewToken,origin:location.origin,parent:window.parent===window?null:window.parent,defaults:gardenDefaults});
+  if(content){previewReceived=true;commentsService.setBaseUrl(null);applyGardenContent(content);}
+});
+if(location.protocol!=='file:')void loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href}).then(({content,runtime,connected})=>{
+  if(previewReceived)return;
+  if(!previewToken)commentsService.setBaseUrl(runtime.apiBaseUrl || (connected?new URL('/',location.href).href:null));
+  applyGardenContent(content);
+});
 applyTheme();
 if(requestedSection>0) {
   finishIntro();

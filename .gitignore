@@ -5,3 +5,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+.garden-data/
+.wrangler/
+.dev.vars
+.dev.vars.*

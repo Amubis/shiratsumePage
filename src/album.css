@@ -138,12 +138,12 @@
 .album-player {
   position: fixed;
   inset: 0;
-  width: min(1050px, 94vw);
+  width: min(1280px, 94vw);
   height: min(800px, 88svh);
   max-width: none;
   max-height: none;
   margin: auto;
-  padding: 28px 60px;
+  padding: 48px 24px 28px;
   border: 0;
   background: var(--paper);
   color: var(--ink);
@@ -151,6 +151,9 @@
   overflow: visible;
 }
 .album-player::backdrop { background: #171d14cc; backdrop-filter: blur(6px); }
+.album-player-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 310px); gap: 25px; height: 100%; min-height: 0; }
+.album-player-stage { position: relative; min-width: 0; height: 100%; padding-inline: 45px; }
+.album-player-comments { min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px 20px; border-left: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); scrollbar-width: thin; }
 .album-player-figure { display: flex; height: 100%; flex-direction: column; gap: 16px; margin: 0; }
 .album-player-image { width: 100%; height: calc(100% - 33px); min-height: 0; object-fit: contain; }
 .album-player-caption { font-size: 10px; letter-spacing: .08em; text-align: center; color: var(--theme-dark); }
@@ -188,7 +191,10 @@
   .album-source-note { font-size: 6px; text-align: left; }
   .album-tabs { right: -50px; top: 116px; gap: 10px; }
   .album-tab { width: 80px; min-width: 80px; height: 100px; padding: 10px 9px 10px 32px; font-size: 9px; letter-spacing: .1em; }
-  .album-player { padding: 51px 24px 56px; width: 94vw; height: 82svh; }
+  .album-player { padding: 51px 18px 20px; width: 94vw; height: 88svh; overflow-y: auto; overscroll-behavior: contain; }
+  .album-player-content { display: flex; flex-direction: column; height: auto; gap: 22px; }
+  .album-player-stage { height: clamp(210px, 46svh, 480px); flex: none; padding: 0 0 56px; }
+  .album-player-comments { overflow: visible; padding: 21px 2px 8px; border-left: 0; border-top: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); }
   .album-player-previous, .album-player-next { top: auto; bottom: 9px; width: 44px; height: 44px; }
   .album-player-previous { left: calc(50% - 53px); }.album-player-next { right: calc(50% - 53px); }
   .album-player-caption { font-size: 8px; }
