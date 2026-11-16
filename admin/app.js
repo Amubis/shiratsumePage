@@ -3,6 +3,7 @@ import { normalizeGardenContent, validateGardenContent, publicGardenContent } fr
 
 const $ = (selector) => document.querySelector(selector);
 const STORAGE_KEY = 'garden-admin-json-draft-v1';
+const MODE_KEY = 'garden-admin-service-mode-v1';
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const sections = [
   ['overview', '⌂', '花园概览'], ['texts', '文', '中日文案'], ['owner', '◉', '作者资料'],
@@ -14,13 +15,46 @@ const state = {
   csrf: '', mediaBaseUrl: '', cloudAdminUrl: '', dirty: false, conflict: false, busy: false, section: 'overview',
   selectedOutfit: null, selectedPhoto: null, selectedPost: null, selectedPhotos: new Set(),
   photoFilter: 'all', photoSearch: '', textGroup: 'site', textSearch: '',
-  jobs: [], running: 0, preview: false, localBackup: null,
+  jobs: [], running: 0, preview: false, localBackup: null, cloudMode: false,
   comments: [], notifications: [], unreadCount: 0, pendingCount: 0, messageView: 'comments', messageStatus: 'pending', messageUnread: false, messagesBusy: false, messagesLoaded: false, messagesError: '', replyDrafts: {},
 };
-let uid = 0, localTimer, previewTimer, toastTimer;
+let uid = 0, localTimer, previewTimer, toastTimer, contentEpoch = 0, viewLocked = false;
+const activeUploads = new Set();
 const previewToken = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const identifier = (prefix) => `${prefix}-${crypto.randomUUID?.() || `${Date.now()}-${++uid}`}`;
+const cloudLocked = () => (state.cloudMode || state.session?.mode === 'cloud') && (!state.connected || !state.authenticated);
+const staleRequest = () => Object.assign(new Error('请重新登录后继续。'), { stale: true });
+function recordSession(session) {
+  state.session = session;
+  if (session.mode === 'cloud') state.cloudMode = true;
+  else if (session.mode === 'local') state.cloudMode = false;
+  try { if (state.cloudMode) localStorage.setItem(MODE_KEY, 'cloud'); else localStorage.removeItem(MODE_KEY); } catch { /* Mode is only a local display safeguard. */ }
+}
+function lockPrivateView() {
+  if (!viewLocked) { viewLocked = true; contentEpoch++; }
+  clearTimeout(localTimer); clearTimeout(previewTimer);
+  if ($('#confirm-dialog').open) $('#confirm-dialog').close('cancel');
+  $('#dialog-title').textContent = ''; $('#dialog-body').textContent = '';
+  clearTimeout(toastTimer); $('#toast').hidden = true; $('#toast').textContent = '';
+  state.preview = false; $('#preview-pane').hidden = true; $('.content-layout').classList.remove('with-preview');
+  $('#site-preview').removeAttribute('src'); $('#preview-toggle').textContent = '打开预览';
+  $('#upload-panel').hidden = true; $('#upload-list').replaceChildren();
+  for (const xhr of activeUploads) xhr.abort();
+  $('#editor').replaceChildren(empty('请登录后管理内容', state.connected ? '使用管理员账号和密码登录后，才能查看草稿与管理消息。' : '云端管理连接已中断，重新连接并登录后可继续。', ...(!state.connected ? [button('重新连接', connect)] : [])));
+}
+function clearPrivateContent() {
+  contentEpoch++; clearTimeout(localTimer); clearTimeout(previewTimer);
+  for (const xhr of activeUploads) xhr.abort(); activeUploads.clear();
+  state.content = null; state.revision = null; state.localBackup = null; state.dirty = false; state.conflict = false; state.busy = false;
+  state.selectedOutfit = state.selectedPhoto = state.selectedPost = null; state.selectedPhotos.clear();
+  state.photoSearch = state.textSearch = ''; state.jobs = []; state.running = 0;
+  state.comments = []; state.notifications = []; state.replyDrafts = {}; state.unreadCount = state.pendingCount = 0;
+  state.messagesLoaded = false; state.messagesError = ''; messagesRequest++;
+  $('#json-import').value = '';
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* The page still drops all in-memory references. */ }
+  lockPrivateView();
+}
 
 function node(tag, attributes = {}, ...children) {
   const element = document.createElement(tag);
@@ -106,7 +140,7 @@ function image(reference, alt, className) {
 }
 function navigation() {
   $('#navigation').replaceChildren(...sections.map(([key, icon, label]) => {
-    const amount = key === 'photos' ? state.content?.media?.length : key === 'outfits' ? state.content?.outfits?.length : key === 'journal' ? state.content?.journal?.length : key === 'messages' ? `${state.unreadCount}未读\n${state.pendingCount}待审` : undefined;
+    const amount = cloudLocked() ? undefined : key === 'photos' ? state.content?.media?.length : key === 'outfits' ? state.content?.outfits?.length : key === 'journal' ? state.content?.journal?.length : key === 'messages' ? `${state.unreadCount}未读\n${state.pendingCount}待审` : undefined;
     return node('button', { type: 'button', class: `nav-button${state.section === key ? ' active' : ''}`, 'aria-current': state.section === key ? 'page' : undefined, onclick: () => selectSection(key) }, node('span', { class: 'nav-icon', 'aria-hidden': 'true' }, icon), label, amount !== undefined ? node('span', { class: 'nav-count' }, amount) : null);
   }));
 }
@@ -118,41 +152,47 @@ function selectSection(key) {
   if (window.innerWidth < 850) $('#editor').scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 function changed() {
+  if (cloudLocked()) return;
   state.dirty = true; updateChrome();
   clearTimeout(localTimer); localTimer = setTimeout(persistLocal, 500);
   clearTimeout(previewTimer); previewTimer = setTimeout(postPreview, 250);
 }
 function persistLocal() {
-  if (!state.content) return;
+  if (!state.content || cloudLocked()) return;
   try {
     // Content JSON only. Passwords, cookies, CSRF tokens, blobs and File objects never enter storage.
-    const backup = { content: clone(state.content), revision: state.revision, savedAt: new Date().toISOString() };
+    const backup = { content: clone(state.content), revision: state.revision, savedAt: new Date().toISOString(), mode: state.session?.mode || (state.cloudMode ? 'cloud' : 'static') };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(backup)); state.localBackup = backup;
   } catch { toast('浏览器草稿备份空间不足，请导出 JSON 保存当前编辑。', true); }
 }
 function updateChrome() {
+  const locked = cloudLocked();
+  if (locked) lockPrivateView(); else viewLocked = false;
   const uploadsActive = state.jobs.some(job => ['queued', 'running'].includes(job.status));
-  $('#connection-label').textContent = state.connected ? state.authenticated ? (state.session?.mode === 'cloud' ? '云端已连接' : '本地服务已连接') : '等待登录' : '未连接 API · 仅本地编辑';
+  $('#connection-label').textContent = state.connected ? state.authenticated ? (state.session?.mode === 'cloud' ? '云端已连接' : '本地服务已连接') : '等待登录' : locked ? '云端未连接 · 已锁定' : '未连接 API · 仅本地编辑';
   $('#connection-dot').classList.toggle('online', state.connected && state.authenticated);
-  $('#logout').hidden = !state.authenticated || state.session?.mode === 'local';
-  const label = !state.content ? '尚未载入' : state.conflict ? '版本冲突 · 请重新载入' : state.busy ? '正在处理…' : state.dirty ? '有未保存的编辑' : state.connected && state.authenticated ? '草稿已同步' : '仅浏览器草稿';
+  $('#logout').hidden = locked || !state.authenticated || state.session?.mode === 'local';
+  const label = locked ? '登录后管理' : !state.content ? '尚未载入' : state.conflict ? '版本冲突 · 请重新载入' : state.busy ? '正在处理…' : state.dirty ? '有未保存的编辑' : state.connected && state.authenticated ? '草稿已同步' : '仅浏览器草稿';
   $('#save-state').textContent = label; $('#save-state').classList.toggle('dirty', state.dirty || state.conflict);
   $('#save-draft').disabled = !state.content || !state.authenticated || !state.connected || state.busy || state.conflict || uploadsActive;
   $('#publish').disabled = !state.content || !state.authenticated || !state.connected || state.busy || state.conflict || state.dirty || uploadsActive;
-  $('#preview-toggle').disabled = !state.content;
+  $('#preview-toggle').disabled = locked || !state.content;
+  $('#json-import').disabled = locked;
   navigation();
 }
 async function api(path, { method = 'GET', body, csrf = method !== 'GET' } = {}) {
+  const epoch = contentEpoch;
   const headers = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (csrf) headers['X-Garden-CSRF'] = state.csrf;
   let response;
   try { response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', cache: 'no-store' }); }
-  catch { const error = new Error('无法连接同源管理 API。请确认管理服务正在运行。'); error.offline = true; throw error; }
+  catch { if (epoch !== contentEpoch) throw staleRequest(); const error = new Error('无法连接同源管理 API。请确认管理服务正在运行。'); error.offline = true; throw error; }
   const type = response.headers.get('Content-Type') || '';
   let data;
   try { if (!type.includes('json')) throw new Error('not-json'); data = await response.json(); }
-  catch { const error = new Error('此地址尚未连接管理 API，当前只能在浏览器编辑与导出 JSON。'); error.offline = true; throw error; }
+  catch { if (epoch !== contentEpoch) throw staleRequest(); const error = new Error('此地址尚未连接管理 API，当前只能在浏览器编辑与导出 JSON。'); error.offline = true; throw error; }
+  if (epoch !== contentEpoch) throw staleRequest();
   if (!response.ok) {
     const error = new Error(typeof data.error === 'string' ? data.error : typeof data.message === 'string' ? data.message : `请求失败（${response.status}）`);
     error.status = response.status; error.details = data; throw error;
@@ -160,6 +200,7 @@ async function api(path, { method = 'GET', body, csrf = method !== 'GET' } = {})
   return data;
 }
 function reportError(error, context = '') {
+  if (error.stale) return;
   if (error.status === 409) {
     state.conflict = true;
     banner('草稿已被另一个窗口修改。当前编辑已保留在浏览器；请先导出备份，再重新载入服务端草稿。为避免覆盖他人编辑，保存和发布已暂停。', true, { label: '导出当前 JSON', run: exportJSON });
@@ -168,17 +209,19 @@ function reportError(error, context = '') {
     banner(`登录或会话验证已失效。当前编辑仍保留，请重新登录后重新载入草稿。${error.message ? ` ${error.message}` : ''}`, true);
   } else {
     toast(`${context}${error.message}`, true);
-    if (error.offline) { state.connected = false; banner('管理 API 未连接。当前编辑仅保存在此浏览器；可以导出 JSON 备份，线上网站尚未更改。', true); }
+    if (error.offline) { state.connected = false; if (state.cloudMode) state.authenticated = false; banner(state.cloudMode ? '云端管理连接已中断。当前页面已锁定，请重新连接并登录后继续。' : '管理 API 未连接。当前编辑仅保存在此浏览器；可以导出 JSON 备份，线上网站尚未更改。', true); }
   }
   updateChrome();
 }
 function installContent(input, revision = null) {
+  if (cloudLocked()) return;
   clearTimeout(localTimer);
   state.content = normalizeGardenContent(input); state.revision = revision; state.dirty = false; state.conflict = false;
   state.selectedPhotos.clear(); state.selectedPhoto = null; state.selectedOutfit = null; state.selectedPost = null;
   updateChrome(); render(); postPreview();
 }
 async function loadContent({ discard = false } = {}) {
+  if (cloudLocked()) return;
   if (state.jobs.some(job => ['queued', 'running'].includes(job.status))) { toast('请等待当前导入任务完成，再重新载入内容。', true); return; }
   if (!discard && state.dirty && !await confirmAction('重新载入草稿？', '此操作会用服务端草稿替换当前编辑。你可以先导出 JSON 备份。', '重新载入')) return;
   try {
@@ -190,44 +233,50 @@ async function loadContent({ discard = false } = {}) {
   } catch (error) { reportError(error); }
 }
 function offerBackup() {
+  if (cloudLocked()) return;
   const backup = state.localBackup;
   if (!backup?.content || JSON.stringify(backup.content) === JSON.stringify(state.content)) return;
   banner(`发现此浏览器保存的编辑备份（${formatDate(backup.savedAt)}）。恢复后需再次保存到服务端。`, false, { label: '查看恢复选项', run: restoreBackup });
 }
 async function restoreBackup() {
-  if (!state.localBackup?.content) return;
+  if (cloudLocked() || !state.localBackup?.content) return;
   if (!await confirmAction('恢复浏览器草稿？', '恢复会替换当前编辑。服务端草稿仍保持原样；恢复后请检查内容，再点击「保存草稿」。', '恢复编辑')) return;
+  if (cloudLocked()) return;
   const revision = state.revision;
   installContent(state.localBackup.content, revision); changed(); $('#banner').hidden = true; toast('已恢复浏览器编辑，请检查后保存。');
 }
 async function connect() {
   try {
     const session = await api('/api/admin/session');
-    state.connected = true; state.session = session; state.authenticated = !!session.authenticated; state.csrf = session.csrfToken || ''; state.mediaBaseUrl = session.mediaBaseUrl || '';
+    state.connected = true; recordSession(session); state.authenticated = !!session.authenticated; state.csrf = session.csrfToken || ''; state.mediaBaseUrl = session.mediaBaseUrl || '';
     showAuth(); updateChrome();
     if (state.authenticated) {
-      if (state.content && state.dirty) { state.conflict = true; banner('连接已恢复。浏览器编辑仍在，请先导出备份，再载入服务端草稿以检查版本。', false, { label: '重新载入', run: () => loadContent() }); }
+      if (state.content && state.dirty) { state.conflict = true; render(); banner('连接已恢复。浏览器编辑仍在，请先导出备份，再载入服务端草稿以检查版本。', false, { label: '重新载入', run: () => loadContent() }); }
       else await loadContent({ discard: true });
       refreshMessages({ quiet: true });
     }
     else {
-      if (!session.configured) banner('云端管理尚未配置登录密钥与存储绑定。请完成服务端配置后重新连接；当前仅支持本地编辑与 JSON 导出。', true);
+      if (!session.configured) banner('云端管理尚未配置登录密钥与存储绑定。请完成服务端配置后重新连接并登录。', true);
       await loadSeed();
     }
   } catch (error) {
+    if (error.stale) return;
     state.connected = false; state.authenticated = false; state.csrf = ''; showAuth();
-    banner('这个站点尚未连接管理 API。可以编辑打包内容并导出 JSON；上传、保存服务端草稿和发布需要同源的本地或云端管理服务。', false, { label: '重新连接', run: connect });
+    banner(state.cloudMode ? '云端管理暂时无法连接。请重新连接并登录后继续。' : '这个站点尚未连接管理 API。可以编辑打包内容并导出 JSON；上传、保存服务端草稿和发布需要同源的本地或云端管理服务。', false, { label: '重新连接', run: connect });
     await loadSeed();
   }
   updateChrome();
 }
 async function loadSeed() {
+  if (cloudLocked()) { lockPrivateView(); return; }
   if (state.content) return;
   try {
     const response = await fetch('../data/garden.json', { cache: 'no-store' });
+    if (cloudLocked()) return;
     if (!response.ok) throw new Error('没有打包内容');
     installContent(await response.json()); offerBackup();
   } catch {
+    if (cloudLocked()) { lockPrivateView(); return; }
     if (state.localBackup?.content) { installContent(state.localBackup.content); state.dirty = true; updateChrome(); toast('已打开浏览器里的 JSON 草稿。'); }
     else {
       $('#editor').replaceChildren(empty('还没有可编辑的内容', '连接管理 API，或导入先前导出的花园 JSON 备份。', button('导入 JSON', () => $('#json-import').click())));
@@ -238,23 +287,28 @@ function showAuth() {
   const target = $('#auth-panel');
   target.hidden = !state.connected || state.authenticated;
   if (target.hidden) return;
-  const password = node('input', { type: 'password', autocomplete: 'current-password', required: true, 'aria-label': '管理员密码' });
+  const username = node('input', { type: 'text', name: 'username', autocomplete: 'username', maxlength: 120, required: true, 'aria-label': '管理员账号' });
+  const password = node('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true, 'aria-label': '管理员密码' });
   const submit = node('button', { type: 'submit', class: 'button primary', disabled: state.session?.configured === false }, '登录管理');
-  const form = node('form', { class: 'auth-form' }, node('label', { class: 'field' }, node('span', {}, '管理员密码'), password), submit);
+  const form = node('form', { class: 'auth-form' }, node('label', { class: 'field' }, node('span', {}, '管理员账号'), username), node('label', { class: 'field' }, node('span', {}, '管理员密码'), password), submit);
   form.addEventListener('submit', async event => {
     event.preventDefault(); submit.disabled = true;
     try {
-      const session = await api('/api/admin/login', { method: 'POST', body: { password: password.value }, csrf: false });
-      password.value = ''; state.session = session; state.authenticated = !!session.authenticated; state.csrf = session.csrfToken || ''; state.mediaBaseUrl = session.mediaBaseUrl || ''; showAuth();
+      const session = await api('/api/admin/login', { method: 'POST', body: { username: username.value, password: password.value }, csrf: false });
+      password.value = ''; recordSession(session); state.authenticated = !!session.authenticated; state.csrf = session.csrfToken || ''; state.mediaBaseUrl = session.mediaBaseUrl || ''; showAuth();
       if (state.dirty) {
         banner('已登录。当前浏览器编辑尚未关联最新服务端版本，请导出备份，再重新载入服务端草稿以继续。', false, { label: '重新载入', run: () => loadContent() });
-        state.conflict = true; updateChrome();
+        state.conflict = true; updateChrome(); render();
       } else await loadContent({ discard: true });
       refreshMessages({ quiet: true });
-    } catch (error) { reportError(error, '登录失败：'); }
+    } catch (error) {
+      password.value = '';
+      if (error.status === 401) toast('账号或密码不正确，请重新输入。', true);
+      else reportError(error, '登录失败：');
+    }
     finally { submit.disabled = state.session?.configured === false; }
   });
-  target.replaceChildren(node('h2', {}, '登录花园管理'), node('p', { class: 'muted' }, '登录状态通过同源 HttpOnly Cookie 保存。密码只用于本次登录，不会写入草稿或浏览器存储。'), form);
+  target.replaceChildren(node('h2', {}, '登录花园管理'), node('p', { class: 'muted' }, '使用管理员账号和密码登录，管理草稿、上传图片与发布内容。'), form);
 }
 async function saveDraft() {
   if ($('#save-draft').disabled) return;
@@ -279,6 +333,7 @@ async function publish() {
   if (errors.length) { showValidation(errors); return; }
   const photoCount = state.content.media.filter(item => item.enabled).length, postCount = state.content.journal.filter(item => item.published).length;
   if (!await confirmAction('将草稿发布到网站？', `即将发布已保存的全部文案、作者资料和服装，以及 ${photoCount} 张已勾选照片、${postCount} 条已勾选碎碎念。未勾选项目继续保留在草稿中。`, '确认发布')) return;
+  if (cloudLocked()) return;
   state.busy = true; updateChrome();
   try {
     const result = await api('/api/admin/publish', { method: 'POST', body: { revision: state.revision } });
@@ -293,20 +348,22 @@ function showValidation(errors) {
   $('#banner').scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 function exportJSON() {
-  if (!state.content) return;
+  if (!state.content || cloudLocked()) return;
   const blob = new Blob([JSON.stringify(state.content, null, 2) + '\n'], { type: 'application/json' });
   const url = URL.createObjectURL(blob), link = node('a', { href: url, download: `garden-draft-${new Date().toISOString().slice(0, 10)}.json` });
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 5000); toast('已导出当前 JSON 草稿。原始图片文件不包含在 JSON 内。');
 }
 async function importJSON(file) {
-  if (!file) return;
+  if (!file || cloudLocked()) return;
   if (state.jobs.some(job => ['queued', 'running'].includes(job.status))) { toast('请等待当前导入任务完成，再导入 JSON。', true); return; }
   try {
     if (file.size > 5 * 1024 * 1024) throw new Error('JSON 备份超过 5MB，请检查文件。');
     const input = JSON.parse(await file.text());
+    if (cloudLocked()) return;
     const errors = validateGardenContent(input);
     if (errors.length) throw new Error(errors.slice(0, 5).join('；'));
     if (!await confirmAction('导入 JSON 草稿？', '这会替换当前编辑，但不会自动保存到服务端或发布。图片引用仍需要对应的存储服务。', '导入草稿')) return;
+    if (cloudLocked()) return;
     const revision = state.revision; installContent(input, revision); changed(); toast('JSON 已导入，请检查后保存草稿。');
   } catch (error) { toast(`无法导入：${error.message}`, true); }
 }
@@ -317,6 +374,7 @@ function formatDate(value) {
 }
 
 function render() {
+  if (cloudLocked()) { lockPrivateView(); return; }
   if (!state.content) return;
   const renderers = { overview: renderOverview, texts: renderTexts, owner: renderOwner, outfits: renderOutfits, photos: renderPhotos, journal: renderJournal, settings: renderSettings, messages: renderMessages };
   try { $('#editor').replaceChildren(...renderers[state.section]()); }
@@ -535,6 +593,7 @@ function queueFiles(files, options) {
   renderUploads(); pumpUploads();
 }
 function renderUploads() {
+  if (cloudLocked()) { $('#upload-panel').hidden = true; $('#upload-list').replaceChildren(); return; }
   $('#upload-panel').hidden = !state.jobs.length;
   const done = state.jobs.filter(job => job.status === 'done').length, failed = state.jobs.filter(job => job.status === 'error').length;
   $('#upload-summary').textContent = `导入任务 · ${done}/${state.jobs.length} 已完成${failed ? ` · ${failed} 项待重试` : ''}`;
@@ -550,7 +609,7 @@ async function pumpUploads() {
       job.status = 'done'; job.progress = 100; job.note = result || '已加入草稿，请检查后勾选发布。';
       // Completed jobs no longer retain the full-resolution file or browser derivative blobs.
       job.file = { name: job.file.name }; job.cache = {};
-    }).catch(error => { job.status = 'error'; job.note = error.message; if ([401, 403].includes(error.status)) reportError(error); }).finally(() => { state.running--; renderUploads(); pumpUploads(); });
+    }).catch(error => { job.status = 'error'; job.note = error.message; if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error); }).finally(() => { state.running = Math.max(0, state.running - 1); renderUploads(); pumpUploads(); });
   }
 }
 function setJobProgress(job, note, progress) { job.note = note; job.progress = progress; renderUploads(); }
@@ -580,8 +639,10 @@ async function derivative(decoded, max, mime = 'image/jpeg', quality = .9) {
   finally { canvas.width = 1; canvas.height = 1; }
 }
 function uploadBlob(job, blob, role, name, start, end, mime = blob.type) {
+  if (cloudLocked() || !state.jobs.includes(job)) return Promise.reject(staleRequest());
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    activeUploads.add(xhr); xhr.addEventListener('loadend', () => activeUploads.delete(xhr), { once: true });
     xhr.open('POST', `/api/admin/upload?role=${encodeURIComponent(role)}&name=${encodeURIComponent(name)}`);
     xhr.withCredentials = true; xhr.timeout = 180000; xhr.setRequestHeader('Content-Type', mime); xhr.setRequestHeader('X-Garden-CSRF', state.csrf); xhr.setRequestHeader('Accept', 'application/json');
     xhr.upload.onprogress = event => { if (event.lengthComputable) { job.progress = Math.round(start + (end - start) * event.loaded / event.total); const row = [...$('#upload-list').children][state.jobs.indexOf(job)]; if (row) row.querySelector('progress').value = job.progress; } };
@@ -592,8 +653,9 @@ function uploadBlob(job, blob, role, name, start, end, mime = blob.type) {
       if (!expected.test(result.key || '')) { reject(new Error('上传结果缺少有效图片存储键，未修改草稿。')); return; }
       resolve(result);
     };
-    xhr.onerror = () => reject(new Error('上传连接中断。已完成的步骤会保留，可独立重试这一项。'));
+    xhr.onerror = () => reject(Object.assign(new Error('上传连接中断。已完成的步骤会保留，可独立重试这一项。'), { offline: true }));
     xhr.ontimeout = () => reject(new Error('上传超时，可独立重试这一项。'));
+    xhr.onabort = () => reject(staleRequest());
     xhr.send(blob);
   });
 }
@@ -612,6 +674,7 @@ async function runUpload(job) {
     if (!cache.original) { setJobProgress(job, '上传私有原图…', 15); cache.original = await uploadBlob(job, file, 'original', file.name, 15, 70, cache.mime); }
     if (!cache.display) { setJobProgress(job, '上传公开展示图…', 70); cache.display = await uploadBlob(job, cache.displayBlob, 'display', `${file.name}-display.jpg`, 70, 90); }
     if (!cache.thumbnail) { setJobProgress(job, '上传公开缩略图…', 90); cache.thumbnail = await uploadBlob(job, cache.thumbnailBlob, 'thumbnail', `${file.name}-thumb.jpg`, 90, 99); }
+    if (cloudLocked() || !state.content || !state.jobs.includes(job)) throw staleRequest();
     const item = { id: job.photoId, url: cache.display.key, thumbnail: cache.thumbnail.key, alt: { zh: '', ja: '' }, caption: { zh: '', ja: '' }, modelIds: [state.content.settings.defaultModelId || 'shiratsume'], takenAt: metadata.takenAt, timeZone: metadata.timeZone || '', worldName: metadata.worldName || '', worldId: metadata.worldId || '', sourceKind: 'photo', enabled: false, width: cache.width, height: cache.height, originalKey: cache.original.key, originalName: file.name, metadataSource: { ...metadata.source, fileModifiedAt: metadata.fileModifiedAt }, warnings: metadata.warnings || [] };
     const following = state.jobs.slice(state.jobs.indexOf(job) + 1).find(other => other.photoId && state.content.media.some(photo => photo.id === other.photoId));
     const insertAt = following ? state.content.media.findIndex(photo => photo.id === following.photoId) : state.content.media.length;
@@ -620,11 +683,13 @@ async function runUpload(job) {
   }
   if (!cache.width) { const decoded = await decodeImage(file); cache.width = decoded.width; cache.height = decoded.height; decoded.close?.(); }
   if (!cache.uploaded) { setJobProgress(job, '上传图片…', 10); cache.uploaded = await uploadBlob(job, file, options.kind, file.name, 10, 99, cache.mime); }
+  if (cloudLocked() || !state.content || !state.jobs.includes(job)) throw staleRequest();
   options.onComplete?.({ reference: cache.uploaded.key, width: cache.width, height: cache.height });
   return '图片已加入草稿，保存后可发布。';
 }
 
 function setPreviewTarget(target) {
+  if (cloudLocked()) return;
   $('#preview-target').value = target;
   const frame = $('#site-preview');
   const url = new URL('../', location.href); url.searchParams.set('editor-preview', previewToken); url.hash = target;
@@ -632,11 +697,12 @@ function setPreviewTarget(target) {
   postPreview();
 }
 function togglePreview(open = !state.preview) {
+  if (open && cloudLocked()) return;
   state.preview = open; $('#preview-pane').hidden = !open; $('.content-layout').classList.toggle('with-preview', open); $('#preview-toggle').textContent = open ? '关闭预览' : '打开预览';
   if (open) setPreviewTarget({ owner: 'collection', outfits: 'hello', photos: 'moments', journal: 'collection' }[state.section] || 'home');
 }
 function postPreview() {
-  if (!state.preview || !state.content || !$('#site-preview').contentWindow) return;
+  if (cloudLocked() || !state.preview || !state.content || !$('#site-preview').contentWindow) return;
   const content = publicGardenContent(state.content, { mediaBaseUrl: state.content.settings.mediaBaseUrl || state.mediaBaseUrl || location.origin });
   $('#site-preview').contentWindow.postMessage({ type: 'garden-preview', token: previewToken, content }, location.origin);
 }
@@ -661,7 +727,7 @@ async function refreshMessages({ quiet = false } = {}) {
     if (state.section === 'messages' && !(quiet && editingReply)) renderMessagesBody();
   } catch (error) {
     state.messagesError = error.message;
-    if ([401, 403].includes(error.status)) reportError(error);
+    if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error);
     else if (!quiet) toast(`读取消息失败：${error.message}`, true);
     if (state.section === 'messages') renderMessagesBody();
   } finally { state.messagesBusy = false; if (state.messagesRefreshQueued) { state.messagesRefreshQueued = false; refreshMessages({ quiet: true }); } }
@@ -673,6 +739,7 @@ function renderMessages() {
   return [intro('听见花园里的回声', '审核相册与碎碎念下的留言。管理员回复会在公开页面标记；消息与已读状态即时保存。', button('刷新消息', () => refreshMessages())), container];
 }
 function renderMessagesBody() {
+  if (cloudLocked()) return;
   const container = $('#message-content'); if (!container) return;
   const view = node('div', { class: 'message-tabs', role: 'tablist', 'aria-label': '消息类别' }, ...[['comments', '留言审核'], ['notifications', '未读通知']].map(([key, label]) => button(label, () => { state.messageView = key; renderMessagesBody(); }, state.messageView === key ? 'primary' : 'secondary', { role: 'tab', 'aria-selected': state.messageView === key })));
   const stats = node('div', { class: 'message-summary' }, node('span', { class: 'pill draft' }, `待审核 ${state.pendingCount}`), node('span', { class: 'pill published' }, `未读 ${state.unreadCount}`), node('span', { class: 'small-note' }, '页面可见时每 30 秒更新；输入回复时保留编辑。'));
@@ -725,7 +792,7 @@ function commentCard(comment) {
     comment.status === 'approved' ? replyForm : comment.status === 'pending' ? node('p', { class: 'small-note' }, '批准后可以发送管理员回复。') : null);
 }
 async function mutateMessages(id, action) {
-  if (messageActions.has(id)) return false;
+  if (cloudLocked() || messageActions.has(id)) return false;
   messageActions.add(id);
   // Keep unsent reply text in place until the server confirms success.
   try {
@@ -734,7 +801,7 @@ async function mutateMessages(id, action) {
     if (result.pendingCount !== undefined) state.pendingCount = Number(result.pendingCount) || 0;
     messageActions.delete(id); toast('消息处理已保存。'); await refreshMessages(); return true;
   } catch (error) {
-    if ([401, 403].includes(error.status)) reportError(error); else toast(`消息处理失败：${error.message}`, true);
+    if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error); else if (!error.stale) toast(`消息处理失败：${error.message}`, true);
     return false;
   } finally { messageActions.delete(id); navigation(); }
 }
@@ -749,16 +816,23 @@ window.addEventListener('message', event => { if (event.origin === location.orig
 $('#clear-uploads').addEventListener('click', () => { state.jobs = state.jobs.filter(job => job.status !== 'done'); renderUploads(); });
 $('#json-import').addEventListener('change', event => { importJSON(event.target.files[0]); event.target.value = ''; });
 $('#logout').addEventListener('click', async () => {
-  try { await api('/api/admin/logout', { method: 'POST' }); state.authenticated = false; state.csrf = ''; state.comments = []; state.notifications = []; state.replyDrafts = {}; state.unreadCount = 0; state.pendingCount = 0; showAuth(); updateChrome(); if (state.section === 'messages') render(); toast('已退出管理登录。'); }
+  if (state.busy || state.running || state.jobs.some(job => ['queued', 'running'].includes(job.status))) { toast('请等待保存、发布或图片导入结束后再退出登录。', true); return; }
+  if ((state.dirty || Object.values(state.replyDrafts).some(value => value.trim())) && !await confirmAction('退出管理登录？', '当前未保存的编辑和本机草稿备份会清除。需要保留时，请先取消并保存草稿或导出 JSON。', '清除并退出')) return;
+  if (state.busy || state.running || state.jobs.some(job => ['queued', 'running'].includes(job.status))) return;
+  try { await api('/api/admin/logout', { method: 'POST' }); state.authenticated = false; state.csrf = ''; clearPrivateContent(); showAuth(); updateChrome(); render(); toast('已退出管理登录，本机草稿缓存已清除。'); }
   catch (error) { reportError(error); }
 });
 window.addEventListener('beforeunload', event => {
   if (Object.values(state.replyDrafts).some(value => value.trim()) || state.dirty || state.jobs.some(job => ['queued', 'running', 'error'].includes(job.status))) { persistLocal(); event.preventDefault(); event.returnValue = ''; }
 });
 window.addEventListener('focus', () => refreshMessages({ quiet: true }));
+window.addEventListener('offline', () => { if (state.cloudMode) reportError(Object.assign(new Error('网络连接已中断。'), { offline: true })); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshMessages({ quiet: true }); });
 setInterval(() => refreshMessages({ quiet: true }), 30000);
-try { state.localBackup = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { /* Invalid old backup never replaces the server draft. */ }
+try {
+  state.localBackup = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+  state.cloudMode = state.localBackup?.mode === 'cloud' || localStorage.getItem(MODE_KEY) === 'cloud';
+} catch { /* Invalid old backup never replaces the server draft. */ }
 navigation(); loadAdminRuntime(); connect();
 
 async function loadAdminRuntime() {

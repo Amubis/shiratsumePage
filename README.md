@@ -19,7 +19,7 @@
 - 支持中文／日语，以及独立的模型主题配置。第二套模型只用于主题切换预览，不代表另一模型的真实素材。
 - 响应系统“减少动态效果”设置，媒体播放失败时以封面和播放入口兜底。
 
-后台支持本地 Node 服务和 Cloudflare Worker。GitHub Pages 仍只托管静态网页；云端上传、发布与评论需要先配置 R2、D1 和登录 Secrets。配置步骤见 [Cloudflare 与后台指南](docs/CLOUDFLARE_SETUP.md)，项目不会自动创建云端资源。
+后台支持本地 Node 服务和 Cloudflare Worker。云端管理页使用单管理员账号和密码登录，默认账号为 `Amubis`，可通过服务端 `ADMIN_USERNAME` 配置更换；密码由服务端 `ADMIN_PASSWORD` Secret 提供，不写入前端或草稿。GitHub Pages 仍只托管静态网页；云端上传、发布与评论需要先配置 R2、D1 和登录 Secrets。配置步骤见 [Cloudflare 与后台指南](docs/CLOUDFLARE_SETUP.md)，项目不会自动创建云端资源。
 
 ## 本地运行
 

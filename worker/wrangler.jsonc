@@ -21,6 +21,7 @@
   // }]
   // PUBLIC_SITE_ORIGINS optionally adds comma-separated website origins for comments.
   // Set ADMIN_PASSWORD and SESSION_SECRET with `wrangler secret put`.
+  // Optional server Text variable ADMIN_USERNAME changes the default Amubis account.
   // SESSION_SECRET must contain at least 32 random characters. Never add secrets here.
   // Keep this bucket private; public derivatives are served only through /media/.
 }

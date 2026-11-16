@@ -21,7 +21,7 @@ async function serve(t, env) {
 test('Worker keeps content available and explicitly disables comments without a D1 binding over HTTP', async t => {
   const origin = await serve(t, {
     BUCKET: { get: async () => null },
-    ADMIN_PASSWORD: 'test-password', SESSION_SECRET: 'a-secret-containing-at-least-32-characters',
+    ADMIN_USERNAME: 'GardenEditor', ADMIN_PASSWORD: 'test-password', SESSION_SECRET: 'a-secret-containing-at-least-32-characters',
     ASSETS: { fetch: async () => new Response('Static page') },
   });
   const contentResponse = await fetch(`${origin}/api/content`);
@@ -43,7 +43,7 @@ test('Worker keeps content available and explicitly disables comments without a 
   const admin = await fetch(`${origin}/api/admin/notifications`);
   assert.equal(admin.status, 401);
   await admin.json();
-  const login = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers: { Origin: 'https://garden.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'test-password' }) });
+  const login = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers: { Origin: 'https://garden.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'GardenEditor', password: 'test-password' }) });
   const cookie = login.headers.get('set-cookie').split(';', 1)[0];
   await login.json();
   const notifications = await fetch(`${origin}/api/admin/notifications`, { headers: { Cookie: cookie } });

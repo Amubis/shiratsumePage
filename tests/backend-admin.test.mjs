@@ -182,11 +182,11 @@ test('local HTTP static serving rejects hidden files, traversal and non-loopback
   assert.deepEqual(Buffer.from(await asset.arrayBuffer()), PNG.subarray(1, 5));
 });
 
-async function cloud(t, { configured = true } = {}) {
+async function cloud(t, { configured = true, adminUsername = 'Amubis', adminPassword = 'test-password' } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'garden-cloud-http-'));
   let clock = 1_800_000_000_000;
   const errors = [];
-  const handle = createAdminApi({ storage: createLocalStorage(directory), seed, mode: 'cloud', adminPassword: configured ? 'test-password' : '', sessionSecret: configured ? 'a-random-secret-at-least-32-characters' : '', now: () => clock, onError: error => errors.push(error) });
+  const handle = createAdminApi({ storage: createLocalStorage(directory), seed, mode: 'cloud', adminUsername, adminPassword: configured ? adminPassword : '', sessionSecret: configured ? 'a-random-secret-at-least-32-characters' : '', now: () => clock, onError: error => errors.push(error) });
   // The transport is actual loopback HTTP; the handler sees its production HTTPS origin.
   const applicationOrigin = 'https://garden.example';
   const server = createServer(async (incoming, outgoing) => {
@@ -210,9 +210,9 @@ test('cloud HTTP authentication signs secure cookies and requires authentication
   assert.equal(session.authenticated, false);
   assert.equal('csrfToken' in session, false);
   await json(await fetch(`${origin}/api/admin/content`), 401);
-  await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: JSON.stringify({ password: 'test-password' }) }), 403);
-  await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ password: 'wrong' }) }), 401);
-  const loginResponse = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ password: 'test-password' }) });
+  await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: JSON.stringify({ username: 'Amubis', password: 'test-password' }) }), 403);
+  await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ username: 'Amubis', password: 'wrong' }) }), 401);
+  const loginResponse = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ username: 'Amubis', password: 'test-password' }) });
   const login = await json(loginResponse);
   const setCookie = loginResponse.headers.get('set-cookie');
   assert.match(setCookie, /^__Host-garden_session=v1\./);
@@ -239,16 +239,42 @@ test('cloud HTTP authentication signs secure cookies and requires authentication
 
 test('cloud HTTP login throttles repeated bad passwords and unconfigured authentication stays unavailable', async t => {
   const { transportOrigin: origin, headers, advance } = await cloud(t);
-  for (let attempt = 0; attempt < 5; attempt++) await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ password: 'incorrect' }) }), 401);
-  const limited = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ password: 'test-password' }) });
+  for (let attempt = 0; attempt < 5; attempt++) await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ username: 'Amubis', password: 'incorrect' }) }), 401);
+  const limited = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ username: 'Amubis', password: 'test-password' }) });
   await json(limited, 429);
   assert.equal(limited.headers.get('retry-after'), '900');
   advance(15 * 60 * 1000 + 1);
-  await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ password: 'test-password' }) }));
+  await json(await fetch(`${origin}/api/admin/login`, { method: 'POST', headers, body: JSON.stringify({ username: 'Amubis', password: 'test-password' }) }));
   const missing = await cloud(t, { configured: false });
   const session = await json(await fetch(`${missing.transportOrigin}/api/admin/session`));
   assert.equal(session.configured, false);
   assert.equal(session.authenticated, false);
   await json(await fetch(`${missing.transportOrigin}/api/admin/content`), 503);
-  await json(await fetch(`${missing.transportOrigin}/api/admin/login`, { method: 'POST', headers: missing.headers, body: JSON.stringify({ password: 'anything' }) }), 503);
+  await json(await fetch(`${missing.transportOrigin}/api/admin/login`, { method: 'POST', headers: missing.headers, body: JSON.stringify({ username: 'Amubis', password: 'anything' }) }), 503);
+});
+
+test('cloud HTTP login requires the configured account as well as the password and uses one failure message',async t=>{
+  const {transportOrigin:origin,headers,advance}=await cloud(t,{adminUsername:'GardenEditor'});
+  const signIn=credentials=>fetch(`${origin}/api/admin/login`,{method:'POST',headers,body:JSON.stringify(credentials)});
+  for(const credentials of [{password:'test-password'},{username:'Amubis',password:'test-password'},{username:'GardenEditor',password:'wrong'},{username:{name:'GardenEditor'},password:'test-password'}]){
+    const response=await signIn(credentials);assert.equal(response.headers.get('set-cookie'),null);
+    assert.equal((await json(response,401)).error,'Incorrect username or password.');
+  }
+  const response=await signIn({username:'  gardenEDITOR  ',password:'test-password'});
+  assert.equal((await json(response)).authenticated,true);assert.ok(response.headers.get('set-cookie'));
+  advance(16*60*1000);
+  for(let i=0;i<5;i++)await json(await signIn({username:'wrong-user',password:'test-password'}),401);
+  await json(await signIn({username:'GardenEditor',password:'test-password'}),429);
+});
+
+test('changing the administrator account or password invalidates an existing signed cookie',async t=>{
+  const original=await cloud(t);
+  const response=await fetch(`${original.transportOrigin}/api/admin/login`,{method:'POST',headers:original.headers,body:JSON.stringify({username:'Amubis',password:'test-password'})});
+  await json(response);const cookie=response.headers.get('set-cookie').split(';')[0];
+  for(const change of [{adminUsername:'AnotherEditor'},{adminPassword:'changed-password'}]){
+    const updated=await cloud(t,change);
+    await json(await fetch(`${updated.transportOrigin}/api/admin/content`,{headers:{Cookie:cookie}}),401);
+  }
+  const unchanged=await cloud(t,{adminUsername:'  AMUBIS  '});
+  await json(await fetch(`${unchanged.transportOrigin}/api/admin/content`,{headers:{Cookie:cookie}}));
 });

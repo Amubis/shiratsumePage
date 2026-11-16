@@ -101,6 +101,10 @@ npm run cloud:deploy
 - `ADMIN_PASSWORD`：仅用于你登录管理页的独立强密码。
 - `SESSION_SECRET`：至少 32 个随机字符，用于签名登录会话；不要与管理员密码相同。
 
+管理页目前采用一个管理员账号，默认账号为 **`Amubis`**，配合上面的 `ADMIN_PASSWORD` 登录；不提供访客注册或多人账号管理。账号会去掉前后空格，大小写不敏感。需要更换账号名时，在 Worker 的 **Settings → Variables and Secrets → Add** 中添加名为 `ADMIN_USERNAME` 的 **Text** 变量，填写自己的账号名并部署生效。账号名最多 120 个字符；它不是秘密，密码和会话密钥仍必须使用 Secret 类型。修改账号、密码或会话密钥后，已有登录会话均需要重新认证。
+
+如果希望账号配置随源码部署保持一致，也可以在 `worker/wrangler.jsonc` 中添加同级的 `vars` 字段，例如 `"vars": { "ADMIN_USERNAME": "Amubis" }`，以后从源码部署时保留自己的值。不要把 `ADMIN_PASSWORD` 或 `SESSION_SECRET` 放进 `vars`。
+
 可以在本机用下面的命令生成随机会话密钥，然后把结果粘贴到 `SESSION_SECRET` 的交互输入框，保存在自己的密码管理器中：
 
 ```bash
@@ -119,7 +123,11 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 部署后，Wrangler 会显示 Worker 的 HTTPS 地址，例如 `https://shiratsume-garden.YOUR-SUBDOMAIN.workers.dev`。
 
-先打开这个地址的 `/admin/`，输入 `ADMIN_PASSWORD`。再打开 `/api/content`，确认可以读取已发布内容。浏览器登录 Cookie 属于这个 Worker 的域名；管理页应直接使用 Worker 自己的地址。
+先打开这个地址的 `/admin/`，输入管理员账号（默认 `Amubis`）和 `ADMIN_PASSWORD` 登录。再打开 `/api/content`，确认可以读取已发布内容。浏览器登录 Cookie 属于这个 Worker 的域名；管理页应直接使用 Worker 自己的地址。
+
+账号密码由 Worker 后端验证，并由它保护草稿、上传、发布和评论审核接口。GitHub Pages 只能提供静态管理界面，前端增加一个密码框不能保护后台数据。本地 `npm run admin` 仍仅监听本机回环地址并自动认证，不要求输入云端账号密码。
+
+云端管理未登录、会话失效或断网时，草稿、消息和内嵌预览会锁住，不会降级为可打开私有备份的静态编辑模式。重新认证后可继续处理当前页面内保留的未保存编辑。点击退出登录会清除当前浏览器的草稿备份、预览与私有内容；有未保存内容时可以取消退出，先保存到服务端或导出。正在保存、发布或导入图片时，请等操作完成再退出。服务端已保存的草稿和上传文件不会因退出而删除。
 
 ### 网站也放在这个 Worker
 

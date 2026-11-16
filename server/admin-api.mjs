@@ -102,19 +102,24 @@ function assertRevision(actual, expected) {
 }
 
 /** Portable Fetch API handler. Storage adapters implement conditional state writes and immutable objects. */
-export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cloud', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onError = () => {} }) {
+export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cloud', adminUsername = 'Amubis', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onError = () => {} }) {
   if (!storage || !seed) throw new Error('Storage and seed content are required.');
   const local = mode === 'local';
-  const configured = local || (typeof adminPassword === 'string' && adminPassword.length > 0 && typeof sessionSecret === 'string' && sessionSecret.length >= 32);
+  const loginName = typeof adminUsername === 'string' ? adminUsername.trim().toLowerCase() : '';
+  const validName = Boolean(loginName && loginName.length <= 120 && !/[\u0000-\u001f\u007f]/.test(loginName));
+  const configured = local || (validName && typeof adminPassword === 'string' && adminPassword.length > 0 && typeof sessionSecret === 'string' && sessionSecret.length >= 32);
   const localCsrf = randomToken();
   const attempts = new Map();
   let keyPromise;
   let seedPromise;
   let passwordHashPromise;
+  let usernameHashPromise;
+  let credentialBindingPromise;
 
   const hmac = async value => {
     keyPromise ||= crypto.subtle.importKey('raw', encoder.encode(sessionSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const signature = await crypto.subtle.sign('HMAC', await keyPromise, encoder.encode(value));
+    credentialBindingPromise ||= sha256(encoder.encode(JSON.stringify([loginName,adminPassword])));
+    const signature = await crypto.subtle.sign('HMAC', await keyPromise, encoder.encode(`garden-auth-v2:${await credentialBindingPromise}:${value}`));
     return Array.from(new Uint8Array(signature), byte => byte.toString(16).padStart(2, '0')).join('');
   };
   const initialState = () => seedPromise ||= (async () => {
@@ -207,13 +212,17 @@ export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cl
         if (attempts.size > 10000) throw new HttpError(429, 'Too many sign-in attempts. Try again later.');
         const entry = attempts.get(address) || { count: 0, resetAt: current + 15 * 60 * 1000 };
         if (entry.count >= 5) throw new HttpError(429, 'Too many sign-in attempts. Try again later.', { retryAfter: Math.ceil((entry.resetAt - current) / 1000) });
-        const { password } = await readJson(request);
+        const { username, password } = await readJson(request);
         passwordHashPromise ||= sha256(encoder.encode(adminPassword));
+        usernameHashPromise ||= sha256(encoder.encode(loginName));
         const supplied = typeof password === 'string' && password.length <= 1024 ? password : '';
-        if (!equalStrings(await sha256(encoder.encode(supplied)), await passwordHashPromise)) {
+        const suppliedName = typeof username === 'string' && username.length <= 120 ? username.trim().toLowerCase() : '';
+        const [passwordHash, usernameHash, expectedPassword, expectedUsername] = await Promise.all([sha256(encoder.encode(supplied)),sha256(encoder.encode(suppliedName)),passwordHashPromise,usernameHashPromise]);
+        const passwordMatches=equalStrings(passwordHash,expectedPassword), usernameMatches=equalStrings(usernameHash,expectedUsername);
+        if (!usernameMatches || !passwordMatches) {
           entry.count++;
           attempts.set(address, entry);
-          throw new HttpError(401, 'Incorrect password.');
+          throw new HttpError(401, 'Incorrect username or password.');
         }
         attempts.delete(address);
         const payload = `v1.${current + SESSION_SECONDS * 1000}.${randomToken()}`;
