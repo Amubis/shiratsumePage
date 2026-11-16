@@ -1,6 +1,6 @@
 {
   "name": "shiratsume-portfolio",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "description": "Shiratsume — avatar portfolio and photo archive",

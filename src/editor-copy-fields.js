@@ -21,9 +21,8 @@ export const EDITOR_COPY_SECTIONS = Object.freeze([
     { id: 'modelDescription', label: '模型介绍正文', location: '引导语下方的正文', kind: 'modelProfile', key: 'description', multiline: true },
     { id: 'seeMoments', label: '前往相册按钮', location: '模型介绍正文下方', group: 'site', key: 'seeMoments' },
   ] },
-  { id: 'moments', label: '相册', section: 'moments', description: '相册纸张上的固定标题。每张照片的说明请在「照片相册」中修改。', fields: [
+  { id: 'moments', label: '相册', section: 'moments', description: '标题右侧自动显示另一种语言的标题和当前页码。每张照片的说明请在「照片相册」中修改。', fields: [
     { id: 'albumTitle', label: '相册标题', location: '相册纸张左上方', group: 'album', key: 'title' },
-    { id: 'albumCoverNote', label: '相册标题旁短句', location: '相册标题右侧的小字', group: 'album', key: 'coverNote' },
   ] },
   { id: 'collection', label: '个人页', section: 'collection', description: '个人页的栏目文字。昵称、简介与链接请在「作者资料」中修改。', fields: [
     { id: 'personalEyebrow', label: '个人页上方短句', location: '作者头像上方的小字', group: 'personal', key: 'eyebrow' },

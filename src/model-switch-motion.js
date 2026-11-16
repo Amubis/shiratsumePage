@@ -5,35 +5,34 @@ const mix = (a, b, amount) => a + (b - a) * amount;
 const fields = ['center', 'width', 'height', 'shellX', 'shellY'];
 let switchSerial = 0;
 
-export const MODEL_SWITCH_TIMING = Object.freeze({ duration: 740 });
+export const MODEL_SWITCH_TIMING = Object.freeze({ duration: 760 });
 export const MODEL_SWITCH_THEMES = Object.freeze({ left: '#B7BB5A', right: '#B8A0C2' });
 
 export function modelSwitchRestPose(selection = 'left') {
   return { center: selection === 'right' ? .75 : .25, width: .455, height: .84, shellX: 1, shellY: 1 };
 }
 
-/** The same rounded window squashes at impact, overruns, and rocks back once. */
-export function modelSwitchJellyPose(progress, { from = modelSwitchRestPose('left'), selection = 'right' } = {}) {
-  const t = clamp(progress), rest = modelSwitchRestPose(selection);
-  const direction = Math.sign(rest.center - from.center) || (selection === 'right' ? 1 : -1);
-  const overrun = Math.min(.06, Math.abs(rest.center - from.center) * .12);
-  const stops = [
-    { at: 0, ...from },
-    { at: .29, center: mix(from.center, rest.center, .62), width: .493, height: .79, shellX: 1.018, shellY: .973 },
-    { at: .53, center: rest.center + direction * overrun, width: .40, height: .95, shellX: 1.042, shellY: .928 },
-    { at: .74, center: rest.center - direction * overrun * .44, width: .478, height: .79, shellX: .978, shellY: 1.055 },
-    { at: .9, center: rest.center + direction * overrun * .11, width: .448, height: .855, shellX: 1.009, shellY: .99 },
-    { at: 1, ...rest },
-  ];
-  const end = stops.findIndex(stop => stop.at >= t);
-  if (end <= 0) return Object.fromEntries(fields.map(key => [key, from[key]]));
-  const a = stops[end - 1], b = stops[end];
-  const amount = end === 1 ? 1 - (1 - (t - a.at) / (b.at - a.at)) ** 3 : smooth((t - a.at) / (b.at - a.at));
-  return Object.fromEntries(fields.map(key => [key, mix(a[key], b[key], amount)]));
+/** One continuously damped stroke, without stops at intermediate keyframes. */
+export function modelSwitchTravel(progress) {
+  const t=clamp(progress);
+  if(t===0 || t===1)return t;
+  return 1-Math.exp(-6*t)*(Math.cos(7.6*t)+6/7.6*Math.sin(7.6*t));
+}
+export function modelSwitchJellyPose(progress,{from=modelSwitchRestPose('left'),selection='right'}={}){
+  const t=clamp(progress),rest=modelSwitchRestPose(selection);
+  if(t===0)return {...from};
+  if(t===1)return rest;
+  const travel=modelSwitchTravel(t),settle=smooth(clamp(t*3));
+  const deformation=.05*Math.sin(3*Math.PI*t)*Math.sin(Math.PI*t);
+  return {center:mix(from.center,rest.center,travel),
+    width:mix(from.width,rest.width,settle)+deformation,
+    height:mix(from.height,rest.height,settle)-deformation*2,
+    shellX:mix(from.shellX,1,settle)-deformation*.6,
+    shellY:mix(from.shellY,1,settle)+deformation*.9};
 }
 
 /** One document clip survives every frame and is shared with its visible rim. */
-export function createModelSwitchMotion({ root, reducedMotion = () => false, themes = MODEL_SWITCH_THEMES } = {}) {
+export function createModelSwitchMotion({ root, reducedMotion = () => false, themes = MODEL_SWITCH_THEMES, onFrame = () => {} } = {}) {
   if (!root?.ownerDocument) throw new TypeError('A model switch root is required.');
   const doc = root.ownerDocument, win = doc.defaultView;
   const color = root.querySelector('.model-choice-color');
@@ -49,6 +48,8 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
   (doc.body || doc.documentElement).append(definitions);
   const outline = create('svg'); outline.setAttribute('class', 'model-choice-slider'); outline.setAttribute('viewBox', '0 0 1 1'); outline.setAttribute('preserveAspectRatio', 'none'); outline.setAttribute('aria-hidden', 'true'); outline.setAttribute('focusable', 'false');
   const rim = create('rect'); rim.setAttribute('vector-effect', 'non-scaling-stroke'); outline.append(rim); root.append(outline);
+  const pointer=doc.createElementNS(SVG_NS,'svg');pointer.setAttribute('class','model-switch-pointer');pointer.setAttribute('viewBox','0 0 24 16');pointer.setAttribute('aria-hidden','true');
+  const arrow=create('path');arrow.setAttribute('d','M3 8h18M7 3 2 8l5 5m10-10 5 5-5 5');pointer.append(arrow);root.append(pointer);
   const previousClip = color.style.clipPath, previousWebkitClip = color.style.webkitClipPath;
   const previousAccent = root.style.getPropertyValue('--model-accent');
   color.style.clipPath = `url("#${id}")`; color.style.webkitClipPath = `url("#${id}")`;
@@ -76,13 +77,14 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     root.style.setProperty('--model-shell-y', next.shellY.toFixed(5));
   }
   function stop() { if (frame !== null) win.cancelAnimationFrame(frame); frame = null; }
-  function settle() { stop(); paintAccent(true); paint(modelSwitchRestPose(selection)); }
+  function settle() {stop();paintAccent(true);paint(modelSwitchRestPose(selection));onFrame({selection,progress:1,travel:1});}
   function tick(time) {
     frame = null;
     if (destroyed) return;
     if (reduce() || doc.hidden) { settle(); return; }
     const progress = clamp((time - startedAt) / MODEL_SWITCH_TIMING.duration);
     paint(modelSwitchJellyPose(progress, { from: startingPose, selection }));
+    onFrame({selection,progress,travel:modelSwitchTravel(progress)});
     if (progress < 1) frame = win.requestAnimationFrame(tick);
     else paint(modelSwitchRestPose(selection));
   }
@@ -91,14 +93,16 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     const target = next === 'right' ? 'right' : 'left';
     if (selection === target) return false;
     stop(); selection = target; root.dataset.selection = target; startingPose = { ...pose };
-    if (!animate || reduce() || doc.hidden || typeof win.requestAnimationFrame !== 'function') { settle(); return true; }
+    if (!animate || reduce() || doc.hidden || typeof win.requestAnimationFrame !== 'function') { settle();return true; }
     paintAccent();
-    startedAt = now(); frame = win.requestAnimationFrame(tick); return true;
+    startedAt = now();onFrame({selection,progress:0,travel:0});frame = win.requestAnimationFrame(tick); return true;
   }
   const syncSelection = () => setSelection(root.dataset.selection);
   const Observer = win.MutationObserver;
   const observer = typeof Observer === 'function' ? new Observer(syncSelection) : null;
   observer?.observe(root, { attributes: true, attributeFilter: ['data-selection'] });
+  bind(root,'pointermove',event=>{const rect=root.getBoundingClientRect?.();if(rect?.width)root.style.setProperty('--model-pointer-x',`${18+clamp((event.clientX-rect.left)/rect.width)*64}%`);});
+  bind(root,'pointerleave',()=>root.style.setProperty('--model-pointer-x','50%'));
   bind(win, 'resize', settle);
   bind(doc, 'visibilitychange', () => { if (doc.hidden) settle(); });
   bind(win, 'pagehide', settle);
@@ -111,7 +115,7 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     destroy() {
       if (destroyed) return;
       stop(); destroyed = true; observer?.disconnect(); listeners.splice(0).forEach(dispose => dispose());
-      definitions.remove(); outline.remove(); root.classList.remove('has-model-switch-motion');
+      definitions.remove(); outline.remove(); pointer.remove(); root.classList.remove('has-model-switch-motion');
       root.classList.remove('is-model-switch-still');
       root.style.removeProperty('--model-shell-x'); root.style.removeProperty('--model-shell-y');
       if (previousAccent) root.style.setProperty('--model-accent', previousAccent);

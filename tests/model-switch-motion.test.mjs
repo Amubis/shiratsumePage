@@ -19,14 +19,14 @@ class Node {
   querySelector(selector) { return selector==='.model-choice-color'?this.color:null; }
 }
 
-function fixture({reduced=false,themes}={}) {
+function fixture({reduced=false,themes,onFrame}={}) {
   let time=0,serial=0,notify=()=>{},disconnected=false;const frames=new Map();
   const doc=new Node();doc.ownerDocument=doc;doc.hidden=false;doc.body=new Node(doc);doc.createElementNS=()=>new Node(doc);
   const win=new Node(doc);doc.defaultView=win;win.performance={now:()=>time};
   win.requestAnimationFrame=callback=>{frames.set(++serial,callback);return serial;};win.cancelAnimationFrame=id=>frames.delete(id);
   win.MutationObserver=class { constructor(callback){notify=callback;} observe(){} disconnect(){disconnected=true;} };
   const root=new Node(doc);root.dataset.selection='left';const color=new Node(doc);color.style.clipPath='inset(8% 52% 8% 2% round 8px)';root.color=color;root.append(color);doc.body.append(root);
-  const controller=createModelSwitchMotion({root,reducedMotion:()=>reduced,themes});
+  const controller=createModelSwitchMotion({root,reducedMotion:()=>reduced,themes,onFrame});
   return {doc,win,root,color,controller,frames,notify:()=>notify(),get disconnected(){return disconnected;},setReduced:value=>{reduced=value;},step(delta){time+=delta;const work=[...frames.values()];frames.clear();work.forEach(callback=>callback(time));}};
 }
 
@@ -97,4 +97,18 @@ test('destroy removes live geometry, restores fallback clipping and does not ret
   assert.equal(f.color.style.clipPath,original);assert.equal(f.color.style.webkitClipPath,'');assert.equal(f.root.classList.contains('has-model-switch-motion'),false);
   assert.equal(f.root.style.getPropertyValue('--model-shell-x'),'');assert.equal(f.controller.setSelection('left'),false);
   f.controller.destroy();assert.equal(f.doc.body.children.length,1);
+});
+
+test('page handoff receives the very same continuous travel as the visible slider',t=>{
+ const reports=[],f=fixture({onFrame:frame=>reports.push(frame)});t.after(()=>f.controller.destroy());
+ f.controller.setSelection('right');f.step(190);
+ assert.equal(reports.at(-1).progress,.25);
+ assert.ok(Math.abs(reports.at(-1).travel-(f.controller.pose.center-.25)/.5)<1e-8);
+ f.step(570);assert.equal(reports.at(-1).progress,1);assert.equal(reports.at(-1).travel,1);
+ // The exported pose is smooth through former keyframe boundaries.
+ for(const p of [.29,.53,.74,.9]){
+   const a=modelSwitchJellyPose(p-.0001),b=modelSwitchJellyPose(p+.0001);
+   assert.ok(Math.abs(b.center-a.center)>1e-7,'intermediate boundaries do not impose pauses');
+   assert.ok(Math.abs(b.center-a.center)<.001,'the path does not jump');
+ }
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition, ALBUM_STATIC_RADIUS_RATIO, ALBUM_BOUNDARY_HANDOFF } from '../src/album-transition.js';
 
-test('wave circles share the background lattice and preserve four-corner openings at maximum size', () => {
+test('wave circles cover every square center before handing off to the solid background', () => {
   for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
     const grid = createAlbumCircleGrid({ width, height });
     assert.ok(grid.pitch >= 96 && grid.pitch <= 220);
@@ -11,7 +11,7 @@ test('wave circles share the background lattice and preserve four-corner opening
     assert.equal(grid.circles[grid.columns].y - grid.circles[0].y, grid.pitch);
     assert.equal(grid.maxRadius, grid.pitch * ALBUM_STATIC_RADIUS_RATIO);
     assert.ok(grid.maxRadius * 2 > grid.pitch);
-    assert.ok(grid.maxRadius < grid.pitch / Math.SQRT2);
+    assert.ok(grid.maxRadius > grid.pitch / Math.SQRT2);
   }
 });
 
@@ -41,7 +41,7 @@ test('upward and downward travel mirror the row order during both growth and shr
   assert.ok(albumCircleScale(.18, 0, rows, 'shrink', -1) < albumCircleScale(.18, rows - 1, rows, 'shrink', -1));
 });
 
-test('papers stop back-to-front before the cover, with row-major photos and reversed exit', () => {
+test('papers stop back-to-front before the cover, with left-to-right photo adhesion and peeling', () => {
   const enter = createAlbumEnterPlan(8);
   const papers = enter.filter((part) => part.kind.startsWith('paper'));
   assert.deepEqual(papers.map((part) => part.kind), ['paper-back', 'paper-middle', 'paper-front']);
@@ -52,7 +52,7 @@ test('papers stop back-to-front before the cover, with row-major photos and reve
   assert.deepEqual(photos.map((part) => part.index), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.ok(photos.every((part, index) => !index || part.delay > photos[index - 1].delay));
   const exit = createAlbumExitPlan(8);
-  assert.deepEqual(exit.filter((part) => part.kind === 'photo').map((part) => part.index), [7, 6, 5, 4, 3, 2, 1, 0]);
+  assert.deepEqual(exit.filter((part) => part.kind === 'photo').map((part) => part.index), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.deepEqual(exit.filter((part) => part.kind.startsWith('paper')).map((part) => part.kind), ['paper-front', 'paper-middle', 'paper-back']);
 });
 
@@ -123,7 +123,7 @@ function fixture(t, { reduced = false } = {}) {
     };
     return node;
   };
-  for (const selector of ['.album-paper.layer-back', '.album-paper.layer-middle', '.album-paper.layer-front', '.album-cover', '.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note']) {
+  for (const selector of ['.album-paper.layer-back', '.album-paper.layer-middle', '.album-paper.layer-front', '.album-cover', '.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note', '.album-art-line', '.album-art-dots', '.album-title-clover', '.album-date-mark']) {
     const node = make(); section.queries.set(selector, [node]);
     if (selector.startsWith('.album-paper.')) section.queries.set('.album-paper', [...(section.queries.get('.album-paper') || []), node]);
   }
@@ -238,17 +238,9 @@ test('resize and visibility complete an in-flight operation without freezing a n
   assert.equal(f.frames.size, 0);
 });
 
-test('resting dots slightly overlap along rows while preserving openings at square centers', (t)=>{
-  const f=fixture(t);
-  assert.equal(ALBUM_STATIC_RADIUS_RATIO,.54);
-  const circles=f.field.children[0].children;
-  const pitch=Number(circles[1].getAttribute('cx'))-Number(circles[0].getAttribute('cx'));
-  const radius=Number(circles[0].getAttribute('r'));
-  assert.equal(pitch,createAlbumCircleGrid().pitch,'resting dots match the reference scale and transition lattice');
-  assert.equal(pitch,180,'1440px desktop uses a much wider 180px pitch');
-  assert.ok(radius*2>pitch,'the diameter exceeds the center distance');
-  assert.ok(radius*2/pitch<1.1,'the overlap stays slight');
-  assert.ok(radius<pitch/Math.SQRT2,'four-corner openings remain between circles');
+test('resting background is solid and the final wave fully covers square corners', t=>{
+  const f=fixture(t);assert.equal(f.field.children[0].children.length,0);
+  const grid=createAlbumCircleGrid();assert.ok(grid.maxRadius>grid.pitch/Math.SQRT2);
 });
 
 test('actual canvas dimensions keep both wave and resting circles round beside a reserved scrollbar gutter',(t)=>{

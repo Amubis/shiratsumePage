@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stat, readFile } from 'node:fs/promises';
-import { OUTFITS, OUTFIT_COPY, normalizeOutfits, MODEL_PROFILE, OUTFIT_HINT_TIMING, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, createOutfitShowcase } from '../src/outfits.js';
+import { OUTFITS, OUTFIT_COPY, normalizeOutfits, MODEL_PROFILE, OUTFIT_HINT_TIMING, wrapOutfitIndex, outfitRailGeometry, nearestOutfitDot, outfitViewGeometry, outfitFrontCanvasPose, createOutfitShowcase } from '../src/outfits.js';
 
 class Element {
   constructor(tag, doc) {
@@ -126,15 +126,15 @@ async function settle() { for (let i = 0; i < 10; i += 1) await Promise.resolve(
 test('each rear figure shares the front baseline and matches its visible height only during inspection', () => {
   for (const outfit of OUTFITS) {
     const geometry = outfitViewGeometry(outfit);
-    const frontHeight = outfit.frontBounds[3] - outfit.frontBounds[1];
+    const frontHeight = 2350;
     const rearHeight = outfit.backBounds[3] - outfit.backBounds[1];
     assert.ok(Math.abs(rearHeight * geometry.previewScale - frontHeight) < 1e-8);
     assert.ok(Math.abs(rearHeight * geometry.restScale / frontHeight - .93) < 1e-10);
     for (const mode of ['rest', 'preview']) {
       const rearBottom = 1280 + (outfit.backBounds[3] - 1280) * geometry[`${mode}Scale`] + geometry[`${mode}Y`] / 100 * 2560;
-      assert.ok(Math.abs(rearBottom - outfit.frontBounds[3]) < 1e-8, `${outfit.id}: baseline drift`);
+      assert.ok(Math.abs(rearBottom - 2500) < 1e-8, `${outfit.id}: baseline drift`);
       const rearCenter = geometry[`${mode}X`] / 100 * 1440 + 720 + ((outfit.backBounds[0] + outfit.backBounds[2]) / 2 - 720) * geometry[`${mode}Scale`];
-      const frontCenter = (mode === 'rest' ? -.62 : -.70) * 1440 + (outfit.frontBounds[0] + outfit.frontBounds[2]) / 2;
+      const frontCenter = (mode === 'rest' ? -.62 : -.70) * 1440 + 720;
       assert.ok(Math.abs((rearCenter - frontCenter) / 1440 - (mode === 'rest' ? .2 : .48)) < 1e-8);
     }
   }
@@ -462,11 +462,11 @@ test('the shared mask follows calibrated rear inspection, press and cancellation
   f.backStage.emit('pointerenter',{pointerType:'mouse'});
   const preview=sources.map(matrix);
   assert.ok(preview[1][0]>initial[1][0]);
-  assert.ok(Math.abs((OUTFITS[0].backBounds[3]-OUTFITS[0].backBounds[1])*preview[1][3]-(OUTFITS[0].frontBounds[3]-OUTFITS[0].frontBounds[1]))<.002);
+  assert.ok(Math.abs((OUTFITS[0].backBounds[3]-OUTFITS[0].backBounds[1])*preview[1][3]-2350)<.002);
   f.backStage.emit('pointerleave');
   assert.deepEqual(sources.map(matrix),initial);
   f.stage.emit('pointerdown',{pointerId:1,button:0});
-  assert.ok(Math.abs(matrix(sources[0])[0]-.94)<1e-6);
+  assert.ok(Math.abs(matrix(sources[0])[0]/initial[0][0]-.94)<1e-6);
   f.stage.emit('pointercancel');
   assert.deepEqual(sources.map(matrix),initial);
   assert.equal(mask.children[0],sources[0]);assert.equal(mask.children[1],sources[1]);
@@ -734,7 +734,7 @@ test('outfit configuration rejects unsafe media, deduplicates ids and supplies v
 test('different image sizes use a contain canvas while keeping the front and rear aligned', () => {
   const [outfit] = normalizeOutfits([{ id: 'sizes', front: './front.png', back: './back.png', frontSize: [1000, 1000], backSize: [500, 1000], frontBounds: [100, 50, 900, 950], backBounds: [50, 20, 450, 980] }]);
   const geometry = outfitViewGeometry(outfit);
-  const frontHeight = 900 * 1.44, frontBottom = 950 * 1.44 + 560;
+  const frontHeight = 2350, frontBottom = 2500;
   const backHeight = 960 * 2.56, backBottom = 980 * 2.56;
   assert.ok(Math.abs(backHeight * geometry.previewScale - frontHeight) < 1e-8);
   assert.ok(Math.abs(1280 + (backBottom - 1280) * geometry.previewScale + geometry.previewY / 100 * 2560 - frontBottom) < 1e-8);
@@ -828,4 +828,11 @@ test('managed copy changes labels without reconstructing the carousel and remain
   f.api.setOutfits([]); f.api.setCopy({ ja: { empty: '<b>準備中</b>' } });
   assert.equal(f.container.find('outfit-empty').textContent, '<b>準備中</b>');
   assert.ok(OUTFIT_COPY.zh.next.includes('点击'));
+});
+
+test('every front silhouette has the same visible height, center and fixed floor baseline',()=>{
+ for(const outfit of OUTFITS){const p=outfitFrontCanvasPose(outfit),b=outfit.frontBounds;
+ assert.ok(Math.abs((b[3]-b[1])*p.scale-2350)<1e-8);
+ assert.ok(Math.abs(b[3]*p.scale+p.y-2500)<1e-8);
+ assert.ok(Math.abs((b[0]+b[2])*.5*p.scale+p.x-720)<1e-8);}
 });

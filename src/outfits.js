@@ -69,10 +69,23 @@ function canvasFit(size) {
   const scale = Math.min(IMAGE_WIDTH / width, IMAGE_HEIGHT / height);
   return { scale, x: (IMAGE_WIDTH - width * scale) / 2, y: (IMAGE_HEIGHT - height * scale) / 2 };
 }
-function canvasBounds(outfit, side) {
+function rawCanvasBounds(outfit, side) {
   const size = imageSize(outfit[`${side}Size`], imageSize([outfit.imageWidth, outfit.imageHeight], [IMAGE_WIDTH, IMAGE_HEIGHT]));
   const fit = canvasFit(size), bounds = normalizedBounds(outfit[`${side}Bounds`], size);
   return [bounds[0] * fit.scale + fit.x, bounds[1] * fit.scale + fit.y, bounds[2] * fit.scale + fit.x, bounds[3] * fit.scale + fit.y];
+}
+
+/** A fixed visible height and baseline keep the stage and its scenery stationary. */
+export function outfitFrontCanvasPose(outfit) {
+  const bounds=rawCanvasBounds(outfit,'front');
+  const scale=2350/Math.max(1,bounds[3]-bounds[1]);
+  return {scale,x:720-(bounds[0]+bounds[2])*.5*scale,y:2500-bounds[3]*scale};
+}
+function canvasBounds(outfit,side){
+  const bounds=rawCanvasBounds(outfit,side);
+  if(side!=='front')return bounds;
+  const pose=outfitFrontCanvasPose(outfit);
+  return bounds.map((value,index)=>value*pose.scale+(index%2?pose.y:pose.x));
 }
 
 /** Normalize the visible figures, rather than assuming equal PNG canvases mean equal height.
@@ -365,7 +378,9 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
       const finalScaleX = sx * pressScaleX, finalScaleY = sy * pressScaleY;
       x += tx + originX * (1 - finalScaleX) + pressX * sx;
       y += ty + originY * (1 - finalScaleY) + pressY * sy;
-      setShadowAttribute(shadowSources[index], 'transform', `matrix(${(finalScaleX * width / IMAGE_WIDTH).toFixed(6)} 0 0 ${(finalScaleY * height / IMAGE_HEIGHT).toFixed(6)} ${x.toFixed(5)} ${y.toFixed(5)})`);
+      const normalization=index?{scale:1,x:0,y:0}:outfitFrontCanvasPose(records[currentIndex]);
+      const baseX=finalScaleX*width/IMAGE_WIDTH,baseY=finalScaleY*height/IMAGE_HEIGHT;
+      setShadowAttribute(shadowSources[index], 'transform', `matrix(${(baseX*normalization.scale).toFixed(6)} 0 0 ${(baseY*normalization.scale).toFixed(6)} ${(x+baseX*normalization.x).toFixed(5)} ${(y+baseY*normalization.y).toFixed(5)})`);
     });
   }
   function stopSharedShadow() {
@@ -432,6 +447,9 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     backStage.setAttribute('aria-busy', String(busy));
     image.alt = `しらつめ · ${label} · ${copy.front}`;
     backImage.alt = `しらつめ · ${label} · ${copy.back}`;
+    const frontPose=outfitFrontCanvasPose(outfit);
+    image.style.transformOrigin='0 0';
+    image.style.transform=`translate(${frontPose.x/IMAGE_WIDTH*100}%,${frontPose.y/IMAGE_HEIGHT*100}%) scale(${frontPose.scale})`;
     updateHitBounds(stage, canvasBounds(outfit, 'front'));
     updateHitBounds(backStage, canvasBounds(outfit, 'back'));
     const geometry = outfitViewGeometry(outfit);

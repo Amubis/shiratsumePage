@@ -19,21 +19,7 @@
   pointer-events: none;
   transition: top .55s var(--water-easing, var(--easing)), left .55s var(--water-easing, var(--easing));
 }
-.outfit-showcase::before {
-  --ground-band-height: clamp(124px, 13vw, 196px);
-  z-index: -1;
-  left: calc(var(--outfit-ground-x, 50%) - 112.5%);
-  top: calc(var(--outfit-ground-y, calc(100% - 66px)) - var(--ground-band-height) * .7);
-  width: 180%;
-  height: var(--ground-band-height);
-  background: linear-gradient(112deg,
-    color-mix(in srgb, var(--theme) 94%, var(--paper)) 0%,
-    var(--theme) 56%,
-    color-mix(in srgb, var(--theme) 85%, var(--theme-dark)) 100%);
-  clip-path: polygon(0 8%, 62.5% 70%, 100% 22%, 100% 54%, 62.5% 88%, 0 40%);
-  transform-origin: left 70%;
-  transform: scaleX(var(--intro-line-progress, var(--intro-decor-alpha, 1)));
-}
+.outfit-showcase::before { content: none; }
 .outfit-showcase::after {
   z-index: 0;
   left: var(--outfit-ground-x, 50%);

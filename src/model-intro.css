@@ -39,21 +39,12 @@ body:not(.on-home) .language-dock .language-control button {
   pointer-events: none;
 }
 .intro-geometry > span { position: absolute; display: block; }
-/* The large folded band now belongs to the measured figure group, so its
-   corner stays beneath the feet on both desktop and vertically stacked pages. */
-.intro-geometry > span:first-child { display: none; }
-.intro-geometry > span:last-child {
-  right: -3%;
-  top: 18%;
-  width: 22%;
-  height: 17%;
-  background: linear-gradient(112deg,
-    color-mix(in srgb, var(--theme) 78%, var(--paper)),
-    color-mix(in srgb, var(--theme) 93%, var(--paper)));
-  clip-path: polygon(13% 0, 100% 0, 87% 100%, 0 100%);
-  transform-origin: right center;
-  transform: rotate(-8deg) scaleX(var(--intro-line-progress, var(--intro-decor-alpha, 1)));
-}
+/* Two fixed planes extend beyond the viewport; only their reveal window moves. */
+.intro-geometry > .intro-fold { inset: 0 -8vw 0 0; clip-path: inset(0 calc((1 - var(--intro-line-progress,1)) * 100%) 0 0); }
+.intro-fold::before { content: ''; position: absolute; inset: 0; }
+.fold-rear::before { background: linear-gradient(115deg,#9ba03d 0%,var(--theme) 32%,#d8d692 75%,#a6ab4b); clip-path: polygon(0 45%,17% 58%,31% 51%,36% 75%,100% 96%,100% 111%,30% 86%,25% 67%,0 73%); }
+.fold-front::before { background: linear-gradient(105deg,#c1c276 0%,#a6ad4c 31%,#e0df9f 62%,#afb64c 100%); clip-path: polygon(0 88%,25% 81%,27% 96%,100% 67%,100% 80%,27% 110%,23% 94%,0 102%); }
+.intro-geometry > .intro-title-block { right:-3%; top:18%; width:22%; height:17%; background:linear-gradient(112deg,color-mix(in srgb,var(--theme) 78%,var(--paper)),color-mix(in srgb,var(--theme) 93%,var(--paper))); clip-path:polygon(13% 0,100% 0,87% 100%,0 100%); transform-origin:left center; transform:scaleX(var(--intro-line-progress,1)) rotate(-8deg); }
 .intro-geometry::before,
 .intro-geometry::after {
   content: '';
@@ -236,3 +227,5 @@ body:not(.on-home) .language-dock .language-control button {
   .intro-geometry > span:last-child { transform: rotate(-8deg); }
   .intro-enter-managed .model-intro-quote::before { opacity: 1; transform: skewX(-12deg); }
 }
+
+@media(max-width:760px){.intro-geometry > .intro-fold {height:calc(78px + min(73svh, 600px));bottom:auto;}}

@@ -1,58 +1,94 @@
-.primary-album.album-inner {
-  --album-inset-top: 8svh;
-  --album-bleed-left: 19vw;
-  --album-bleed-bottom: 20svh;
-  width: 84vw;
-  margin-left: 14vw;
-  min-height: 100svh;
-  padding-block: var(--album-inset-top) 8svh;
-  padding-right: 4vw;
-}
-/* The paper continues beyond the viewport; its contents keep their reading area. */
-.primary-album .album-paper.layer-front {
-  left: calc(-1 * var(--album-bleed-left));
-  bottom: calc(-1 * var(--album-bleed-bottom));
-  padding-left: calc(var(--album-bleed-left) + 44px);
-  padding-bottom: calc(var(--album-bleed-bottom) + 32px);
-}
-.primary-album .album-paper.layer-middle {
-  left: calc(5px - var(--album-bleed-left));
-  bottom: calc(4px - var(--album-bleed-bottom));
-}
-.primary-album .album-paper.layer-back {
-  left: calc(14px - var(--album-bleed-left));
-  bottom: calc(14px - var(--album-bleed-bottom));
-}
+/* The front sheet bleeds past the desk; the ink keeps an independent safe area. */
+.primary-album.album-inner { --album-inset-top: 5svh; --album-bleed-left: 20vw; --album-bleed-bottom: 14svh; width: 79vw; margin-left: 17vw; min-height: 100svh; padding: var(--album-inset-top) 2vw 6svh 0; }
 body:not(.theme-preview) #moments { overflow: clip; }
-.primary-album .album-photo-image { object-fit: cover; }
+.primary-album .album-desk { height: 89svh; min-height: 570px; }
+.primary-album .album-paper { background-color: #faf5eb; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.065' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.primary-album .album-paper.layer-front { --paper-rotation: -1.1deg; left: calc(-1 * var(--album-bleed-left)); bottom: calc(-1 * var(--album-bleed-bottom)); padding: 32px 38px calc(var(--album-bleed-bottom) + 23px) calc(var(--album-bleed-left) + 12px); isolation: isolate; }
+.primary-album .album-paper.layer-middle { left: calc(8px - var(--album-bleed-left)); bottom: calc(5px - var(--album-bleed-bottom)); --paper-rotation: 1.3deg; }
+.primary-album .album-paper.layer-back { left: calc(19px - var(--album-bleed-left)); bottom: calc(15px - var(--album-bleed-bottom)); --paper-rotation: -2deg; }
+.primary-album .album-cover { background-color: #eeebd7; width: 105vw; left: -19vw; top: calc(-1 * var(--album-inset-top) - 365px); height: 400px; z-index: 60; }
+.primary-album .album-filter-tab { left: -6vw; top: -5px; z-index: 59; width: 120px; min-height: 66px; padding-top: 27px; font-size: 13px; font-weight: 750; }
+.primary-album .album-heading { position: relative; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(90px,.65fr) minmax(90px,.55fr); align-items: center; column-gap: 20px; margin: 14px 0 16px; padding-left: 16px; z-index: 3; }
+.primary-album .album-title { font-family: var(--display-strong); font-size: clamp(36px,4.4vw,78px); font-weight: 900; font-style: italic; letter-spacing: -.055em; line-height: 1.15; white-space: nowrap; }
+.album-title-clover { position: absolute; left: -46px; top: -6px; width: clamp(57px,6.5vw,108px); height: clamp(57px,6.5vw,108px); color: var(--theme); z-index: -1; rotate: -12deg; }
+.primary-album .album-cover-note, .primary-album .album-page-status { font-size: clamp(10px,1.08vw,17px); font-weight: 750; letter-spacing: .14em; padding: 12px 0; border-bottom: 1px solid var(--theme-dark); color: var(--ink); margin: 0; }
+.primary-album .album-cover-note { transform: rotate(-3deg); font-style: italic; }
+.primary-album .album-page-status { font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; white-space: nowrap; }
+.primary-album .album-group-heading { margin: 0 0 12px; padding-left: 16px; position: relative; z-index: 2; }
+.primary-album .album-group-title { font-size: 10px; letter-spacing: .22em; }
+.primary-album .album-group-count { font-size: 8px; }
+.primary-album .album-photo-grid { --album-columns: 3; --album-rows: 3; display: grid; grid-template-columns: repeat(var(--album-columns),minmax(0,1fr)); grid-template-rows: repeat(var(--album-rows),minmax(0,1fr)); grid-auto-rows: auto; gap: 7px 7px; align-items: center; align-content: stretch; padding: 8px 15% 12px 0; margin-right: 1.4%; flex: 1; min-height: 0; position: relative; z-index: 2; }
+.primary-album .album-desk:is([data-photo-count="1"],[data-photo-count="2"],[data-photo-count="3"],[data-photo-count="4"]) .album-photo-grid { --album-columns: 2; --album-rows: 2; gap: 28px 6%; padding: 16px 14% 20px 3%; }
+.primary-album .album-desk[data-photo-count="1"] .album-photo-grid { --album-rows: 1; padding-block: 40px; }
+.primary-album .album-desk:is([data-photo-count="5"],[data-photo-count="6"]) .album-photo-grid { --album-rows: 3; gap: 16px 2%; padding-bottom: 12px; }
+.primary-album .view-year .album-photo-grid { --album-columns: 4; --album-rows: 3; gap: 4px 5px; }
+.primary-album .album-photo { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; perspective: 900px; }
+.primary-album .album-photo-card { width: min(100%,calc((var(--photo-aspect,1.7778) * 100cqh))); height: auto; aspect-ratio: calc(var(--photo-aspect,1.7778) * .92); max-width: 100%; max-height: 100%; padding: 8px 8px 25px; border: 1px solid #bcb6a329; scale: var(--photo-scale,1); box-shadow: 1px 6px 13px #312c2229,0 1px 3px #312c221c; }
+.primary-album .album-photo { container-type: size; }
+.primary-album .album-photo-image { width: 100%; height: 100%; aspect-ratio: var(--photo-aspect,1.7778); object-fit: cover; object-position: center; }
+.primary-album .album-photo[data-orientation="portrait"] .album-photo-card { width: auto; height: 100%; aspect-ratio: calc(var(--photo-aspect,.67) * 1.06); }
+.primary-album .album-photo-label { font-size: 7px; left: 10px; bottom: 7px; line-height: 1.2; letter-spacing: .13em; }
+.primary-album .album-photo:nth-child(3n+2) { translate: 0 -5px; }
+.primary-album .album-photo:nth-child(3n+3) { translate: 0 6px; }
+.primary-album .album-desk[data-photo-count="8"] .album-photo:nth-child(n+7) { translate: 22% 0; }
+.primary-album .album-paper-footer { padding-top: 9px; min-height: 18px; justify-content: flex-start; z-index: 3; }
+.primary-album .album-source-note { font-size: 7px; text-align: left; letter-spacing: .08em; }
+.album-date-mark { position: absolute; right: 20px; bottom: calc(var(--album-bleed-bottom) + 48px); z-index: 1; width: 15%; max-width: 180px; color: var(--theme); text-align: right; font-family: var(--display-strong); font-weight: 900; font-style: italic; line-height: .9; pointer-events: none; }
+.album-date-year { display: block; font-size: clamp(28px,3.5vw,64px); letter-spacing: -.07em; }
+.album-date-month { display: block; font-size: clamp(74px,10vw,170px); letter-spacing: -.08em; }
+.album-date-mark.is-undated { max-width: 130px; font-family: var(--sans); font-style: normal; }
+.album-date-mark.is-undated .album-date-year { font-size: clamp(11px,1.2vw,18px); line-height: 1.5; letter-spacing: .15em; }
+.album-composition { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.album-rule, .album-angle, .album-dot-accent { display: block; position: absolute; }
+.album-rule { width: 36%; height: 1px; background: var(--theme-dark); rotate: -12deg; }
+.album-rule.rule-top { top: 13%; left: 43%; }
+.album-rule.rule-bottom { bottom: calc(var(--album-bleed-bottom) + 24px); right: 16%; }
+.album-angle { width: 12%; height: 12px; background: linear-gradient(90deg,var(--theme),color-mix(in srgb,var(--theme) 65%,var(--paper))); rotate: -17deg; clip-path: polygon(4% 0,100% 0,96% 100%,0 100%); left: calc(var(--album-bleed-left) + 2px); bottom: calc(var(--album-bleed-bottom) + 30%); }
+.album-dot-accent { width: 340px; height: 150px; background: radial-gradient(circle,var(--theme) 0 3px,transparent 3.5px) 0 0/13px 13px; rotate: -14deg; mask-image: linear-gradient(115deg,#000,transparent 85%); -webkit-mask-image: linear-gradient(115deg,#000,transparent 85%); }
+.album-dot-accent.dot-top { top: -25px; right: 5%; }
+.album-dot-accent.dot-bottom { left: 0; bottom: calc(var(--album-bleed-bottom) - 30px); width: 230px; height: 215px; }
+.primary-album .album-tabs { top: 114px; right: -48px; z-index: 1; }
 body.on-album .side-highlight { color: var(--theme); }
-@media (max-width: 1100px) and (min-width: 761px) {
-  .primary-album.album-inner { padding-right: 5vw; }
-}
-/* The first-use cue sits on the character, inside a familiar clover. */
-.outfit-cue {
-  left: 50%; right: auto; top: 50%;
-  transform: translate(-50%, -50%);
-  width: 42px; height: 42px;
-  justify-content: center; gap: 0;
-}
+/* Keep the character reminder and native tall-page scrolling independent. */
+.outfit-cue { left: 50%; right: auto; top: 50%; transform: translate(-50%,-50%); width: 42px; height: 42px; justify-content: center; gap: 0; }
 .outfit-cue-art { width: 100%; height: 100%; opacity: .96; }
-@media (max-width: 760px) {
-  /* WebKit mandatory snapping can skip the lower controls of a tall chapter. */
-  html { scroll-snap-type: y proximity; }
-  .primary-album.album-inner { --album-inset-top: 100px; --album-bleed-left: 45px; --album-bleed-bottom: 15svh; width: auto; margin-left: 0; padding: var(--album-inset-top) 43px 90px 25px; }
-  .primary-album .album-paper.layer-front {
-    left: auto; bottom: auto;
-    width: calc(100% + var(--album-bleed-left));
-    margin-left: calc(-1 * var(--album-bleed-left));
-    margin-bottom: calc(-1 * var(--album-bleed-bottom));
-    min-height: calc(660px + var(--album-bleed-bottom));
-    padding-left: calc(var(--album-bleed-left) + 17px);
-    padding-bottom: calc(var(--album-bleed-bottom) + 25px);
-  }
-  .outfit-cue { left: 50%; right: auto; width: 36px; height: 36px; }
-  .outfit-cue-art { width: 100%; height: 100%; }
+@media (max-width:1100px) and (min-width:761px) { .primary-album.album-inner { width: 77vw; margin-left: 17vw; padding-right: 3vw; } .primary-album .album-heading { column-gap: 12px; padding-left: 5px; } .primary-album .album-photo-card { padding: 6px 6px 22px; } .primary-album .album-title { font-size: 4.1vw; } }
+@media (max-width:760px) {
+ html { scroll-snap-type: y proximity; }
+ .primary-album.album-inner { --album-inset-top: 108px; --album-bleed-left: 32px; --album-bleed-bottom: 30px; width: auto; margin: 0; padding: 108px 40px 118px 26px; }
+ .primary-album .album-desk { height: auto; min-height: 820px; width: 100%; margin: 0; }
+ .primary-album .album-paper.layer-front { position: relative; left: auto; bottom: auto; width: calc(100% + var(--album-bleed-left)); margin-left: calc(-1 * var(--album-bleed-left)); margin-bottom: -30px; padding: 55px 14px 86px calc(var(--album-bleed-left) + 12px); min-height: 820px; }
+ .primary-album .album-cover { left: -56px; top: -450px; width: 130vw; }
+ .primary-album .album-filter-tab { left: 12px; top: -12px; font-size: 10px; min-height: 58px; width: 106px; }
+ .primary-album .album-heading { grid-template-columns: 1fr auto; gap: 10px 12px; margin: 0 0 13px; padding-left: 0; }
+ .primary-album .album-title { font-size: clamp(29px,7.7vw,48px); grid-column: 1/-1; }
+ .primary-album .album-cover-note { font-size: 10px; padding: 6px 0; }
+ .primary-album .album-page-status { font-size: 10px; padding: 6px 0; }
+ .album-title-clover { width: 56px; height: 56px; left: -22px; top: -13px; }
+ .primary-album .album-group-heading { padding-left: 0; margin-bottom: 16px; }
+ .primary-album .album-group-title { font-size: 8px; }
+ .primary-album .album-group-count { font-size: 6px; }
+ .primary-album .album-photo-grid,.primary-album .view-month .album-photo-grid,.primary-album .view-year .album-photo-grid { --album-columns: 2; grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: none; grid-auto-rows: 135px; gap: 18px 9px; min-height: 350px; padding: 3px 0 50px; margin: 0; flex: none; }
+ .primary-album .album-desk:is([data-photo-count="1"],[data-photo-count="2"],[data-photo-count="3"],[data-photo-count="4"]) .album-photo-grid { padding: 10px 0 70px; gap: 34px 16px; grid-template-rows: none; }
+ .primary-album .album-photo-card { padding: 5px 5px 20px; }
+ .primary-album .album-photo-label { font-size: 5px; left: 7px; bottom: 6px; }
+ .primary-album .album-desk[data-photo-count="8"] .album-photo:nth-child(n+7) { translate: 0 0; }
+ .primary-album .album-tabs { top: 135px; right: -43px; }
+ .primary-album .album-tab { width: 70px; min-width: 70px; font-size: 9px; }
+ .album-date-mark { bottom: 42px; right: 13px; width: 35%; }
+ .album-date-year { font-size: 25px; }.album-date-month { font-size: 64px; }
+ .album-date-mark.is-undated .album-date-year { font-size: 10px; }
+ .primary-album .album-paper-footer { padding-top: 15px; margin-top: auto; }
+ .album-dot-accent.dot-bottom { bottom: 0; width: 130px; height: 130px; }
+ .album-angle { left: 12%; bottom: 28%; width: 22%; }
+ .outfit-cue,.outfit-cue-art { width: 36px; height: 36px; }
 }
-@media (max-height: 700px) and (min-width: 761px) {
-  .primary-album.album-inner { --album-inset-top: 8svh; padding-top: var(--album-inset-top); padding-bottom: 8svh; }
-}
+@media (max-height:700px) and (min-width:761px) { .primary-album .album-desk { min-height: 490px; } .primary-album .album-heading { margin-top: 5px; } .primary-album .album-photo-card { padding-bottom: 19px; } .primary-album .album-photo-label { bottom: 5px; } }
+
+@media(min-width:761px){.primary-album .album-desk:is([data-photo-count="7"],[data-photo-count="8"]) .album-photo-grid {padding-right:3%;}}
+
+/* Preserve each photo's actual proportions, including its unequal paper border. */
+.primary-album .album-photo-card,.primary-album .album-photo[data-orientation="portrait"] .album-photo-card { width:min(100%,calc((100cqh - 34px)*var(--photo-aspect,1.7778) + 16px));height:auto;aspect-ratio:auto; }
+.primary-album .album-photo-image { display:block;height:auto;aspect-ratio:var(--photo-aspect,1.7778);object-fit:contain; }
+.primary-album .album-title { transform:skewX(-7deg); }
+.primary-album .album-tab:active:not(:disabled) { scale:.96; }

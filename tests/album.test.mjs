@@ -61,14 +61,14 @@ test('future content ingestion rejects executable URLs, duplicate IDs and imposs
 
 test('day month and year group existing dates while unknown dates stay explicitly unknown', () => {
   const media = [sample('a', '2026-05-02'), sample('b', '2026-05-01'), sample('c', '2025-10-14'), sample('d', null)];
-  assert.deepEqual(buildAlbumPages(media).map((page) => page.key), ['2026-05-02', '2026-05-01', '2025-10-14', 'undated']);
-  assert.deepEqual(buildAlbumPages(media, { view: 'month' }).map((page) => [page.key, page.items.length]), [['2026-05', 2], ['2025-10', 1], ['undated', 1]]);
+  assert.deepEqual(buildAlbumPages(media).map((page) => page.key), ['2026-05', '2025-10', 'undated']);
+  assert.deepEqual(buildAlbumPages(media, { view: 'month' }).map((page) => [page.key, page.items.length]), [['2026', 2], ['2025', 1], ['undated', 1]]);
   assert.deepEqual(buildAlbumPages(media, { view: 'year' }).map((page) => [page.key, page.items.length]), [['2026', 2], ['2025', 1], ['undated', 1]]);
 });
 
 test('model tags control filtering and pages never silently wrap or duplicate photos', () => {
   const media = Array.from({ length: 13 }, (_, index) => sample(String(index), null)); media.push(sample('another', null, ['another-model']));
-  const pages = buildAlbumPages(media); assert.deepEqual(pages.map((page) => page.items.length), [6, 6, 1]);
+  const pages = buildAlbumPages(media); assert.deepEqual(pages.map((page) => page.items.length), [8, 5]);
   assert.equal(new Set(pages.flatMap((page) => page.items.map((item) => item.id))).size, 13);
   assert.equal(buildAlbumPages(media, { filter: 'all', view: 'year' }).flatMap((page) => page.items).length, 14);
   assert.equal(buildAlbumPages(media, { modelId: 'absent' }).length, 0);
@@ -99,7 +99,7 @@ test('tabs switch scope and density, and locale updates keep content selection',
 });
 
 test('page changes clamp at boundaries and dispose old photo event listeners', (t) => {
-  const f = fixture(t, { media: Array.from({ length: 13 }, (_, index) => sample(String(index), null)) });
+  const f = fixture(t, { media: Array.from({ length: 17 }, (_, index) => sample(String(index), null)) });
   const old = f.find('album-photo-card'); assert.equal(f.api.goToPage(1), true); assert.equal(f.api.state.pageIndex, 1);
   assert.ok([...old.listeners.values()].every((listeners) => listeners.size === 0));
   assert.equal(f.api.goToPage(2), true); assert.equal(f.container.findAll('album-photo').length, 1); assert.equal(f.api.goToPage(3), false); assert.equal(f.api.goToPage(-1), false);
@@ -138,4 +138,18 @@ test('disable, model switch and destruction close player and remove listeners', 
   f.api.setFilter('all'); assert.equal(f.api.state.count, 4);
   f.api.destroy(); f.api.destroy(); assert.equal(f.container.children.length, 0); assert.equal(f.frames.size, 0); assert.equal(f.doc.body.find('album-player'), undefined);
   assert.ok([...f.doc.listeners.values()].every((listeners) => listeners.size === 0)); assert.equal(f.api.openPlayer(0), false);
+});
+
+test('month boundaries never mix short months and overflow continues the same calendar group',()=>{
+ const media=[...Array.from({length:10},(_,i)=>sample(`nov${i}`,`2026-11-${String(i+1).padStart(2,'0')}`)),sample('oct','2026-10-01'),sample('old','2025-12-31')];
+ assert.deepEqual(buildAlbumPages(media).map(p=>[p.key,p.items.length]),[['2026-11',8],['2026-11',2],['2026-10',1],['2025-12',1]]);
+ assert.deepEqual(buildAlbumPages(media,{view:'month'}).map(p=>[p.key,p.items.length]),[['2026',9],['2026',2],['2025',1]]);
+});
+test('heading uses the other language, page count and truthful large calendar labels',t=>{
+ const f=fixture(t,{media:[sample('a','2026-11-03')]});
+ assert.equal(f.find('album-cover-note').textContent,'日々のアルバム');
+ assert.equal(f.find('album-page-status').textContent,'01 / 01');
+ assert.equal(f.find('album-date-year').textContent,'2026');assert.equal(f.find('album-date-month').textContent,'11');
+ f.api.setView('month');assert.equal(f.find('album-date-month').hidden,true);
+ f.api.setLanguage('ja');assert.equal(f.find('album-cover-note').textContent,'超级相册');
 });

@@ -8,7 +8,7 @@ export const INTRO_ENTRANCE_TIMING = Object.freeze({
   actorDelay: 140, actorDuration: 900,
   controlsDelay: 1120, controlsDuration: 320,
   textDelay: 1230, textStagger: 90, textDuration: 410,
-  decorDelay: 2110, decorDuration: 420, total: 2530,
+  decorDelay: 2110, decorDuration: 650, total: 2760,
 });
 
 /** Radius-only bounce keeps circles round and retains the single group alpha mask. */

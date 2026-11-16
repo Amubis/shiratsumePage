@@ -60,6 +60,7 @@ let introFallbackTimer;
 let mediaStatus = 'poster';
 let mediaDetails = {};
 let modelGeneration = 0;
+let pendingModelChange=null;
 let wipeAnimation;
 let wipeFade;
 let wipeSerial = 0;
@@ -129,14 +130,8 @@ function syncOutfitGround(outfit=selectedOutfit()){
   const visible=Boolean(outfit && pair && stage);
   container.classList.toggle('has-outfit-ground',visible);
   if(!visible || !container.offsetWidth || !pair.offsetHeight)return;
-  const [width,height]=outfit.frontSize || [outfit.imageWidth || 1440,outfit.imageHeight || 2560];
-  const fit=Math.min(1440/width,2560/height);
-  const bounds=outfit.frontBounds || [0,0,width,height];
-  const foot=(2560-height*fit)/2+bounds[3]*fit;
-  const center=(1440-width*fit)/2+(bounds[0]+bounds[2])*.5*fit;
-  const x=pair.offsetLeft+stage.offsetLeft+stage.offsetWidth*(center/1440-(outfit.back ? .62 : .5));
-  container.style.setProperty('--outfit-ground-x',`${(x/container.offsetWidth*100).toFixed(3)}%`);
-  container.style.setProperty('--outfit-ground-y',`${(pair.offsetTop+pair.offsetHeight*Math.min(1,foot/2560)).toFixed(3)}px`);
+  container.style.setProperty('--outfit-ground-x','44%');
+  container.style.setProperty('--outfit-ground-y',`${(pair.offsetTop+pair.offsetHeight*2500/2560).toFixed(3)}px`);
 }
 
 function syncOutfitDecoration(outfit=selectedOutfit()){
@@ -283,6 +278,7 @@ function markModelSwitch(selection=modelId,busy=false){
   $('#model-toggle').dataset.selection=selection==='preview'?'right':'left';
   $('#model-toggle').setAttribute('aria-busy',String(busy));
   document.body.classList.toggle('is-model-switching',busy);
+  heroInteractions?.refresh();contrastLayer?.refresh();
 }
 
 function wait(milliseconds, signal) {
@@ -471,10 +467,11 @@ navigator = createSectionNavigator({
   },
   async onBeforeNavigate(index,{source,from,signal}) {
     if(source==='album-scroll')return {animate:false};
+    if(source==='model'){pendingAlbumNavigation=null;albumTransition?.reset({prepare:true});return {animate:false};}
     if(albumScroll?.busy)albumScroll.cancel();
     if(index===3 && currentIndex!==3 && !MODELS[modelId].preview)personalEntrance?.prepare();
     ownerProfile?.close();
-    if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');markModelSwitch();}
+    if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;pendingModelChange=null;$('.theme-curtain').classList.remove('is-visible');markModelSwitch();modelSwitchMotion?.setSelection(modelId==='preview'?'right':'left',{animate:false});}
     finishIntro(); setWatching(false);  $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
     pendingAlbumNavigation = null;
     if (!MODELS[modelId].preview && from !== index && (index === 2 || from === 2)) {
@@ -550,30 +547,36 @@ document.addEventListener('click', (event) => {
   if(!$('.side-nav').contains(event.target)) { $('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false'); }
 });
 
-async function switchModel(nextId) {
-  if (!Object.hasOwn(MODELS,nextId)) return;
-  if(nextId===modelId){
-    if(document.body.classList.contains('is-model-switching')){modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');markModelSwitch();}
-    return;
+function paintModelChange({progress,travel}){
+  const change=pendingModelChange;
+  if(!change)return;
+  const curtain=$('.theme-curtain');
+  const amount=Math.max(0,Math.min(1,travel));
+  curtain.style.transform=`translateX(${change.direction*(2*amount-1)*105}%) skewX(-11deg)`;
+  if(!change.committed && (amount>=.5 || progress===1)){
+    change.committed=true;modelId=change.nextId;
+    applyTheme();
+    player.setPlaylist(MODELS[modelId].playlist,MODELS[modelId].poster);
+    void navigator.goTo(0,{animate:false,source:'model'});
+    if(!userPaused)void player.resume();
   }
-  const token = ++modelGeneration;
+  if(progress===1){
+    pendingModelChange=null;curtain.classList.remove('is-visible');markModelSwitch();
+    notify(MODELS[modelId].preview?translate('previewNotice'):'しらつめ');
+  }
+}
+function switchModel(nextId){
+  if(!Object.hasOwn(MODELS,nextId))return;
+  if(nextId===pendingModelChange?.nextId || (!pendingModelChange && nextId===modelId))return;
+  const token=++modelGeneration;
   finishIntro();setWatching(false);sidebar?.setCurrent(currentIndex);
-  markModelSwitch(nextId,true);
-  $('.theme-curtain').classList.add('is-visible');
-  await wait(reducedMotion()?0:240);
-  if(token !== modelGeneration)return;
-  modelId = nextId;
-  applyTheme();
-  player.setPlaylist(MODELS[modelId].playlist,MODELS[modelId].poster);
-  await navigator.goTo(0,{animate:false,source:'model'});
-  if(token !== modelGeneration)return;
-  if(!userPaused)void player.resume();
-  await wait(100);
-  if(token !== modelGeneration)return;
-  $('.theme-curtain').classList.remove('is-visible');
-  notify(MODELS[modelId].preview ? translate('previewNotice') : 'しらつめ');
-  await wait(reducedMotion()?0:260);
-  if(token===modelGeneration)markModelSwitch();
+  const selection=nextId==='preview'?'right':'left';
+  pendingModelChange={token,nextId,committed:false,direction:selection==='right'?1:-1};
+  const curtain=$('.theme-curtain');curtain.style.background=MODELS[nextId].theme;
+  curtain.style.transform=`translateX(${pendingModelChange.direction*-105}%) skewX(-11deg)`;
+  curtain.classList.add('is-visible');markModelSwitch(nextId,true);
+  const changed=modelSwitchMotion?.setSelection(selection);
+  if(!changed)paintModelChange({progress:1,travel:1});
 }
 $$('[data-model]').forEach((button) => button.addEventListener('click', () => { void switchModel(button.dataset.model); }));
 
@@ -651,7 +654,7 @@ window.addEventListener('scroll',()=>{
 window.addEventListener('hashchange', () => {const index=SECTION_IDS.indexOf(location.hash.slice(1));if(index>=0)void navigator.goTo(index,{source:'history'});});
 
 sidebar=createSidebar({root:$('.side-nav'),links:$$('.side-links>a'),highlight:$('.side-highlight'),bubbles:$('.nav-bubbles'),reducedMotion});
-contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'});
+contrastLayer=createContrastLayer({scene:$('.hero'),targets:$$('[data-contrast]'),reducedMotion,isActive:()=>currentIndex===0&&!watching&&root.dataset.phase!=='video'&&!document.body.classList.contains('is-model-switching')});
 const initialOwnerProfile=normalizePersonalProfile(activeGarden.owner);
 ownerProfile=createOwnerProfile({root:$('#owner-profile'),profile:initialOwnerProfile,language,copy:activeGarden.texts.owner});
 personalPage=createPersonalPage({root:$('#personal-page'),profile:initialOwnerProfile,language,copy:activeGarden.texts.personal,posts:activeGarden.journal,commentsService,commentsCopy:activeGarden.texts.comments});
@@ -669,9 +672,9 @@ const refreshOutfitHint=()=>outfitShowcase?.setHintActive?.(outfitHintSection.cl
 const outfitHintObserver=new MutationObserver(refreshOutfitHint);
 outfitHintObserver.observe(outfitHintSection,{attributes:true,attributeFilter:['class']});
 refreshOutfitHint();
-album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,reducedMotion,onReady(){
+album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,reducedMotion,onReady({reason}){
   $('.album-title').id='album-heading';
-  if (albumTransition) albumTransition.reset({prepare:currentIndex !== 2});
+  if (albumTransition && !['page','view','filter','language','copy'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
 }});
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
 albumScroll=createAlbumScroll({
@@ -720,11 +723,11 @@ videoReveal=createVideoReveal({
 heroInteractions=createHeroInteractions({
   hero:$('.hero'),exploreButton:$('#explore'),exploreWrap:$('.explore-wrap'),reducedMotion,
   isActive:()=>currentIndex===0 && !watching && !MODELS[modelId].preview && root.dataset.phase==='ready'
-    && !document.body.classList.contains('watch-reveal-animating') && !$('.transition-wipe').classList.contains('is-active'),
+    && !document.body.classList.contains('is-model-switching') && !document.body.classList.contains('watch-reveal-animating') && !$('.transition-wipe').classList.contains('is-active'),
 });
 personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview,theme:MODELS[modelId].theme,seed:modelId});
 waterFooter=createWaterFooter({container:$('.personal-water-footer'),reducedMotion});
-modelSwitchMotion=createModelSwitchMotion({root:$('#model-toggle'),reducedMotion,themes:{left:MODELS.shiratsume.theme,right:MODELS.preview.theme}});
+modelSwitchMotion=createModelSwitchMotion({root:$('#model-toggle'),reducedMotion,themes:{left:MODELS.shiratsume.theme,right:MODELS.preview.theme},onFrame:paintModelChange});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
 function applyGardenContent(next) {
   const previous=activeGarden;

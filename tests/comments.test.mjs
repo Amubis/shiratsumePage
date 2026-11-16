@@ -196,9 +196,9 @@ test('localized note titles, body and image descriptions switch language without
 
 test('editable album captions, world and small cover labels reach the visitor in both languages', t => {
   const f=documentFixture();
-  const album=createAlbum({container:f.container,copy:{zh:{coverNote:'影像手帐',stillLabel:'影片摘帧'}},media:[{id:'p',url:'./photo.jpg',sourceKind:'video-still',modelIds:['shiratsume'],takenAt:null,caption:{zh:'夏日的一天',ja:'夏の一日'},worldName:'Japan Shrine'}]});t.after(()=>album.destroy());
-  assert.equal(f.find('.album-cover-note').textContent,'影像手帐');
-  assert.equal(f.find('.album-photo-label').textContent,'影片摘帧 01');
+  const album=createAlbum({container:f.container,copy:{zh:{title:'影像手帐'},ja:{title:'映像ノート'}},media:[{id:'p',url:'./photo.jpg',sourceKind:'video-still',modelIds:['shiratsume'],takenAt:null,caption:{zh:'夏日的一天',ja:'夏の一日'},worldName:'Japan Shrine'}]});t.after(()=>album.destroy());
+  assert.equal(f.find('.album-cover-note').textContent,'映像ノート');
+  assert.equal(f.find('.album-photo-label').textContent,'PHOTO 01-01');
   album.openPlayer(0);const caption=()=>f.doc.body.querySelector('.album-player-caption').textContent;
   assert.ok(caption().includes('夏日的一天'));assert.ok(caption().includes('Japan Shrine'));
   album.setLanguage('ja');assert.ok(caption().includes('夏の一日'));

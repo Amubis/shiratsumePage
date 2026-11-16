@@ -1,5 +1,6 @@
 import { cloverSVG, seededRandom } from './scene.js';
 import { createAlbumPlayerMotion } from './album-player-motion.js';
+import { createAlbumPageMotion } from './album-page-motion.js';
 import { createAnonymousComments } from './comments.js';
 
 /** Public content records; a future CMS can replace this array through setMedia(). */
@@ -12,9 +13,9 @@ export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) =>
 })));
 
 export const ALBUM_VIEWS = Object.freeze(['day', 'month', 'year']);
-const PAGE_SIZES = Object.freeze({ day: 6, month: 9, year: 12 });
+const PAGE_SIZES = Object.freeze({ day: 8, month: 9, year: 12 });
 export const ALBUM_COPY = Object.freeze({
-  zh: { title: '日常影像册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片' },
+  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片' },
   ja: { title: '日々のアルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません' },
 });
 const albumCopyDictionary = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
@@ -53,7 +54,9 @@ export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'model
   const filtered = normalizeAlbumMedia(media).filter((item) => filter === 'all' || item.modelIds.includes(modelId));
   const groups = new Map();
   for (const item of filtered) {
-    const key = dateKey(item.takenAt, mode);
+    // The density label describes the visible photos. Page boundaries remain
+    // complete calendar groups: individual photos by month, denser modes by year.
+    const key = dateKey(item.takenAt, mode === 'day' ? 'month' : 'year');
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
@@ -67,10 +70,11 @@ export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'model
 }
 
 /** Stable, bounded jitter: language changes never reshuffle the same photo. */
-export function albumPhotoPose(id, slot = 0) {
+export function albumPhotoPose(id, slot = 0, count = 8) {
   const random = seededRandom(`album:${id}:${slot}`);
-  return { x: (random() * 2 - 1) * 7, y: (random() * 2 - 1) * 7,
-    rotation: (random() * 2 - 1) * 5.5, depth: 2 + Math.floor(random() * 8) };
+  const jitter=count<5?3:count<8?5:7;
+  return { x: (random() * 2 - 1) * jitter, y: (random() * 2 - 1) * jitter,
+    rotation: (random() * 2 - 1) * 5.5, depth: 2 + Math.floor(random() * 8), scale: .9 + random() * .2 };
 }
 
 export function createAlbum({ container, language = 'zh', modelId = 'shiratsume', media = ALBUM_MEDIA, copy, commentsService = null, commentsCopy, reducedMotion = () => false, onReady = () => {} } = {}) {
@@ -118,7 +122,10 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const title = element('h2', 'album-title'); const coverSmall = element('small', 'album-cover-note'); coverSmall.textContent = text().coverNote;
   cover.append(coverIcon);
   const albumHeading = element('div', 'album-heading');
-  albumHeading.append(title, coverSmall);
+  const titleClover = element('span', 'album-title-clover');
+  titleClover.setAttribute('aria-hidden', 'true');
+  titleClover.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'large' });
+  albumHeading.append(titleClover, title, coverSmall);
   const filterButton = button('album-filter-tab');
   const heading = element('div', 'album-group-heading');
   const groupTitle = element('p', 'album-group-title'); const groupCount = element('span', 'album-group-count');
@@ -128,8 +135,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const footer = element('div', 'album-paper-footer');
   const pageStatus = element('span', 'album-page-status');
   pageStatus.setAttribute('role', 'status'); pageStatus.setAttribute('aria-live', 'polite'); pageStatus.setAttribute('aria-atomic', 'true');
-  const sourceNote = element('span', 'album-source-note'); footer.append(pageStatus, sourceNote);
-  front.append(albumHeading, heading, grid, empty, footer);
+  const sourceNote = element('span', 'album-source-note'); footer.append(sourceNote);
+  albumHeading.append(pageStatus);
+  const dateMark = element('div', 'album-date-mark');
+  const dateYear = element('span', 'album-date-year'); const dateMonth = element('span', 'album-date-month');
+  dateMark.append(dateYear, dateMonth);
+  const composition = element('div', 'album-composition'); composition.setAttribute('aria-hidden', 'true');
+  for (const classes of ['album-rule album-art-line rule-top line-top', 'album-rule album-art-line rule-bottom line-bottom', 'album-angle album-art-line', 'album-dot-accent album-art-dots dot-top dots-top', 'album-dot-accent album-art-dots dot-bottom dots-bottom']) composition.append(element('span', classes));
+  front.append(composition, albumHeading, heading, grid, empty, dateMark, footer);
   const tabs = element('div', 'album-tabs'); const previous = button('album-tab album-previous'); const mode = button('album-tab album-view'); const next = button('album-tab album-next');
   tabs.append(previous, mode, next); root.append(back, middle, front, cover, filterButton, tabs); container.replaceChildren(root); container.classList.add('album-showcase');
 
@@ -140,6 +153,10 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   playerFigure.append(playerImage, playerCaption); playerStage.append(playerPrevious, playerFigure, playerNext); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent); doc.body.append(dialog);
   const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
   const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion});
+  const pageMotion = createAlbumPageMotion({root,reducedMotion,isActive(){
+    const section=root.closest?.('.page-section');
+    return Boolean(section?.classList.contains('is-current') && !['album-entry-prepared','album-entry-playing','album-exit-playing','album-boundary-seeking'].some(name=>section.classList.contains(name)));
+  }});
 
   function clearInspection() {
     if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
@@ -220,30 +237,48 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     playerIndex = ((playerIndex + direction) % playerItems.length + playerItems.length) % playerItems.length;
     renderPlayer();
   }
-  function render() {
+  function render(reason = 'initial') {
     if (destroyed) return;
     clearInspection(); cardBindings.splice(0).forEach((dispose) => dispose());
     pages = buildAlbumPages(records, { modelId, filter, view }); pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
     const page = pages[pageIndex]; const total = pages.reduce((sum, page) => sum + page.items.length, 0);
+    root.setAttribute('data-photo-count', String(page?.items.length || 0));
+    root.style.setProperty('--album-photo-count', String(page?.items.length || 0));
     root.classList.remove('view-day', 'view-month', 'view-year'); root.classList.add(`view-${view}`);
-    title.textContent = text().title; coverSmall.textContent = text().coverNote; filterButton.textContent = filter === 'all' ? text().all : text().current;
+    title.textContent = text().title; coverSmall.textContent = dictionary[locale === 'zh' ? 'ja' : 'zh'].title; filterButton.textContent = filter === 'all' ? text().all : text().current;
+    coverSmall.setAttribute('lang', locale === 'zh' ? 'ja' : 'zh-CN');
     filterButton.setAttribute('aria-label', `${text().toggle} · ${filterButton.textContent}`); filterButton.setAttribute('aria-pressed', String(filter === 'all'));
     previous.textContent = `↑ ${text().previous}`; next.textContent = `${text().next} ↓`; mode.textContent = `◌ ${text()[view]}`;
     previous.setAttribute('aria-label', text().previous); next.setAttribute('aria-label', text().next); mode.setAttribute('aria-label', `${text().view} · ${text()[view]}`);
     previous.disabled = !enabled || pageIndex <= 0; next.disabled = !enabled || pageIndex >= pages.length - 1; mode.disabled = filterButton.disabled = !enabled;
     groupTitle.textContent = page ? groupLabel(page.key) : text().noPhoto; groupCount.textContent = `${total} ${text().photoCount}`;
     pageStatus.textContent = pages.length ? `${String(pageIndex + 1).padStart(2, '0')} / ${String(pages.length).padStart(2, '0')}` : '00 / 00';
+    const dated = page && page.key !== 'undated';
+    dateMark.classList.toggle('is-undated', !dated);
+    dateMark.setAttribute('aria-label', page ? groupLabel(page.key) : text().noPhoto);
+    dateYear.textContent = dated ? page.key.slice(0, 4) : page ? text().unknown : '';
+    dateMonth.textContent = dated && view === 'day' ? page.key.slice(5, 7) : '';
+    dateMonth.hidden = !dateMonth.textContent;
     sourceNote.textContent = records.every((item) => item.sourceKind === 'video-still' && !item.takenAt) ? text().source : text().mixedSource;
     empty.hidden = Boolean(page?.items.length); empty.textContent = text().empty;
     wrappers = []; cards = []; const nodes = [];
     for (const [index, item] of (page?.items || []).entries()) {
       const wrapper = element('div', 'album-photo'); const card = button('album-photo-card');
-      const pose = albumPhotoPose(item.id, index);
-      for (const [key, value] of Object.entries({ '--jitter-x': `${pose.x}%`, '--jitter-y': `${pose.y}%`, '--jitter-rotation': `${pose.rotation}deg` })) card.style.setProperty(key, value);
+      const pose = albumPhotoPose(item.id,index,page.items.length);
+      for (const [key, value] of Object.entries({ '--jitter-x': `${pose.x}%`, '--jitter-y': `${pose.y}%`, '--jitter-rotation': `${pose.rotation}deg`, '--photo-scale': pose.scale.toFixed(5) })) card.style.setProperty(key, value);
       wrapper.style.setProperty('--photo-depth', String(pose.depth)); wrapper.style.setProperty('--photo-order', String(index));
+      wrapper.style.setProperty('--photo-scale', pose.scale.toFixed(5));
       card.setAttribute('aria-label', `${text().open} · ${altFor(item)}`); card.disabled = !enabled;
       const image = element('img', 'album-photo-image'); image.src = item.thumbnail; image.alt = altFor(item); image.loading = 'lazy'; image.decoding = 'async'; image.draggable = false;
-      const label = element('span', 'album-photo-label'); label.textContent = item.sourceKind === 'video-still' ? `${text().stillLabel} ${String(records.findIndex((record) => record.id === item.id) + 1).padStart(2, '0')}` : dateKey(item.takenAt, 'day') === 'undated' ? text().undated : groupLabel(dateKey(item.takenAt, 'day'));
+      function setAspect(width, height) {
+        const ratio = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0 ? width / height : 16 / 9;
+        for (const node of [wrapper, card]) { node.style.setProperty('--photo-aspect', ratio.toFixed(6)); node.style.setProperty('--photo-ratio', ratio.toFixed(6)); }
+        wrapper.setAttribute('data-orientation', ratio < .9 ? 'portrait' : ratio > 1.1 ? 'landscape' : 'square');
+      }
+      setAspect(item.width, item.height);
+      bind(image, 'load', () => setAspect(image.naturalWidth, image.naturalHeight), cardBindings);
+      if (image.complete && image.naturalWidth) setAspect(image.naturalWidth, image.naturalHeight);
+      const label = element('span', 'album-photo-label'); label.textContent = `PHOTO ${String(pageIndex + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
       card.append(image, label); wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
       bind(card, 'pointerenter', (event) => inspect(index, event), cardBindings);
       bind(card, 'pointermove', (event) => queueInspection(index, event), cardBindings);
@@ -256,15 +291,17 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     dialog.setAttribute('aria-label', text().player); playerClose.textContent = '×'; playerClose.setAttribute('aria-label', text().close);
     playerPrevious.textContent = '←'; playerNext.textContent = '→'; playerPrevious.setAttribute('aria-label', text().photoPrevious); playerNext.setAttribute('aria-label', text().photoNext);
     if (dialog.open) renderPlayer();
-    onReady({ pageIndex, pages: pages.length, count: total, view, filter });
+    onReady({ pageIndex, pages: pages.length, count: total, view, filter, reason, pageKey: page?.key || null });
   }
   function goToPage(index) {
     if (!enabled || destroyed || !Number.isInteger(index) || index < 0 || index >= pages.length) return false;
-    pageIndex = index; render(); return true;
+    if(index===pageIndex)return true;
+    pageIndex = index; void pageMotion.run(()=>render('page')); return true;
   }
+  function redraw(reason){pageMotion.cancel({commitPending:false});render(reason);}
   bind(previous, 'click', () => goToPage(pageIndex - 1)); bind(next, 'click', () => goToPage(pageIndex + 1));
-  bind(mode, 'click', () => { view = ALBUM_VIEWS[(ALBUM_VIEWS.indexOf(view) + 1) % ALBUM_VIEWS.length]; pageIndex = 0; render(); });
-  bind(filterButton, 'click', () => { filter = filter === 'model' ? 'all' : 'model'; pageIndex = 0; render(); });
+  bind(mode, 'click', () => { view = ALBUM_VIEWS[(ALBUM_VIEWS.indexOf(view) + 1) % ALBUM_VIEWS.length]; pageIndex = 0; void pageMotion.run(()=>render('view')); });
+  bind(filterButton, 'click', () => { filter = filter === 'model' ? 'all' : 'model'; pageIndex = 0; void pageMotion.run(()=>render('filter')); });
   bind(grid, 'pointerdown', () => { keyboardFocus = false; });
   bind(doc, 'keydown', (event) => { if (event.key === 'Tab') keyboardFocus = true; });
   bind(doc, 'visibilitychange', clearInspection);
@@ -278,16 +315,16 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   render();
   return {
     get state() { return { pageIndex, pageCount: pages.length, view, filter, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
-    setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; commentPanel.setLanguage(locale); render(); },
-    setCopy(nextCopy) { if (destroyed) return; dictionary = albumCopyDictionary(nextCopy); render(); },
+    setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; commentPanel.setLanguage(locale); redraw('language'); },
+    setCopy(nextCopy) { if (destroyed) return; dictionary = albumCopyDictionary(nextCopy); redraw('copy'); },
     setCommentsService(next) { if (!destroyed) commentPanel.setService(next); },
     setCommentsCopy(next) { if (!destroyed) commentPanel.setCopy(next); },
-    setModel(nextModel) { if (destroyed) return; closePlayer(true); modelId = String(nextModel); pageIndex = 0; render(); },
-    setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(true); render(); },
-    setMedia(nextMedia) { if (destroyed) return; closePlayer(true); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; render(); },
-    setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; render(); return true; },
-    setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; render(); return true; },
+    setModel(nextModel) { if (destroyed) return; closePlayer(true); modelId = String(nextModel); pageIndex = 0; redraw('model'); },
+    setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(true); redraw('enabled'); },
+    setMedia(nextMedia) { if (destroyed) return; closePlayer(true); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; redraw('media'); },
+    setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; void pageMotion.run(()=>render('view')); return true; },
+    setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; void pageMotion.run(()=>render('filter')); return true; },
     goToPage, openPlayer, closePlayer,
-    destroy() { if (destroyed) return; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
+    destroy() { if (destroyed) return; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

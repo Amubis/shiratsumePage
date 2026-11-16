@@ -4,7 +4,7 @@ import { EDITOR_COPY_SECTIONS, editorCopySection, readEditorCopy, writeEditorCop
 
 test('the normal editor lists a small set of visible copy by real chapter', () => {
   const fields = EDITOR_COPY_SECTIONS.flatMap(section => section.fields);
-  assert.equal(fields.length, 21);
+  assert.equal(fields.length, 20);
   assert.equal(new Set(fields.map(field => field.id)).size, fields.length);
   assert.deepEqual(EDITOR_COPY_SECTIONS.map(section => section.id), ['navigation', 'home', 'hello', 'moments', 'collection']);
   assert.ok(fields.every(field => field.label && field.location));

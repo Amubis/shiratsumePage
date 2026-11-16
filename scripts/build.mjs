@@ -8,7 +8,7 @@ import { embedGardenData } from './garden-data.mjs';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(project, 'dist');
-const moduleNames = ['garden-content', 'garden-runtime', 'comments', 'scene', 'water-footer', 'media', 'navigation', 'content', 'outfit-rail-feedback', 'outfits', 'album-player-motion', 'album', 'intro-entrance', 'album-transition', 'album-scroll', 'motion', 'sidebar', 'stable-clip', 'contrast', 'transition-preview', 'owner-profile', 'personal-page', 'video-reveal', 'hero-interactions', 'personal-entrance', 'topbar-dock', 'model-switch-motion', 'outfit-photo-notes'];
+const moduleNames = ['garden-content', 'garden-runtime', 'comments', 'scene', 'water-footer', 'media', 'navigation', 'content', 'outfit-rail-feedback', 'outfits', 'album-player-motion', 'album-page-motion', 'album', 'intro-entrance', 'album-transition', 'album-scroll', 'motion', 'sidebar', 'stable-clip', 'contrast', 'transition-preview', 'owner-profile', 'personal-page', 'video-reveal', 'hero-interactions', 'personal-entrance', 'topbar-dock', 'model-switch-motion', 'outfit-photo-notes'];
 const bundled = [];
 const emitted=new Set();
 function rewriteImports(source,available){

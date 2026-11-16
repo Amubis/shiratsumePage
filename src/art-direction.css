@@ -17,6 +17,7 @@ html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .mo
   background: var(--paper); overflow: hidden; clip-path: none;
   scale: var(--model-shell-x, 1) var(--model-shell-y, 1);
   transform-origin: center;
+  transform: skewX(-11deg);
   box-shadow: 0 7px 20px #29292528, 0 2px 5px #2929251c;
   transition: border-color .62s cubic-bezier(.22,.7,.25,1);
 }
@@ -25,8 +26,8 @@ html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .mo
 .model-choice-images { pointer-events: none; }
 .model-choice-images > span { display: block; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
 .model-choice-images img { display: block; width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: cover; }
-.model-choice-images > span:first-child img { object-position: 53% 42%; transform: scale(1.9); transform-origin: 60% 40%; }
-.model-choice-images > span:last-child img { object-position: 50% 13%; transform: scale(1.8); transform-origin: 52% 14%; }
+.model-choice-images > span:first-child img { object-position: 53% 42%; transform: skewX(11deg) scale(1.9); transform-origin: 60% 40%; }
+.model-choice-images > span:last-child img { object-position: 50% 13%; transform: skewX(11deg) scale(1.8); transform-origin: 52% 14%; }
 .model-choice-muted { filter: saturate(.08) contrast(.58) brightness(1.22); opacity: .8; }
 .model-choice-color { clip-path: inset(8% 52% 8% 2% round 8px); transition: clip-path .56s cubic-bezier(.22,.7,.25,1); }
 [data-selection="right"] > .model-choice-color { clip-path: inset(8% 2% 8% 52% round 8px); }
@@ -48,3 +49,15 @@ html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .mo
   .site-brand-mark { width: 22px; height: 22px; }
 }
 @media (prefers-reduced-motion: reduce) { #model-toggle.model-image-switch, .model-choice-slider rect, .model-choice-color, .model-choice-actions > button { transition: none; } }
+
+/* Hover intent moves independently of the committed color window. */
+.model-control { scale:1; transition:opacity .3s var(--easing),scale .28s cubic-bezier(.22,.7,.25,1); transform-origin:right bottom; }
+body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)) { scale:1.065; }
+.model-switch-pointer { position:absolute; z-index:5; width:24px; height:16px; left:var(--model-pointer-x,50%); bottom:5px; translate:-50% 0; opacity:0; color:#fffdf4; pointer-events:none; overflow:visible; filter:drop-shadow(0 1px 2px #0009); transition:left .14s ease-out,opacity .2s ease,translate .25s ease; transform:skewX(11deg); }
+.model-switch-pointer path { fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
+.model-control:is(:hover,:has(:focus-visible)) .model-switch-pointer { opacity:1;translate:-50% -3px; }
+.theme-curtain { inset:0 calc(-1 * max(20vw,12svh)); width:calc(100vw + max(40vw,24svh)); opacity:0; transform:translateX(-130%) skewX(-11deg); transition:none; }
+.theme-curtain.is-visible { opacity:1; }
+@media(prefers-reduced-motion:reduce){.model-control,.model-switch-pointer {transition:none;} body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)){scale:1;} }
+
+body.is-model-switching .scene-clover { animation-play-state:paused; }

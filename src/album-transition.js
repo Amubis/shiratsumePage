@@ -5,9 +5,10 @@ const smooth = (value) => { const t = clamp(value); return t * t * (3 - 2 * t); 
 export const ALBUM_TRANSITION_TIMING = Object.freeze({ cover: 680, reveal: 620, paperBack: 380, paperMiddle: 460, paperFront: 560 });
 export const ALBUM_SCROLL_PHASE = Object.freeze({ enterHandoff: .36, exitHandoff: .62 });
 export const ALBUM_BOUNDARY_HANDOFF = .5;
-export const ALBUM_STATIC_RADIUS_RATIO = .54;
+// Kept under its public name for compatibility; the resting surface is now solid.
+export const ALBUM_STATIC_RADIUS_RATIO = .75;
 
-/** Fixed centers; the largest wave circles match the resting album background. */
+/** Fixed centers; full circles overlap far enough to meet a solid resting surface. */
 export function createAlbumCircleGrid({ width = 1440, height = 900, spacing } = {}) {
   width = Math.max(1, Number(width) || 1440);
   height = Math.max(1, Number(height) || 900);
@@ -47,7 +48,10 @@ export function createAlbumEnterPlan(photoCount = 4) {
     { selector: '.album-paper.layer-front', kind: 'paper-front', delay: 130, duration: 560 },
     { selector: '.album-cover', kind: 'cover', delay: 710, duration: 550 },
     ...Array.from({ length: count }, (_, index) => ({ selector: '.album-photo', index, kind: 'photo', delay: 850 + index * 58, duration: 380 })),
-    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note'].map((selector, index) => ({ selector, kind: 'ui', delay: 920 + index * 38, duration: 260 })),
+    { selector: '.album-art-line', kind: 'line', delay: 760, duration: 480 },
+    { selector: '.album-art-dots', kind: 'dots', delay: 930, duration: 350 },
+    { selector: '.album-title-clover', kind: 'clover', delay: 950, duration: 430 },
+    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-source-note', '.album-date-mark'].map((selector, index) => ({ selector, kind: 'ui', delay: 920 + index * 38, duration: 260 })),
   ];
 }
 
@@ -57,8 +61,11 @@ export function createAlbumExitPlan(photoCount = 4) {
   const coverDelay = Math.max(190, photoEnd - 110);
   const paperDelay = coverDelay + 90;
   return [
-    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note'].map((selector) => ({ selector, kind: 'ui', delay: 0, duration: 180 })),
-    ...Array.from({ length: count }, (_, order) => ({ selector: '.album-photo', index: count - 1 - order, kind: 'photo', delay: order * 42, duration: 240 })),
+    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-source-note', '.album-date-mark'].map((selector) => ({ selector, kind: 'ui', delay: 0, duration: 180 })),
+    { selector: '.album-art-line', kind: 'line', delay: 0, duration: 180 },
+    { selector: '.album-art-dots', kind: 'dots', delay: 0, duration: 180 },
+    { selector: '.album-title-clover', kind: 'clover', delay: 0, duration: 180 },
+    ...Array.from({ length: count }, (_, order) => ({ selector: '.album-photo', index: order, kind: 'photo', delay: order * 42, duration: 240 })),
     { selector: '.album-cover', kind: 'cover', delay: coverDelay, duration: 300 },
     { selector: '.album-paper.layer-front', kind: 'paper-front', delay: paperDelay, duration: 380 },
     { selector: '.album-paper.layer-middle', kind: 'paper-middle', delay: paperDelay + 80, duration: 360 },
@@ -66,7 +73,7 @@ export function createAlbumExitPlan(photoCount = 4) {
   ];
 }
 
-const ACTORS = '.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-filter-tab, .album-group-heading, .album-page-status, .album-source-note';
+const ACTORS = '.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-filter-tab, .album-group-heading, .album-source-note, .album-art-line, .album-art-dots, .album-title-clover, .album-date-mark';
 
 /** Owns only decorative transitions; navigation and data remain with their controllers. */
 export function createAlbumTransition({ section, previous, reducedMotion = () => false } = {}) {
@@ -199,21 +206,14 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       return node;
     });
     svg.replaceChildren(...circleNodes);
-    // Bleeding paper can enlarge scrollHeight beyond the painted chapter.
-    // Measure the actual background area so the SVG lattice stays square.
+    // Keep a stable measurement plane for tall chapters and handoffs. The
+    // resting field itself is a solid theme color, without a second lattice.
     const fieldRect = field.getBoundingClientRect?.();
     const fieldHeight = fieldRect?.height || section.clientHeight || grid.height;
     const fieldWidth = fieldRect?.width || section.clientWidth || grid.width;
     fieldSize = {width:fieldWidth,height:fieldHeight};
-    const staticGrid = createAlbumCircleGrid({ width: fieldWidth, height: fieldHeight, spacing:grid.pitch });
-    fieldSVG.setAttribute('viewBox', `0 0 ${staticGrid.width} ${staticGrid.height}`);
-    fieldSVG.replaceChildren(...staticGrid.circles.map((circle) => {
-      const node = doc.createElementNS(SVG_NS, 'circle');
-      node.setAttribute('cx', String(circle.x));
-      node.setAttribute('cy', String(circle.y));
-      node.setAttribute('r', String(staticGrid.pitch * ALBUM_STATIC_RADIUS_RATIO));
-      return node;
-    }));
+    fieldSVG.setAttribute('viewBox', `0 0 ${fieldWidth} ${fieldHeight}`);
+    fieldSVG.replaceChildren();
     draw(progress, waveMode, waveDirection);
   }
   function hold(signal) {
@@ -330,11 +330,27 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       { transform: rest, opacity: 1 },
     ] : [{ transform: rest, opacity: 1 }, { transform: `translate(-28px,-140px) rotate(-6deg) ${base}`, opacity: 0 }];
     if (kind === 'photo') return entering ? [
-      { transform: 'translateY(22px) scale(.8)', opacity: 0 },
-      { transform: 'translateY(-6px) scale(1.035)', opacity: 1, offset: .65 },
-      { transform: 'translateY(2px) scale(.995)', opacity: 1, offset: .85 },
+      { transform: `perspective(900px) translate(6px,-30px) rotateX(21deg) rotateZ(1.4deg) scale(.97) ${base}`, opacity: 0 },
+      { transform: `perspective(900px) translate(2px,-8px) rotateX(9deg) ${base}`, opacity: 1, offset: .34 },
+      { transform: `perspective(900px) translateY(2px) rotateX(-2deg) scale(1.004) ${base}`, opacity: 1, offset: .74 },
       { transform: rest, opacity: 1 },
-    ] : [{ transform: rest, opacity: 1 }, { transform: 'translateY(18px) scale(.82)', opacity: 0 }];
+    ] : [
+      { transform: rest, opacity: 1 },
+      { transform: `perspective(900px) translate(2px,-4px) rotateX(12deg) ${base}`, opacity: 1, offset: .3 },
+      { transform: `perspective(900px) translate(-8px,-35px) rotateX(37deg) rotateZ(-3deg) scale(.98) ${base}`, opacity: 0 },
+    ];
+    if (kind === 'line') return entering
+      ? [{ transform: `${base} scaleX(0)`, opacity: 1 }, { transform: rest, opacity: 1 }]
+      : [{ transform: rest, opacity: 1 }, { transform: `${base} scaleX(0)`, opacity: 1 }];
+    if (kind === 'dots') return entering
+      ? [{ transform: rest, opacity: 0 }, { transform: rest, opacity: 1 }]
+      : [{ transform: rest, opacity: 1 }, { transform: rest, opacity: 0 }];
+    // Its heading owns opacity, so the clover only contributes a soft settle.
+    if (kind === 'clover') return entering ? [
+      { transform: `${base} scale(.72)`, opacity: 1 },
+      { transform: `${base} scale(1.055)`, opacity: 1, offset: .65 },
+      { transform: rest, opacity: 1 },
+    ] : [{ transform: rest, opacity: 1 }, { transform: `${base} scale(.9)`, opacity: 1 }];
     return entering ? [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: rest }]
       : [{ opacity: 1, transform: rest }, { opacity: 0, transform: 'translateY(5px)' }];
   }
@@ -453,8 +469,8 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     const growing = amount <= ALBUM_BOUNDARY_HANDOFF;
     const wave = growing ? amount / ALBUM_BOUNDARY_HANDOFF : (amount - ALBUM_BOUNDARY_HANDOFF) / (1 - ALBUM_BOUNDARY_HANDOFF);
     overlay.hidden = false;
-    // Arrival settles into the exact static lattice instead of shrinking it
-    // away and revealing a different set of dots underneath.
+    // Arrival grows to an opaque plane before handing off to the same solid
+    // theme color; it never shrinks away to reveal a different background.
     draw(amount, kind === 'enter' ? 'grow' : 'shrink', direction);
     fadePrevious(growing ? wave : 1, outgoing);
     paintOpacity(outgoingNode(incoming), growing ? 0 : smooth(wave));
