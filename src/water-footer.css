@@ -1,0 +1,63 @@
+/* The decoration follows the content container's real bottom, never the viewport. */
+.personal-water-footer {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  bottom: 0;
+  width: 100vw;
+  height: clamp(155px, 24svh, 260px);
+  transform: translateX(-50%);
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--theme);
+}
+.personal-page, .personal-return { position: relative; z-index: 1; }
+.water-footer-scene { display: block; width: 100%; height: 100%; overflow: hidden; }
+.water-plane { fill: currentColor; opacity: .085; }
+.water-horizon { fill: none; stroke: var(--theme-dark); stroke-width: 1; opacity: .085; }
+.water-contour { fill: none; stroke: var(--paper); stroke-width: 8; opacity: .72; }
+.water-contour-faint { stroke-width: 4; opacity: .48; }
+.water-ring { fill: none; transform-box: fill-box; transform-origin: center; }
+.water-ring-outer { stroke: var(--theme-dark); stroke-width: 1.5; opacity: .13; }
+.water-ring-inner { stroke: var(--paper); stroke-width: 4; opacity: .8; }
+.water-ring-travel {
+  stroke: var(--theme-dark);
+  stroke-width: 1;
+  opacity: 0;
+  animation: footerWaterRipple calc(var(--water-duration) * 1.4) cubic-bezier(.25, .1, .25, 1) var(--water-delay) infinite;
+}
+.water-leaf-shadow { fill: var(--theme-dark); opacity: .12; }
+.water-leaf { fill: currentColor; opacity: .62; }
+.water-leaf-1 { fill: color-mix(in srgb, var(--theme) 84%, var(--paper)); opacity: .75; }
+.water-leaf-2 { fill: color-mix(in srgb, var(--theme) 78%, var(--theme-dark)); opacity: .52; }
+.water-leaf-drift {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: footerWaterFloat var(--water-duration) cubic-bezier(.45, 0, .55, 1) var(--water-delay) infinite alternate;
+}
+.personal-enter-managed .personal-water-footer { opacity: var(--personal-field-alpha, 1); }
+body.is-background .personal-water-footer *,
+.collection-section:not(.is-current) .personal-water-footer * { animation-play-state: paused; }
+.personal-water-footer.is-water-still * { animation: none !important; }
+@keyframes footerWaterFloat {
+  from { transform: translate(-3px, 1px) rotate(-1.2deg); }
+  to { transform: translate(4px, -3px) rotate(1.4deg); }
+}
+@keyframes footerWaterRipple {
+  0% { transform: scale(.65); opacity: 0; }
+  24% { opacity: .14; }
+  84%, 100% { transform: scale(1.22); opacity: 0; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  /* The readable column is offset for the sidebar at this width. */
+  .personal-water-footer { left: calc(50% - 90px); }
+}
+@media (max-width: 760px) {
+  .personal-water-footer { height: clamp(155px, 24svh, 210px); }
+}
+@media (max-height: 700px) and (min-width: 761px) {
+  .personal-water-footer { height: 150px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .personal-water-footer * { animation: none !important; }
+}

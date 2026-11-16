@@ -1,20 +1,20 @@
 import { extractPhotoMetadata } from '../src/photo-metadata.js';
 import { normalizeGardenContent, validateGardenContent, publicGardenContent } from '../src/garden-content.js';
+import { EDITOR_COPY_SECTIONS, editorCopySection, readEditorCopy, writeEditorCopy } from '../src/editor-copy-fields.js';
 
 const $ = (selector) => document.querySelector(selector);
 const STORAGE_KEY = 'garden-admin-json-draft-v1';
 const MODE_KEY = 'garden-admin-service-mode-v1';
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const sections = [
-  ['overview', '⌂', '花园概览'], ['texts', '文', '中日文案'], ['owner', '◉', '作者资料'],
+  ['overview', '⌂', '管理概览'], ['texts', '文', '页面文案'], ['owner', '◉', '作者资料'],
   ['outfits', '♧', '服装展示'], ['photos', '▧', '照片相册'], ['journal', '✎', '碎碎念'], ['messages', '◌', '消息中心'], ['settings', '⚙', '连接与备份'],
 ];
-const groupNames = { site: '首页与导航', album: '相册', outfits: '服装交互', owner: '作者浮层', personal: '作者个人页', fixed: '固定界面文案', comments: '留言与审核提示' };
 const state = {
   content: null, revision: null, authenticated: false, connected: false, session: null,
   csrf: '', mediaBaseUrl: '', cloudAdminUrl: '', dirty: false, conflict: false, busy: false, section: 'overview',
   selectedOutfit: null, selectedPhoto: null, selectedPost: null, selectedPhotos: new Set(),
-  photoFilter: 'all', photoSearch: '', textGroup: 'site', textSearch: '',
+  photoFilter: 'all', photoSearch: '', textGroup: 'navigation', textLanguage: 'zh', textSearch: '',
   jobs: [], running: 0, preview: false, localBackup: null, cloudMode: false,
   comments: [], notifications: [], unreadCount: 0, pendingCount: 0, messageView: 'comments', messageStatus: 'pending', messageUnread: false, messagesBusy: false, messagesLoaded: false, messagesError: '', replyDrafts: {},
 };
@@ -147,8 +147,8 @@ function navigation() {
 function selectSection(key) {
   state.section = key; state.selectedPhoto = null; navigation(); render();
   if (key === 'messages') refreshMessages();
-  $('#page-title').textContent = sections.find(([name]) => name === key)?.[2] || '花园概览';
-  if (state.preview) setPreviewTarget({ texts: 'home', owner: 'collection', outfits: 'hello', photos: 'moments', journal: 'collection' }[key] || 'home');
+  $('#page-title').textContent = sections.find(([name]) => name === key)?.[2] || '管理概览';
+  if (state.preview) setPreviewTarget(previewSection());
   if (window.innerWidth < 850) $('#editor').scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 function changed() {
@@ -279,7 +279,7 @@ async function loadSeed() {
     if (cloudLocked()) { lockPrivateView(); return; }
     if (state.localBackup?.content) { installContent(state.localBackup.content); state.dirty = true; updateChrome(); toast('已打开浏览器里的 JSON 草稿。'); }
     else {
-      $('#editor').replaceChildren(empty('还没有可编辑的内容', '连接管理 API，或导入先前导出的花园 JSON 备份。', button('导入 JSON', () => $('#json-import').click())));
+      $('#editor').replaceChildren(empty('还没有可编辑的内容', '连接管理 API，或导入先前导出的内容 JSON 备份。', button('导入 JSON', () => $('#json-import').click())));
     }
   }
 }
@@ -308,7 +308,7 @@ function showAuth() {
     }
     finally { submit.disabled = state.session?.configured === false; }
   });
-  target.replaceChildren(node('h2', {}, '登录花园管理'), node('p', { class: 'muted' }, '使用管理员账号和密码登录，管理草稿、上传图片与发布内容。'), form);
+  target.replaceChildren(node('h2', {}, '登录内容管理'), node('p', { class: 'muted' }, '使用管理员账号和密码登录，管理草稿、上传图片与发布内容。'), form);
 }
 async function saveDraft() {
   if ($('#save-draft').disabled) return;
@@ -350,7 +350,7 @@ function showValidation(errors) {
 function exportJSON() {
   if (!state.content || cloudLocked()) return;
   const blob = new Blob([JSON.stringify(state.content, null, 2) + '\n'], { type: 'application/json' });
-  const url = URL.createObjectURL(blob), link = node('a', { href: url, download: `garden-draft-${new Date().toISOString().slice(0, 10)}.json` });
+  const url = URL.createObjectURL(blob), link = node('a', { href: url, download: `shiratsume-content-${new Date().toISOString().slice(0, 10)}.json` });
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 5000); toast('已导出当前 JSON 草稿。原始图片文件不包含在 JSON 内。');
 }
 async function importJSON(file) {
@@ -386,7 +386,7 @@ function render() {
 function renderOverview() {
   const { media, outfits, journal } = state.content;
   return [
-    node('section', { class: 'welcome' }, node('h2', {}, '照顾好每一片，', node('br'), '属于你的四叶草。'), node('p', {}, '从一句欢迎语，到一张旅途中的照片。这里的每次整理，都可以先存为草稿，慢慢检查，再让大家看见。'), node('span', { class: 'big-clover', 'aria-hidden': 'true' }, '✤')),
+    node('section', { class: 'welcome' }, node('h2', {}, '管理你的展示内容'), node('p', {}, '修改页面文案、整理照片与服装、记录碎碎念。先保存草稿并检查预览，再发布到网站。'), node('span', { class: 'big-clover', 'aria-hidden': 'true' }, '✤')),
     node('div', { class: 'stats' }, ...[
       ['照片相册', media.length, `${media.filter(item => item.enabled).length} 张已勾选发布`, 'photos'], ['服装展示', outfits.length, '正面 · 背面 · 校准', 'outfits'],
       ['碎碎念', journal.length, `${journal.filter(item => item.published).length} 条已勾选发布`, 'journal'], ['语言版本', 2, '中文 · 日本語', 'texts'],
@@ -400,29 +400,25 @@ function renderOverview() {
   ];
 }
 function renderTexts() {
-  const content = state.content;
-  const groupSelect = node('select', { 'aria-label': '文案分组' }, ...Object.keys(groupNames).map(key => node('option', { value: key }, groupNames[key])));
+  const section = editorCopySection(state.textGroup);
+  const groupSelect = node('select', { 'aria-label': '页面位置' }, ...EDITOR_COPY_SECTIONS.map(group => node('option', { value: group.id }, group.label)));
   groupSelect.value = state.textGroup;
-  groupSelect.addEventListener('change', () => { state.textGroup = groupSelect.value; render(); });
-  const search = node('input', { type: 'search', placeholder: '搜索文案名称或内容…', value: state.textSearch, 'aria-label': '搜索文案' });
-  let debounce; search.addEventListener('input', () => { state.textSearch = search.value; clearTimeout(debounce); debounce = setTimeout(() => renderTextCards(cards), 120); });
-  const cards = node('div'); renderTextCards(cards);
-  const profile = content.modelProfile;
-  return [intro('一句一句，写出花园的语气', '所有公开页面文案集中在这里。支持直接换行；旧文案中的 <br> 和 <small> 仅作为兼容格式保留，不会执行脚本。'),
-    node('div', { class: 'toolbar' }, groupSelect, search), cards,
-    panel(node('h2', {}, '模型简介'), node('p', { class: 'muted' }, '主模型的名称和介绍。第二模型仍保留原来的占位内容。'), localizedFields('模型名称', profile, 'name'),
-      ...['eyebrow', 'heading', 'lead', 'description'].map(key => node('div', { class: 'field-grid' }, ...['zh', 'ja'].map(locale => field(`${{ eyebrow: '小标题', heading: '大标题', lead: '引导语', description: '模型介绍' }[key]} · ${locale === 'zh' ? '中文' : '日本語'}`, profile[locale]?.[key], value => { profile[locale] ||= {}; profile[locale][key] = value; }, { multiline: ['lead', 'description'].includes(key) }))))),
+  groupSelect.addEventListener('change', () => { state.textGroup = groupSelect.value; render(); if (state.preview) setPreviewTarget(previewSection()); });
+  const languageTabs = node('div', { class: 'copy-language-tabs', role: 'group', 'aria-label': '文案语言' }, ...[['zh', '中文'], ['ja', '日本語']].map(([language, title]) =>
+    button(title, () => { state.textLanguage = language; render(); postPreview(); }, 'secondary small', { 'aria-pressed': String(state.textLanguage === language), class: `copy-language-tab${state.textLanguage === language ? ' active' : ''}` }),
+  ));
+  const cards = node('div', { class: 'page-copy-fields' }); renderTextCards(cards);
+  return [intro('页面文案', '按显示位置修改常用文字。照片说明、服装名和个人资料，请在各自栏目中编辑。'),
+    node('div', { class: 'toolbar copy-toolbar' }, groupSelect, languageTabs, button('预览这一页', () => { if (!state.preview) togglePreview(true); else setPreviewTarget(previewSection()); }, 'secondary small')),
+    node('p', { class: 'copy-section-note' }, section.description), cards,
   ];
 }
 function renderTextCards(target) {
-  const group = state.content.texts[state.textGroup] || { zh: {}, ja: {} };
-  const keys = [...new Set([...Object.keys(group.zh || {}), ...Object.keys(group.ja || {})])];
-  const query = state.textSearch.trim().toLowerCase();
-  const filtered = keys.filter(key => !query || `${key} ${group.zh?.[key] || ''} ${group.ja?.[key] || ''}`.toLowerCase().includes(query));
-  target.replaceChildren(...filtered.map(key => node('section', { class: 'panel translation-card' }, node('h3', { class: 'text-key' }, key), node('div', { class: 'field-grid' }, ...['zh', 'ja'].map(locale => field(locale === 'zh' ? '中文' : '日本語', group[locale]?.[key] || '', value => {
-    state.content.texts[state.textGroup] ||= { zh: {}, ja: {} }; state.content.texts[state.textGroup][locale] ||= {}; state.content.texts[state.textGroup][locale][key] = value;
-  }, { multiline: true }))))));
-  if (!filtered.length) target.append(empty('没有匹配的文案', query ? '换一个关键词试试。' : '这一组暂无可编辑字段，连接管理 API 后会载入完整文案。'));
+  const locale = state.textLanguage, localeName = locale === 'ja' ? '日本語' : '中文';
+  target.replaceChildren(...editorCopySection(state.textGroup).fields.map(item => node('section', { class: 'panel translation-card page-copy-card' },
+    node('h3', {}, item.label), node('p', { class: 'copy-location' }, item.location),
+    field(`${item.label} · ${localeName}`, readEditorCopy(state.content, item.id, locale), value => writeEditorCopy(state.content, item.id, locale, value), { multiline: item.multiline, rows: item.multiline ? 3 : undefined }),
+  )));
 }
 function renderOwner() {
   const owner = state.content.owner;
@@ -435,7 +431,7 @@ function renderOwner() {
   }
   renderContacts();
   const journalOptions = [['placeholder', '保留占位提示'], ['feed', '展示已发布碎碎念'], ['link', '链接到外部页面'], ['hidden', '隐藏碎碎念入口']];
-  return [intro('让大家认识花园的主人', '头像、简介和平台主页会同步到左上作者资料与个人名片。'),
+  return [intro('作者资料', '头像、简介和平台主页会同步到顶部作者资料与个人名片。'),
     panel(node('div', { class: 'avatar-editor' }, image(owner.avatar, '作者头像', 'avatar-image'), node('div', {}, upload, node('p', { class: 'small-note' }, '建议使用正方形图片。上传后保存草稿，再发布。'))),
       field('头像图片地址', owner.avatar, value => { owner.avatar = value; }, { placeholder: 'media/… 或 https://…' }),
       node('div', { class: 'field-grid' }, localizedFields('作者名字', owner, 'name'), localizedFields('个人简介', owner, 'bio', { multiline: true }))),
@@ -508,7 +504,7 @@ function renderPhotos() {
     state.selectedPhoto = null;
   }
   const picker = uploadPicker('选择照片', 'image/png,image/jpeg,image/webp', files => queueFiles(files, { kind: 'photo' }), true);
-  const drop = node('div', { class: 'dropzone' }, node('div', {}, node('h3', {}, '把旅途带进花园'), node('p', {}, '拖入多张 PNG、JPEG 或 WebP。先读取元数据，再保留私有原图，生成公开展示图与缩略图。', node('br'), '最多同时导入 2 张；新照片默认不发布。')), picker);
+  const drop = node('div', { class: 'dropzone' }, node('div', {}, node('h3', {}, '批量导入照片'), node('p', {}, '拖入多张 PNG、JPEG 或 WebP。先读取元数据，再保留私有原图，生成公开展示图与缩略图。', node('br'), '最多同时导入 2 张；新照片默认不发布。')), picker);
   drop.addEventListener('dragover', event => { event.preventDefault(); drop.classList.add('dragover'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
   drop.addEventListener('drop', event => { event.preventDefault(); drop.classList.remove('dragover'); queueFiles([...event.dataTransfer.files], { kind: 'photo' }); });
@@ -688,23 +684,27 @@ async function runUpload(job) {
   return '图片已加入草稿，保存后可发布。';
 }
 
+function previewSection() {
+  return state.section === 'texts' ? editorCopySection(state.textGroup).section : { owner: 'collection', outfits: 'hello', photos: 'moments', journal: 'collection' }[state.section] || 'home';
+}
+function previewLanguage() { return state.section === 'texts' ? state.textLanguage : 'zh'; }
 function setPreviewTarget(target) {
   if (cloudLocked()) return;
   $('#preview-target').value = target;
   const frame = $('#site-preview');
-  const url = new URL('../', location.href); url.searchParams.set('editor-preview', previewToken); url.hash = target;
+  const url = new URL('../', location.href); url.searchParams.set('editor-preview', previewToken); url.searchParams.set('lang', previewLanguage()); url.hash = target;
   if (!frame.src || new URL(frame.src).hash !== url.hash || new URL(frame.src).searchParams.get('editor-preview') !== previewToken) frame.src = url.href;
   postPreview();
 }
 function togglePreview(open = !state.preview) {
   if (open && cloudLocked()) return;
   state.preview = open; $('#preview-pane').hidden = !open; $('.content-layout').classList.toggle('with-preview', open); $('#preview-toggle').textContent = open ? '关闭预览' : '打开预览';
-  if (open) setPreviewTarget({ owner: 'collection', outfits: 'hello', photos: 'moments', journal: 'collection' }[state.section] || 'home');
+  if (open) setPreviewTarget(previewSection());
 }
 function postPreview() {
   if (cloudLocked() || !state.preview || !state.content || !$('#site-preview').contentWindow) return;
   const content = publicGardenContent(state.content, { mediaBaseUrl: state.content.settings.mediaBaseUrl || state.mediaBaseUrl || location.origin });
-  $('#site-preview').contentWindow.postMessage({ type: 'garden-preview', token: previewToken, content }, location.origin);
+  $('#site-preview').contentWindow.postMessage({ type: 'garden-preview', token: previewToken, content, ...(state.section === 'texts' ? { language: previewLanguage() } : {}) }, location.origin);
 }
 
 const commentStatusNames = { pending: '待审核', approved: '已通过', rejected: '已拒绝', spam: '垃圾', deleted: '已删除' };
@@ -733,10 +733,10 @@ async function refreshMessages({ quiet = false } = {}) {
   } finally { state.messagesBusy = false; if (state.messagesRefreshQueued) { state.messagesRefreshQueued = false; refreshMessages({ quiet: true }); } }
 }
 function renderMessages() {
-  if (!state.authenticated) return [intro('花园消息中心', '登录后可查看留言、处理审核和回复。通知只会出现在管理端，不会发送邮件。'), empty('登录后查看消息', '先连接管理服务并登录管理员账号。', button('连接与登录', () => selectSection('settings')))];
+  if (!state.authenticated) return [intro('消息中心', '登录后可查看留言、处理审核和回复。通知只会出现在管理端，不会发送邮件。'), empty('登录后查看消息', '先连接管理服务并登录管理员账号。', button('连接与登录', () => selectSection('settings')))];
   const container = node('div', { id: 'message-content' });
   queueMicrotask(() => renderMessagesBody());
-  return [intro('听见花园里的回声', '审核相册与碎碎念下的留言。管理员回复会在公开页面标记；消息与已读状态即时保存。', button('刷新消息', () => refreshMessages())), container];
+  return [intro('留言与通知', '审核相册与碎碎念下的留言。管理员回复会在公开页面标记；消息与已读状态即时保存。', button('刷新消息', () => refreshMessages())), container];
 }
 function renderMessagesBody() {
   if (cloudLocked()) return;

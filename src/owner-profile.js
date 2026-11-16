@@ -4,7 +4,7 @@ import { cloverSVG } from './scene.js';
 export const DEFAULT_OWNER_PROFILE = Object.freeze({
   avatar: null,
   name: Object.freeze({ zh: '关于我', ja: 'この庭について' }),
-  bio: Object.freeze({ zh: '欢迎来到我的小庭院。', ja: '小さな庭へようこそ。' }),
+  bio: Object.freeze({ zh: '欢迎。', ja: 'ようこそ。' }),
   contacts: Object.freeze([]),
 });
 

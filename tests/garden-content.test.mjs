@@ -4,6 +4,14 @@ import { normalizeGardenContent, publicGardenContent, resolveGardenMedia, safeGa
 
 const privateKey = `private/originals/${'a'.repeat(64)}.png`;
 
+test('existing drafts migrate only the retired stock branding and keep custom text',()=>{
+  const input={texts:{site:{zh:{chooseModel:'选择一座小庭院',heroDescription:'我的自定义介绍'},ja:{chooseModel:'小さな庭を選ぶ'}},fixed:{zh:{coordinate:"SHIRATSUME'S LITTLE GARDEN"}},personal:{zh:{eyebrow:'THE PERSON BEHIND THIS LITTLE GARDEN.'}}}};
+  const result=normalizeGardenContent(input);
+  assert.equal(result.texts.site.zh.chooseModel,'选择模型');assert.equal(result.texts.site.ja.chooseModel,'モデルを選ぶ');
+  assert.equal(result.texts.site.zh.heroDescription,'我的自定义介绍');assert.equal(result.texts.personal.zh.eyebrow,'ABOUT THE CREATOR.');
+  assert.equal(input.texts.site.zh.chooseModel,'选择一座小庭院');
+});
+
 test('visitor content includes enabled photos and published notes with body or images, while drafts remain private', () => {
   const input = {
     media: [

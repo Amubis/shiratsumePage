@@ -1,8 +1,8 @@
 import { normalizeGardenContent, publicGardenContent, resolveGardenMedia, validateGardenContent } from './garden-content.js';
 
 export const FIXED_COPY = Object.freeze({
-  zh: Object.freeze({ homeEyebrow: 'A LITTLE LUCK, A LITTLE EVERYDAY.', coordinate: "SHIRATSUME'S LITTLE GARDEN", coordinatePages: '01 — 04', navHomeSubtitle: 'HOME', navHelloSubtitle: 'HELLO', navMomentsSubtitle: 'MOMENTS', navCollectionSubtitle: 'ABOUT', modelReading: 'SHIRATSUME', modelFooter: 'A LITTLE CLOVER, MANY LITTLE SIDES.', modelPage: '01 / 03', primaryModelName: 'しらつめ', videoLabel: '首页视频' }),
-  ja: Object.freeze({ homeEyebrow: 'A LITTLE LUCK, A LITTLE EVERYDAY.', coordinate: "SHIRATSUME'S LITTLE GARDEN", coordinatePages: '01 — 04', navHomeSubtitle: 'HOME', navHelloSubtitle: 'HELLO', navMomentsSubtitle: 'MOMENTS', navCollectionSubtitle: 'ABOUT', modelReading: 'SHIRATSUME', modelFooter: 'A LITTLE CLOVER, MANY LITTLE SIDES.', modelPage: '01 / 03', primaryModelName: 'しらつめ', videoLabel: 'ホームの映像' }),
+  zh: Object.freeze({ homeEyebrow: 'A LITTLE LUCK, A LITTLE EVERYDAY.', coordinate: "SHIRATSUME / AVATAR ARCHIVE", coordinatePages: '01 — 04', navHomeSubtitle: 'HOME', navHelloSubtitle: 'HELLO', navMomentsSubtitle: 'MOMENTS', navCollectionSubtitle: 'ABOUT', modelReading: 'SHIRATSUME', modelFooter: 'A LITTLE CLOVER, MANY LITTLE SIDES.', modelPage: '01 / 03', primaryModelName: 'しらつめ', videoLabel: '首页视频' }),
+  ja: Object.freeze({ homeEyebrow: 'A LITTLE LUCK, A LITTLE EVERYDAY.', coordinate: "SHIRATSUME / AVATAR ARCHIVE", coordinatePages: '01 — 04', navHomeSubtitle: 'HOME', navHelloSubtitle: 'HELLO', navMomentsSubtitle: 'MOMENTS', navCollectionSubtitle: 'ABOUT', modelReading: 'SHIRATSUME', modelFooter: 'A LITTLE CLOVER, MANY LITTLE SIDES.', modelPage: '01 / 03', primaryModelName: 'しらつめ', videoLabel: 'ホームの映像' }),
 });
 
 export function readGardenData(doc, defaults = {}) {

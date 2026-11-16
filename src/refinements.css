@@ -3,7 +3,7 @@
 /* Start with video alone, including before the deferred application is ready. */
 /* Hold each navbar child at its entry pose before the parent becomes visible.
    Otherwise the text phase reveals a bar whose children are only then hiding. */
-html:is([data-phase="video"], [data-phase="veil"], [data-phase="text"]) :is(.top-links > a, .topbar > .owner-profile) {
+html:is([data-phase="video"], [data-phase="veil"], [data-phase="text"]) :is(.top-links > a, .topbar > .owner-profile, .topbar > .site-brand) {
   opacity: 0;
   pointer-events: none;
   transition: none;
@@ -357,9 +357,15 @@ body.on-home #model-toggle small {
     width .28s var(--easing), height .28s var(--easing);
 }
 
-/* Let the quieter resting gaps settle as gently as the clover's size. */
+/* A clear resting pose grows into the same broad, magnetized hit region. */
 @media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
-  .side-nav .side-links:not(.is-pointer-tracking) > a { transition-duration: .4s; }
+  .side-nav .side-links > a,
+  .side-nav .side-links.is-pointer-tracking > a { transition-duration: .42s; }
+  .side-nav .side-highlight {
+    transition: left .52s cubic-bezier(.3, 0, .25, 1.08),
+      top .52s cubic-bezier(.3, 0, .25, 1.08),
+      width .42s var(--water-easing, var(--easing)), height .42s var(--water-easing, var(--easing));
+  }
 }
 
 .nav-bubbles {

@@ -22,6 +22,7 @@ import { PERSONAL_COPY } from './personal-page.js';
 import { COMMENTS_COPY, createCommentService } from './comments.js';
 import { normalizeGardenContent, resolveGardenMedia } from './garden-content.js';
 import { FIXED_COPY, readGardenData, setGardenText, loadPublishedGarden, acceptGardenPreview } from './garden-runtime.js';
+import { createWaterFooter } from './water-footer.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -49,6 +50,7 @@ let ownerProfile;
 let personalPage;
 let personalEntrance;
 let topbarDock;
+let waterFooter;
 let videoReveal;
 let introTimers = [];
 let introWaiting = false;
@@ -107,7 +109,15 @@ function renderTitle() {
   const configuredName=model.preview?model.name:activeGarden.modelProfile.name;
   const name=typeof configuredName==='object'?(configuredName[language] || configuredName.zh):configuredName;
   $('#model-heading').textContent=name;
-  document.title=`${name} · little clover garden`;
+  document.title=`${name} · Avatar Portfolio`;
+}
+
+function ensureOutfitShowcase(){
+  if(!outfitShowcase){
+    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits});
+    introEntrance?.refresh();
+  }
+  return outfitShowcase;
 }
 
 function applyLanguage() {
@@ -125,7 +135,10 @@ function applyLanguage() {
   $('#language-label').textContent = language === 'zh' ? '中文' : '日本語';
   $('.language-other').textContent = language === 'zh' ? 'JP' : '中';
   $('#language-toggle').setAttribute('aria-label', translate('switchLanguage'));
-  $('#model-toggle').title = translate('switchModel');
+  $('#model-toggle').setAttribute('aria-label',translate('switchModel'));
+  const primaryChoiceName=typeof activeGarden.modelProfile.name==='object'?(activeGarden.modelProfile.name[language]||activeGarden.modelProfile.name.zh):activeGarden.modelProfile.name;
+  $('[data-model="shiratsume"] .model-choice-label').textContent=primaryChoiceName||(language==='ja'?'モデル 01':'模型 01');
+  $('[data-model="preview"] .model-choice-label').textContent=typeof MODELS.preview.name==='object'?MODELS.preview.name[language]:MODELS.preview.name;
   $('#lightbox-close').setAttribute('aria-label', translate('close'));
   $('.scroll-cue').setAttribute('aria-label', translate('scrollExplore'));
   $('.side-nav').setAttribute('aria-label', translate('menu'));
@@ -158,8 +171,6 @@ function applyFixedText() {
   coordinate.firstChild.textContent=`${copy.coordinate ?? FIXED_COPY[language].coordinate} `;
   ['Home','Hello','Moments','Collection'].forEach((key,index)=>{$(`.top-links a[data-go="${index}"] small`).textContent=copy[`nav${key}Subtitle`] ?? FIXED_COPY[language][`nav${key}Subtitle`];});
   $('.hero-native')?.setAttribute('aria-label',copy.videoLabel ?? FIXED_COPY[language].videoLabel);
-  const menuName=$('[data-model="shiratsume"]>span:nth-child(2)');
-  if(menuName?.firstChild)menuName.firstChild.textContent=copy.primaryModelName ?? FIXED_COPY[language].primaryModelName;
 }
 
 function updatePlaybackLabel(status) {
@@ -230,9 +241,10 @@ function setWatching(next) {
   if (next && !MODELS[modelId].preview) { userPaused = false; void player.resume(); }
 }
 
-function setModelMenu(open) {
-  $('#model-menu').hidden = !open;
-  $('#model-toggle').setAttribute('aria-expanded', String(open));
+function markModelSwitch(selection=modelId,busy=false){
+  $('#model-toggle').dataset.selection=selection==='preview'?'right':'left';
+  $('#model-toggle').setAttribute('aria-busy',String(busy));
+  document.body.classList.toggle('is-model-switching',busy);
 }
 
 function wait(milliseconds, signal) {
@@ -423,8 +435,8 @@ navigator = createSectionNavigator({
     if(albumScroll?.busy)albumScroll.cancel();
     if(index===3 && currentIndex!==3 && !MODELS[modelId].preview)personalEntrance?.prepare();
     ownerProfile?.close();
-    if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');}
-    finishIntro(); setWatching(false); setModelMenu(false); $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
+    if(source!=='model' && $('.theme-curtain').classList.contains('is-visible')) {modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');markModelSwitch();}
+    finishIntro(); setWatching(false);  $('.side-nav').classList.remove('is-open'); $('.mobile-menu-toggle').setAttribute('aria-expanded','false');
     pendingAlbumNavigation = null;
     if (!MODELS[modelId].preview && from !== index && (index === 2 || from === 2)) {
       const operation = {kind:index === 2 ? 'enter' : 'reveal',index,direction:Math.sign(index-from)};
@@ -495,16 +507,19 @@ $('#pause-toggle').addEventListener('click', () => {
 $('#video-retry').addEventListener('click', () => {
   finishIntro();userPaused=false;void player.resume();
 });
-$('#model-toggle').addEventListener('click', () => { finishIntro();setModelMenu($('#model-menu').hidden); });
 document.addEventListener('click', (event) => {
-  if(!$('.model-control').contains(event.target))setModelMenu(false);
   if(!$('.side-nav').contains(event.target)) { $('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false'); }
 });
 
 async function switchModel(nextId) {
-  if (nextId === modelId || !Object.hasOwn(MODELS,nextId)) {setModelMenu(false);return;}
+  if (!Object.hasOwn(MODELS,nextId)) return;
+  if(nextId===modelId){
+    if(document.body.classList.contains('is-model-switching')){modelGeneration+=1;$('.theme-curtain').classList.remove('is-visible');markModelSwitch();}
+    return;
+  }
   const token = ++modelGeneration;
-  finishIntro();setWatching(false);setModelMenu(false);sidebar?.setCurrent(currentIndex);
+  finishIntro();setWatching(false);sidebar?.setCurrent(currentIndex);
+  markModelSwitch(nextId,true);
   $('.theme-curtain').classList.add('is-visible');
   await wait(reducedMotion()?0:240);
   if(token !== modelGeneration)return;
@@ -518,6 +533,8 @@ async function switchModel(nextId) {
   if(token !== modelGeneration)return;
   $('.theme-curtain').classList.remove('is-visible');
   notify(MODELS[modelId].preview ? translate('previewNotice') : 'しらつめ');
+  await wait(reducedMotion()?0:260);
+  if(token===modelGeneration)markModelSwitch();
 }
 $$('[data-model]').forEach((button) => button.addEventListener('click', () => { void switchModel(button.dataset.model); }));
 
@@ -533,6 +550,7 @@ function applyTheme() {
   $('.primary-intro').hidden=model.preview;
   $('.preview-intro').hidden=!model.preview;
   $('#hello').setAttribute('aria-labelledby',model.preview?'preview-hello-heading':'hello-heading');
+  if(!model.preview)ensureOutfitShowcase();
   outfitShowcase?.setEnabled(!model.preview);
   $('.primary-album').hidden=model.preview;
   $('.preview-album').hidden=!model.preview;
@@ -548,12 +566,7 @@ function applyTheme() {
   $('#theme-status').hidden=!model.preview;
   $('#pause-toggle').disabled=model.preview;
   $('#watch-toggle').disabled=model.preview;
-  // Reserved art slot: a future model can provide its own PNG/SVG without
-  // changing the button's hit area, text, menu behavior or transition logic.
-  const switchArt=$('.model-switch-art');
-  if(model.switchArt){
-    const image=document.createElement('img');image.src=model.switchArt;image.alt='';switchArt.replaceChildren(image);
-  }else switchArt.innerHTML=cloverSVG({className:'clover-svg'});
+  $('#model-toggle').dataset.selection=modelId==='preview'?'right':'left';
   imageSources.forEach((original,image) => {image.src=model.preview?model.poster:original.src;});
   lightboxSources.forEach((original,button) => {button.dataset.lightbox=model.preview?model.poster:original;});
   $$('[data-model]').forEach((button) => button.setAttribute('aria-pressed',String(button.dataset.model===modelId)));
@@ -584,10 +597,10 @@ $('#lightbox').addEventListener('click', (event) => {if(event.target===$('#light
 // resolves a decorative controller's promise in this later listener.
 window.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
-  if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);setModelMenu(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
+  if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
 document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();personalEntrance?.refresh();if(!document.hidden)syncPersonalEntrance();queueMicrotask(prepareIntroOffscreen);});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
@@ -607,7 +620,7 @@ function applyOwnerProfile(profile) {
   const data=normalizePersonalProfile(profile);
   ownerProfile.update(data);personalPage.update(data);
 }
-outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits});
+if(!MODELS[modelId].preview)ensureOutfitShowcase();
 introEntrance=createIntroEntrance({section:$('#hello'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview});
 // The reminder starts only once the real chapter has completed its entrance;
 // snapshots and chapters outside the viewport cannot start its idle timer.
@@ -670,6 +683,7 @@ heroInteractions=createHeroInteractions({
     && !document.body.classList.contains('watch-reveal-animating') && !$('.transition-wipe').classList.contains('is-active'),
 });
 personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview,theme:MODELS[modelId].theme,seed:modelId});
+waterFooter=createWaterFooter({container:$('.personal-water-footer'),reducedMotion});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
 function applyGardenContent(next) {
   const previous=activeGarden;
@@ -680,8 +694,8 @@ function applyGardenContent(next) {
   if(changedCopy('owner'))ownerProfile.setCopy(activeGarden.texts.owner);
   if(changedCopy('personal'))personalPage.setCopy(activeGarden.texts.personal);
   if(changed('journal'))personalPage.setPosts(activeGarden.journal);
-  if(changed('outfits') && outfitShowcase.setOutfits(activeGarden.outfits))introEntrance.refresh();
-  if(changedCopy('outfits'))outfitShowcase.setCopy(activeGarden.texts.outfits);
+  if(changed('outfits') && outfitShowcase?.setOutfits(activeGarden.outfits))introEntrance.refresh();
+  if(changedCopy('outfits'))outfitShowcase?.setCopy(activeGarden.texts.outfits);
   if(changedCopy('album'))album.setCopy(activeGarden.texts.album);
   if(changed('media')){pendingAlbumMedia=activeGarden.media;flushAlbumMedia();}
   if(changedCopy('comments')){album.setCommentsCopy(activeGarden.texts.comments);personalPage.setCommentsCopy(activeGarden.texts.comments);}
@@ -693,7 +707,14 @@ function applyGardenContent(next) {
 }
 window.addEventListener('message',event=>{
   const content=acceptGardenPreview(event,{token:previewToken,origin:location.origin,parent:window.parent===window?null:window.parent,defaults:gardenDefaults});
-  if(content){previewReceived=true;commentsService.setBaseUrl(null);applyGardenContent(content);}
+  if(content){
+    previewReceived=true;commentsService.setBaseUrl(null);
+    const nextLanguage=event.data.language;
+    const languageChanged=['zh','ja'].includes(nextLanguage)&&nextLanguage!==language;
+    if(languageChanged)language=nextLanguage;
+    applyGardenContent(content);
+    if(languageChanged){applyLanguage();applyURL();}
+  }
 });
 if(location.protocol!=='file:')void loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href}).then(({content,runtime,connected})=>{
   if(previewReceived)return;

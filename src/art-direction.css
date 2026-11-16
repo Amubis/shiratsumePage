@@ -1,0 +1,39 @@
+:root { --display-strong: "Shiratsume Display", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Microsoft YaHei", sans-serif; }
+body:not(.theme-preview) .hero-title { font-family: var(--display-strong); font-weight: 400; font-synthesis: none; letter-spacing: -.035em; line-height: 1.17; }
+body:not(.theme-preview) .model-intro-title h2 { font-family: var(--display-strong); font-weight: 400; font-synthesis: none; }
+.site-brand-name { font-family: var(--display-strong); font-weight: 400; font-synthesis: none; }
+.site-brand-mark { display: block; width: 27px; height: 27px; flex: none; color: var(--theme-dark); }
+.site-brand-mark > svg { width: 100%; height: 100%; }
+.site-brand-logo { display: block; max-width: 180px; max-height: 38px; object-fit: contain; }
+body.is-model-switching .model-control { z-index: 86; }
+/* Two small image surfaces share one sliding color window. Neither starts media. */
+#model-toggle.model-image-switch {
+  position: relative; display: block; width: 194px; height: 62px; min-height: 0;
+  padding: 0; border: 0; border-radius: 0; isolation: isolate;
+  background: var(--paper); clip-path: polygon(6% 0,100% 0,94% 100%,0 100%);
+  box-shadow: 0 3px 14px #29292520;
+}
+.model-image-switch::after { content: ''; position: absolute; inset: 2px; z-index: 2; border-block: 1px solid #fffdf5b8; pointer-events: none; }
+.model-choice-images, .model-choice-actions { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+.model-choice-images { pointer-events: none; }
+.model-choice-images > span { display: block; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
+.model-choice-images img { display: block; width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: cover; }
+.model-choice-images > span:first-child img { object-position: 53% 42%; transform: scale(1.9); transform-origin: 60% 40%; }
+.model-choice-images > span:last-child img { object-position: 50% 13%; transform: scale(1.8); transform-origin: 52% 14%; }
+.model-choice-muted { filter: saturate(.08) contrast(.58) brightness(1.22); opacity: .8; }
+.model-choice-color { clip-path: inset(0 50% 0 0); transition: clip-path .56s cubic-bezier(.22,.7,.25,1); }
+[data-selection="right"] > .model-choice-color { clip-path: inset(0 0 0 50%); }
+.model-choice-actions { z-index: 3; }
+.model-choice-actions > button { position: relative; display: block; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #fffdf4; transition: background .25s ease; }
+.model-choice-actions > button + button { border-left: 1px solid #f9f6edbd; }
+.model-choice-actions > button:hover { background: #ffffff14; }
+.model-choice-actions > button:active { background: #29292520; }
+.model-choice-actions > button:focus-visible { outline: 2px solid #fffdf4; outline-offset: -5px; }
+.model-choice-actions > button[aria-pressed="true"]::after { content: ''; position: absolute; bottom: 3px; left: 18%; right: 18%; height: 3px; background: var(--theme); box-shadow: 0 1px 1px #29292555; }
+.model-choice-number { position: absolute; left: 12px; bottom: 8px; padding: 1px 3px; background: #29292570; font-size: 8px; line-height: 1.2; letter-spacing: .12em; }
+@media (max-width: 760px) {
+  #model-toggle.model-image-switch, body.on-personal #model-toggle.model-image-switch { display: block; width: 126px; height: 48px; min-height: 0; padding: 0; }
+  .model-choice-number { font-size: 7px; left: 8px; bottom: 5px; }
+  .site-brand-mark { width: 22px; height: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .model-choice-color, .model-choice-actions > button { transition: none; } }

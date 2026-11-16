@@ -168,8 +168,8 @@ test('sidebar hierarchy has a pronounced size falloff and tighter distant spacin
 test('resting navigation tightens only the gaps around the current label and restores its active clover on interaction', (t) => {
   const resting = getSidebarLayout(7, 3, 3, { engaged: false });
   const active = getSidebarLayout(7, 3);
-  assert.equal(resting[3].y - resting[2].y, 54);
-  assert.equal(resting[4].y - resting[3].y, 60);
+  assert.equal(resting[3].y - resting[2].y, 40);
+  assert.equal(resting[4].y - resting[3].y, 44);
   assert.equal(resting[1].y - resting[0].y, active[1].y - active[0].y);
   assert.equal(resting[6].y - resting[5].y, active[6].y - active[5].y);
   assert.deepEqual(resting.map((row) => row.fontSize), active.map((row) => row.fontSize));
@@ -177,14 +177,14 @@ test('resting navigation tightens only the gaps around the current label and res
   const f = sidebarFixture(t);
   f.sidebar.setCurrent(1);
   const idleSize = parseFloat(f.highlight.style.getPropertyValue('--highlight-size'));
-  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 60);
-  assert.equal(idleSize, 92);
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 44);
+  assert.equal(idleSize, 69);
   f.list.emit('pointerenter', { clientY: 140 });
   assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), 115);
   assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 68);
   f.list.emit('pointerleave');
   assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), idleSize);
-  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 60);
+  assert.equal(parseFloat(f.links[2].style.getPropertyValue('--nav-y')), 44);
   f.doc.emit('keydown', { key: 'Tab' });
   f.links[1].emit('focus');
   assert.equal(parseFloat(f.highlight.style.getPropertyValue('--highlight-size')), 115);
@@ -319,7 +319,8 @@ test('a rapid click resolves its own coordinate before a queued pointer frame', 
   f.list.emit('pointermove', { clientY: 208 });
   assert.ok(queued);
   assert.equal(f.links[3].classList.contains('is-highlighted'), true);
-  f.list.emit('click', { detail: 1, button: 0, clientY: 148, preventDefault() {}, stopPropagation() {} });
+  const targetRect = f.links[1].querySelector('span').getBoundingClientRect();
+  f.list.emit('click', { detail: 1, button: 0, clientY: targetRect.top + targetRect.height / 2, preventDefault() {}, stopPropagation() {} });
   assert.deepEqual(clicked, [1]);
   assert.equal(queued, null);
   assert.equal(f.links[1].classList.contains('is-highlighted'), true);
@@ -464,10 +465,10 @@ test('refresh adapts the compact clover to translated label width and destructio
   const f = sidebarFixture(t);
   f.links[0].querySelector('span').textContent = '庭';
   f.sidebar.refresh();
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '84px');
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '63px');
   f.links[0].querySelector('span').textContent = '庭の入り口です';
   f.sidebar.refresh();
-  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '92px');
+  assert.equal(f.highlight.style.getPropertyValue('--highlight-size'), '69px');
   assert.match(f.shape.innerHTML, /sidebar-clover-shadow/);
   f.links[2].emit('pointerenter');
   f.tick(500);

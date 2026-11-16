@@ -14,8 +14,8 @@ export const DEFAULT_PERSONAL_PROFILE = Object.freeze({
   journal: Object.freeze({ mode: 'placeholder', url: null }),
 });
 export const PERSONAL_COPY = Object.freeze({
-  zh: Object.freeze({ eyebrow: 'THE PERSON BEHIND THIS LITTLE GARDEN.', avatar: '作者头像', links: '在别处找到我', pending: '个人主页链接待补充', journal: '碎碎念', journalNote: '想到什么，就写一点。', journalEmpty: '还没有公开的文章', soon: '准备中', journalMore: '加载更多', journalLoaded: '已显示全部碎碎念', viewImage: '查看图片', closeImage: '关闭图片', imageUnavailable: '图片暂时无法加载' }),
-  ja: Object.freeze({ eyebrow: 'THE PERSON BEHIND THIS LITTLE GARDEN.', avatar: '庭の主のアイコン', links: 'ほかの場所でも', pending: 'プロフィールのリンクは準備中です', journal: 'ひとりごと', journalNote: '思いついたことを、少しずつ。', journalEmpty: '公開された記事はまだありません', soon: '準備中', journalMore: 'もっと見る', journalLoaded: 'すべてのひとりごとを表示しました', viewImage: '画像を見る', closeImage: '画像を閉じる', imageUnavailable: '画像を読み込めませんでした' }),
+  zh: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '作者头像', links: '在别处找到我', pending: '个人主页链接待补充', journal: '碎碎念', journalNote: '想到什么，就写一点。', journalEmpty: '还没有公开的文章', soon: '准备中', journalMore: '加载更多', journalLoaded: '已显示全部碎碎念', viewImage: '查看图片', closeImage: '关闭图片', imageUnavailable: '图片暂时无法加载' }),
+  ja: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '庭の主のアイコン', links: 'ほかの場所でも', pending: 'プロフィールのリンクは準備中です', journal: 'ひとりごと', journalNote: '思いついたことを、少しずつ。', journalEmpty: '公開された記事はまだありません', soon: '準備中', journalMore: 'もっと見る', journalLoaded: 'すべてのひとりごとを表示しました', viewImage: '画像を見る', closeImage: '画像を閉じる', imageUnavailable: '画像を読み込めませんでした' }),
 });
 const copyDictionary = (input) => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(PERSONAL_COPY[locale]).map(([key, fallback]) =>

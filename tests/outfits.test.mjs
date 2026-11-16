@@ -443,10 +443,10 @@ test('one shared projection composes both silhouettes behind the portraits with 
   assert.equal(source.getAttribute('href'), OUTFITS[0].front);
   const group = a.container.all((node) => node.localName === 'g')[0];
   assert.equal(group.getAttribute('mask'), `url(#${masks[0].getAttribute('id')})`);
-  assert.equal(group.getAttribute('opacity'), '.36');
+  assert.equal(group.getAttribute('opacity'), '.24');
   assert.equal(masks[0].children.every(node=>node.getAttribute('opacity')===null),true,'the union has no per-portrait opacity multiplication');
   const pattern = a.container.all((node) => node.localName === 'pattern')[0];
-  assert.equal(pattern.getAttribute('width'), '52');
+  assert.equal(pattern.getAttribute('width'), '40');
   const diameter = Number(pattern.children[0].getAttribute('r')) * 2;
   assert.ok(diameter >= 24, 'shadow circles remain about twice the original prototype diameter');
   assert.ok(Number(pattern.getAttribute('width')) - diameter >= 8, 'visible round circles have a clear gap rather than forming a solid silhouette');

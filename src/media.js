@@ -1,4 +1,4 @@
-/** Two managed layers, reusing the native HTML video that works without JS. */
+/** Two managed layers; sources are assigned only after choosing the active model. */
 export function createVideoPlayer({ container, playlist = [], poster, reducedMotion = () => false, onStatus = () => {}, loadingTimeout = 8000 }) {
   const doc = container.ownerDocument;
   const posterImage = container.querySelector('img.poster');

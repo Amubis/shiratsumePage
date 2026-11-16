@@ -1,9 +1,9 @@
 {
-  "name": "shiratsume-garden",
-  "version": "0.10.2",
+  "name": "shiratsume-portfolio",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
-  "description": "A little clover garden — static avatar showcase prototype",
+  "description": "Shiratsume — avatar portfolio and photo archive",
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",

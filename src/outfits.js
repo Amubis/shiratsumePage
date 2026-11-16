@@ -226,10 +226,10 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   const shadowMask = svgElement('mask', { id: `${uid}-mask`, maskUnits: 'userSpaceOnUse', x: '-320', y: '-320', width: IMAGE_WIDTH + 640, height: IMAGE_HEIGHT + 640, 'mask-type': 'alpha', style: 'mask-type:alpha', 'data-composite': 'alpha-union' });
   const shadowSources = [records[currentIndex].front, records[currentIndex].back].map((source, index) => svgElement('image', { class: index ? 'outfit-projection-back' : 'outfit-projection-front', x: '0', y: '0', width: IMAGE_WIDTH, height: IMAGE_HEIGHT, preserveAspectRatio: 'xMidYMid meet', ...(source ? { href: source } : {}) }));
   shadowMask.append(...shadowSources);
-  const shadowPattern = svgElement('pattern', { id: `${uid}-dots`, width: '52', height: '52', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
-  shadowPattern.append(svgElement('circle', { cx: '26', cy: '26', r: '19', fill: 'currentColor' }));
+  const shadowPattern = svgElement('pattern', { id: `${uid}-dots`, width: '40', height: '40', patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(8)' });
+  shadowPattern.append(svgElement('circle', { cx: '20', cy: '20', r: '14', fill: 'currentColor' }));
   shadowDefs.append(shadowMask, shadowPattern);
-  const shadowGroup = svgElement('g', { mask: `url(#${uid}-mask)`, opacity: '.36' });
+  const shadowGroup = svgElement('g', { mask: `url(#${uid}-mask)`, opacity: '.24' });
   const shadowPaint = svgElement('rect', { x: '-320', y: '-320', width: IMAGE_WIDTH + 640, height: IMAGE_HEIGHT + 640, fill: `url(#${uid}-dots)` });
   shadowGroup.append(shadowPaint);
   shadow.append(shadowDefs, shadowGroup);

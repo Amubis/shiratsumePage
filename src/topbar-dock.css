@@ -20,59 +20,103 @@
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-.has-topbar-dock .topbar .owner-profile {
-  flex: 0 0 clamp(80px, 17vw, 250px);
-  padding-inline: max(24px, env(safe-area-inset-left, 0px));
+.has-topbar-dock .topbar .site-brand {
+  display: flex;
+  align-items: center;
+  flex: 0 1 clamp(155px, 20vw, 280px);
+  min-width: 0;
+  height: 100%;
+  padding-inline: max(24px, env(safe-area-inset-left, 0px)) 20px;
+  gap: 12px;
+  font-size: clamp(10px, .9vw, 13px);
+  font-weight: 800;
+  letter-spacing: .22em;
 }
-.has-topbar-dock .topbar .owner-card { left: max(24px, env(safe-area-inset-left, 0px)); }
+.has-topbar-dock .topbar .site-brand > [data-clover] { width: 27px; height: 27px; flex: none; color: var(--theme-dark); }
+.has-topbar-dock .topbar .site-brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.has-topbar-dock .topbar .site-brand img { max-width: 100%; max-height: 40px; width: auto; object-fit: contain; }
+.has-topbar-dock .topbar .owner-profile { flex: 0 0 auto; width: 68px; padding-inline: 12px; }
+.has-topbar-dock .topbar .owner-card { left: auto; right: 0; }
+.has-topbar-dock .topbar .owner-card::before { left: auto; right: 26px; }
 .has-topbar-dock .topbar .top-links { min-width: 0; }
 .has-topbar-dock .topbar > .language-control {
   padding-inline: 20px max(24px, env(safe-area-inset-right, 0px));
 }
 .has-topbar-dock .topbar .language-control button { background: transparent; }
-/* Warm charcoal echoes the model's ribbon while preserving the pale profile card. */
+/* The wordmark, type and short rules share the reference's warm paper strip. */
 .has-topbar-dock body:not(.theme-preview) .topbar {
-  color: #f6f2e8;
+  color: #292925;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .topbar-surface {
-  background: #292925;
-  border-bottom-color: #f6f2e81f;
-  box-shadow: 0 1px 4px #17181324;
+  background: #f6f3ef;
+  border-bottom-color: #686d2f38;
+  box-shadow: none;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .top-links > a {
-  color: #f6f2e8;
+  color: #292925;
+  font-size: clamp(12px, .98vw, 15px);
+  font-weight: 750;
+  letter-spacing: .055em;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .top-links > a small {
-  opacity: .72;
+  display: none;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a > span:not(.contrast-copy) {
+  position: relative;
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a > span:not(.contrast-copy)::after {
+  content: '';
+  display: block;
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: 23px;
+  height: 3px;
+  margin: 0;
+  background: #a2a64a;
+  opacity: 0;
+  transform: translateX(-50%) scaleX(.35);
+  transition: opacity .25s var(--easing), transform .3s var(--water-easing, var(--easing));
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .top-links > a:hover,
 .has-topbar-dock body:not(.theme-preview) .topbar .top-links > a[aria-current="page"] {
-  color: #d5d88d;
+  color: #292925;
 }
-.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a[aria-current="page"] span::after {
-  background: #d5d88d;
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a:hover > span:not(.contrast-copy)::after,
+.has-topbar-dock body:not(.theme-preview) .topbar .top-links > a[aria-current="page"] > span:not(.contrast-copy)::after {
+  opacity: 1;
+  transform: translateX(-50%) scaleX(1);
+}
+.has-topbar-dock body:not(.theme-preview) .topbar .owner-profile::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 18px;
+  bottom: 18px;
+  width: 1px;
+  background: #686d2f55;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .language-control {
-  color: #f6f2e8;
+  color: #292925;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .language-other {
-  opacity: .75;
-  border-left-color: #f6f2e84d;
+  opacity: .6;
+  border-left-color: #686d2f55;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .language-control button:hover {
-  color: #d5d88d;
+  color: #686d2f;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .owner-avatar {
-  border-color: #f6f2e899;
-  box-shadow: 0 1px 5px #00000035;
+  border-color: #929747;
+  box-shadow: none;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .owner-avatar:hover,
 .has-topbar-dock body:not(.theme-preview) .topbar .owner-avatar[aria-expanded="true"] {
-  border-color: #d5d88d;
-  box-shadow: 0 0 0 2px #d5d88d26;
+  border-color: #686d2f;
+  box-shadow: 0 0 0 2px #b7bb5a38;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar :is(a, button):focus-visible {
-  outline-color: #d5d88d;
+  outline-color: #686d2f;
 }
 .has-topbar-dock body:not(.theme-preview) .topbar .top-links > a:focus-visible {
   outline-offset: -8px;
@@ -89,10 +133,16 @@
 .is-topbar-dock-tracking .hero .hero-media,
 .is-topbar-dock-locked .hero .hero-media { transition-property: opacity, filter; }
 .is-topbar-dock-collapsed .topbar { pointer-events: none; }
+[data-phase="controls"] .topbar > .site-brand { animation: controlIn .3s .02s both; }
+.has-topbar-dock[data-phase="controls"] .topbar > .owner-profile { animation-delay: .3s; }
 @media (max-width: 760px) {
-  .has-topbar-dock .topbar .owner-profile { flex: 1 1 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)); }
+  .has-topbar-dock .topbar .site-brand { flex: 1 1 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) 10px; gap: 9px; font-size: 11px; letter-spacing: .14em; }
+  .has-topbar-dock .topbar .site-brand > [data-clover] { width: 24px; height: 24px; }
+  .has-topbar-dock .topbar .owner-profile { position: static; flex: 0 0 52px; width: 52px; padding-inline: 4px; }
   .has-topbar-dock .topbar .owner-avatar { width: 44px; height: 44px; }
-  .has-topbar-dock .topbar .owner-card { left: max(16px, env(safe-area-inset-left, 0px)); }
+  .has-topbar-dock .topbar .owner-card { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-width: 360px; margin-left: auto; }
+  .has-topbar-dock .topbar .owner-card::before,
+  .has-topbar-dock body:not(.theme-preview) .topbar .owner-profile::before { display: none; }
   .has-topbar-dock .topbar > .language-control { padding-inline: 8px max(16px, env(safe-area-inset-right, 0px)); }
 }
 .is-topbar-dock-instant .topbar,
@@ -100,4 +150,5 @@
 @media (prefers-reduced-motion: reduce) {
   .has-topbar-dock .topbar,
   .has-topbar-dock .hero .hero-media { transition: none !important; }
+  [data-phase="controls"] .topbar > .site-brand { animation: none; }
 }

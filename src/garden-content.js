@@ -5,6 +5,24 @@ const object = value => value && typeof value === 'object' && !Array.isArray(val
 const clone = value => JSON.parse(JSON.stringify(value));
 const id = (value, fallback) => text(value, 120).trim() || fallback;
 const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+// Existing drafts keep their edits; only retired stock branding is migrated.
+const RETIRED_DISPLAY_COPY = [
+  ['site','zh','chooseModel','选择一座小庭院','选择模型'],
+  ['site','ja','chooseModel','小さな庭を選ぶ','モデルを選ぶ'],
+  ['site','zh','originalTheme','四叶草庭院','しらつめ'],
+  ['site','ja','originalTheme','クローバーの庭','しらつめ'],
+  ['site','zh','backTop','回到庭院入口','回到首页'],
+  ['site','ja','backTop','庭の入り口にもどる','最初のページへ'],
+  ['site','zh','previewThemeName','紫藤色小庭院<small>第二主题预览</small>','第二模型<small>主题预览</small>'],
+  ['site','ja','previewThemeName','藤色の小さな庭<small>第2テーマのプレビュー</small>','第2モデル<small>テーマのプレビュー</small>'],
+  ['site','zh','previewHelloHeading','新的庭院，<br>慢慢生长。','下一位主角，<br>准备登场。'],
+  ['site','ja','previewHelloHeading','新しい庭が、<br>育つまで。','次の主役を、<br>準備中。'],
+  ...['zh','ja'].flatMap(locale=>[
+    ['site',locale,'anotherGarden','ANOTHER LITTLE GARDEN','MODEL / 01—02'],
+    ['fixed',locale,'coordinate',"SHIRATSUME'S LITTLE GARDEN",'SHIRATSUME / AVATAR ARCHIVE'],
+    ['personal',locale,'eyebrow','THE PERSON BEHIND THIS LITTLE GARDEN.','ABOUT THE CREATOR.'],
+  ]),
+];
 
 export function safeGardenURL(value, { contact = false } = {}) {
   if (typeof value !== 'string') return null;
@@ -95,6 +113,7 @@ export function normalizeGardenContent(input, defaults = {}) {
       images: (Array.isArray(item.images) ? item.images : []).slice(0, 50).flatMap(image => { const source = typeof image === 'string' ? { url: image } : object(image), url = safeGardenURL(source.url); return url ? [{ url, alt: localized(source.alt) }] : []; }),
     })),
   };
+  for(const [group,locale,key,before,after] of RETIRED_DISPLAY_COPY)if(result.texts[group][locale][key]===before)result.texts[group][locale][key]=after;
   return result;
 }
 

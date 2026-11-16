@@ -102,7 +102,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   const retry = button('comments-retry');
   const list = element('div', 'comments-list');
   const form = element('form', 'comments-form');
-  const nicknameLabel = element('label', 'comments-label'); const nicknameText = element('span', 'comments-label-text');
+  const nicknameLabel = element('label', 'comments-label comments-nickname-label'); const nicknameText = element('span', 'comments-label-text');
   const nickname = element('input', 'comments-nickname'); nickname.type = 'text'; nickname.name = 'nickname'; nickname.autocomplete = 'nickname';
   nicknameLabel.append(nicknameText, nickname);
   const bodyLabel = element('label', 'comments-label'); const bodyText = element('span', 'comments-label-text');

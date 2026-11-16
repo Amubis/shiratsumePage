@@ -3,7 +3,7 @@ import { cloverSVG, halftoneShadowSVG } from './scene.js';
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 const offsetFromFocus = (distance, engaged = true) => {
   const steps = Math.abs(distance);
-  const gap = (distance > 0 ? 68 : 62) - (engaged ? 0 : 8);
+  const gap = engaged ? (distance > 0 ? 68 : 62) : (distance > 0 ? 44 : 40);
   const distantGap = distance > 0 ? 26 : 24;
   return Math.sign(distance) * (Math.min(1, steps) * gap + Math.max(0, steps - 1) * distantGap);
 };
@@ -168,7 +168,7 @@ export function createSidebar({ root, links, highlight, bubbles, reducedMotion =
       : Math.max(1, label.textContent.trim().length) * layout[selected].fontSize;
     const labelLeft = labelRect.left - listRect.left;
     const center = labelLeft + targetWidth / 2;
-    const size = Math.max(105, Math.min(115, targetWidth + 12)) * (engaged ? 1 : .8);
+    const size = Math.max(105, Math.min(115, targetWidth + 12)) * (engaged ? 1 : .6);
     highlight.style.setProperty('--highlight-y', `${layout[selected].y}px`);
     highlight.style.setProperty('--highlight-x', `${center}px`);
     highlight.style.setProperty('--highlight-size', `${size}px`);

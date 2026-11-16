@@ -11,7 +11,7 @@
 .outfit-pair {
   position: relative;
   width: 100%;
-  height: min(78svh, 840px);
+  height: min(86svh, calc(100svh - 142px), 920px);
   min-height: 350px;
   isolation: isolate;
 }
@@ -111,7 +111,7 @@
 
 .outfit-shadow {
   color: var(--theme-dark);
-  transform: translate(16px, 18px);
+  transform: translate(13px, 14px);
   z-index: 0;
   overflow: visible;
   opacity: 1;
@@ -163,7 +163,7 @@
 .outfit-footer {
   position: relative;
   z-index: 1;
-  padding-top: 20px;
+  padding-top: 10px;
   text-align: center;
 }
 
@@ -233,7 +233,7 @@
     height: min(60svh, 560px, calc((100vw - 36px) * 1.5));
     min-height: 300px;
   }
-  .outfit-shadow { transform: translate(11px, 13px); }
+  .outfit-shadow { transform: translate(9px, 10px); }
   .outfit-footer { padding-top: 12px; }
   .outfit-cue { right: 7%; }
   .outfit-cue-art { width: 36px; height: 36px; }
@@ -241,10 +241,10 @@
 }
 
 @media (max-height: 800px) and (min-width: 761px) {
-  .outfit-pair { height: calc(100svh - 180px); }
+  .outfit-pair { height: calc(100svh - 132px); }
 }
 @media (max-height: 680px) and (min-width: 761px) {
-  .outfit-pair { min-height: 280px; height: calc(100svh - 164px); }
+  .outfit-pair { min-height: 280px; height: calc(100svh - 128px); }
   .outfit-footer { padding-top: 10px; }
 }
 
