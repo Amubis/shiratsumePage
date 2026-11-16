@@ -156,7 +156,7 @@
 .album-player-comments { min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px 20px; border-left: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); scrollbar-width: thin; }
 .album-player-figure { display: flex; height: 100%; flex-direction: column; gap: 16px; margin: 0; }
 .album-player-image { width: 100%; height: calc(100% - 33px); min-height: 0; object-fit: contain; }
-.album-player-caption { font-size: 10px; letter-spacing: .08em; text-align: center; color: var(--theme-dark); }
+.album-player-caption { flex-shrink: 0; max-height: 7em; overflow: auto; overflow-wrap: anywhere; font-size: 10px; line-height: 1.7; letter-spacing: .08em; text-align: center; color: var(--theme-dark); }
 .album-player-close { position: absolute; right: 8px; top: 4px; width: 44px; height: 44px; font-size: 29px; }
 .album-player-previous, .album-player-next { position: absolute; top: calc(50% - 23px); width: 46px; height: 46px; border-radius: 50%; background: var(--theme); color: #303622; font-size: 21px; transition: scale .25s var(--water-settle); }
 .album-player-previous { left: 7px; }.album-player-next { right: 7px; }

@@ -141,6 +141,8 @@
     "album": {
       "zh": {
         "title": "日常影像册",
+        "coverNote": "LITTLE CLOVER MEMORIES",
+        "stillLabel": "VIDEO STILL",
         "unknown": "日期待补充",
         "current": "当前模型",
         "all": "全部照片",
@@ -166,6 +168,8 @@
       },
       "ja": {
         "title": "日々のアルバム",
+        "coverNote": "LITTLE CLOVER MEMORIES",
+        "stillLabel": "VIDEO STILL",
         "unknown": "日付未設定",
         "current": "このモデル",
         "all": "すべての写真",

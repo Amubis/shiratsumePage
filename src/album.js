@@ -14,8 +14,8 @@ export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) =>
 export const ALBUM_VIEWS = Object.freeze(['day', 'month', 'year']);
 const PAGE_SIZES = Object.freeze({ day: 6, month: 9, year: 12 });
 export const ALBUM_COPY = Object.freeze({
-  zh: { title: '日常影像册', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片' },
-  ja: { title: '日々のアルバム', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません' },
+  zh: { title: '日常影像册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片' },
+  ja: { title: '日々のアルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません' },
 });
 const albumCopyDictionary = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(ALBUM_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
@@ -115,7 +115,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const cover = element('div', 'album-cover');
   cover.setAttribute('aria-hidden', 'true');
   const coverIcon = element('span', 'album-cover-clover'); coverIcon.innerHTML = cloverSVG({ className: 'clover-svg' });
-  const title = element('h2', 'album-title'); const coverSmall = element('small', 'album-cover-note'); coverSmall.textContent = 'LITTLE CLOVER MEMORIES';
+  const title = element('h2', 'album-title'); const coverSmall = element('small', 'album-cover-note'); coverSmall.textContent = text().coverNote;
   cover.append(coverIcon);
   const albumHeading = element('div', 'album-heading');
   albumHeading.append(title, coverSmall);
@@ -182,7 +182,8 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const item = playerItems[playerIndex]; if (!item) return;
     playerImage.src = item.url; playerImage.alt = altFor(item);
     const date = dateKey(item.takenAt, 'day');
-    playerCaption.textContent = `${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')} · ${date === 'undated' ? text().undated : groupLabel(date)}`;
+    const caption = typeof item.caption === 'string' ? item.caption : item.caption?.[locale] || item.caption?.zh || '';
+    playerCaption.textContent = [`${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')}`, date === 'undated' ? text().undated : groupLabel(date), caption, item.worldName].filter(Boolean).join(' · ');
     playerPrevious.disabled = playerNext.disabled = playerItems.length < 2;
     commentPanel.setTarget('photo', item.id);
   }
@@ -225,7 +226,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     pages = buildAlbumPages(records, { modelId, filter, view }); pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
     const page = pages[pageIndex]; const total = pages.reduce((sum, page) => sum + page.items.length, 0);
     root.classList.remove('view-day', 'view-month', 'view-year'); root.classList.add(`view-${view}`);
-    title.textContent = text().title; filterButton.textContent = filter === 'all' ? text().all : text().current;
+    title.textContent = text().title; coverSmall.textContent = text().coverNote; filterButton.textContent = filter === 'all' ? text().all : text().current;
     filterButton.setAttribute('aria-label', `${text().toggle} · ${filterButton.textContent}`); filterButton.setAttribute('aria-pressed', String(filter === 'all'));
     previous.textContent = `↑ ${text().previous}`; next.textContent = `${text().next} ↓`; mode.textContent = `◌ ${text()[view]}`;
     previous.setAttribute('aria-label', text().previous); next.setAttribute('aria-label', text().next); mode.setAttribute('aria-label', `${text().view} · ${text()[view]}`);
@@ -242,7 +243,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       wrapper.style.setProperty('--photo-depth', String(pose.depth)); wrapper.style.setProperty('--photo-order', String(index));
       card.setAttribute('aria-label', `${text().open} · ${altFor(item)}`); card.disabled = !enabled;
       const image = element('img', 'album-photo-image'); image.src = item.thumbnail; image.alt = altFor(item); image.loading = 'lazy'; image.decoding = 'async'; image.draggable = false;
-      const label = element('span', 'album-photo-label'); label.textContent = item.sourceKind === 'video-still' ? `VIDEO STILL ${String(records.findIndex((record) => record.id === item.id) + 1).padStart(2, '0')}` : dateKey(item.takenAt, 'day') === 'undated' ? text().undated : groupLabel(dateKey(item.takenAt, 'day'));
+      const label = element('span', 'album-photo-label'); label.textContent = item.sourceKind === 'video-still' ? `${text().stillLabel} ${String(records.findIndex((record) => record.id === item.id) + 1).padStart(2, '0')}` : dateKey(item.takenAt, 'day') === 'undated' ? text().undated : groupLabel(dateKey(item.takenAt, 'day'));
       card.append(image, label); wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
       bind(card, 'pointerenter', (event) => inspect(index, event), cardBindings);
       bind(card, 'pointermove', (event) => queueInspection(index, event), cardBindings);

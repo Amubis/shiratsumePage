@@ -194,6 +194,16 @@ test('localized note titles, body and image descriptions switch language without
   assert.equal(client.calls[0].targetId, 'localized-note');
 });
 
+test('editable album captions, world and small cover labels reach the visitor in both languages', t => {
+  const f=documentFixture();
+  const album=createAlbum({container:f.container,copy:{zh:{coverNote:'影像手帐',stillLabel:'影片摘帧'}},media:[{id:'p',url:'./photo.jpg',sourceKind:'video-still',modelIds:['shiratsume'],takenAt:null,caption:{zh:'夏日的一天',ja:'夏の一日'},worldName:'Japan Shrine'}]});t.after(()=>album.destroy());
+  assert.equal(f.find('.album-cover-note').textContent,'影像手帐');
+  assert.equal(f.find('.album-photo-label').textContent,'影片摘帧 01');
+  album.openPlayer(0);const caption=()=>f.doc.body.querySelector('.album-player-caption').textContent;
+  assert.ok(caption().includes('夏日的一天'));assert.ok(caption().includes('Japan Shrine'));
+  album.setLanguage('ja');assert.ok(caption().includes('夏の一日'));
+});
+
 test('photo player keeps comments on the selected photo, releases work on close and leaves text cursor arrow keys alone', async t => {
   const f = documentFixture(); const client = serviceStub();
   const album = createAlbum({ container: f.container, commentsService: client, copy: { zh: { title: '新的相册标题' } } }); t.after(() => album.destroy());
