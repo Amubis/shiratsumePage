@@ -12,20 +12,20 @@ html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .mo
 html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .model-control:has(:focus-visible) { opacity: 1; }
 /* The rounded rim and colored image window use the same persistent geometry. */
 #model-toggle.model-image-switch {
-  position: relative; display: block; width: 194px; height: 62px; min-height: 0;
+  position: relative; display: block; width: 160px; height: 52px; min-height: 0;
   padding: 0; border: 2px solid var(--model-accent, var(--theme)); border-radius: 13px; isolation: isolate;
   background: var(--paper); overflow: hidden; clip-path: none;
   scale: var(--model-shell-x, 1) var(--model-shell-y, 1);
   transform-origin: center;
   transform: skewX(-11deg);
   box-shadow: 0 7px 20px #29292528, 0 2px 5px #2929251c;
-  transition: border-color .62s cubic-bezier(.22,.7,.25,1);
+  transition: border-color .62s cubic-bezier(.22,.7,.25,1), width .28s cubic-bezier(.22,.7,.25,1), height .28s cubic-bezier(.22,.7,.25,1);
 }
 .model-image-switch::after { content: none; }
-.model-choice-images, .model-choice-actions { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+.model-choice-images { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
 .model-choice-images { pointer-events: none; }
 .model-choice-images > span { display: block; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
-.model-choice-images img { display: block; width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: cover; }
+.model-choice-images img { display: block; width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: cover; scale: 1; transition: scale .38s cubic-bezier(.22,.7,.25,1); }
 .model-choice-images > span:first-child img { object-position: 53% 42%; transform: skewX(11deg) scale(1.9); transform-origin: 60% 40%; }
 .model-choice-images > span:last-child img { object-position: 50% 13%; transform: skewX(11deg) scale(1.8); transform-origin: 52% 14%; }
 .model-choice-muted { filter: saturate(.08) contrast(.58) brightness(1.22); opacity: .8; }
@@ -34,30 +34,42 @@ html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .mo
 .has-model-switch-motion > .model-choice-color { transition: none; }
 .model-choice-slider { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .model-choice-slider rect { fill: none; stroke: var(--model-accent, var(--theme)); stroke-width: 2; transition: stroke .62s cubic-bezier(.22,.7,.25,1); }
-#model-toggle.is-model-switch-still, .is-model-switch-still .model-choice-slider rect { transition: none; }
-.model-choice-actions { z-index: 3; }
-.model-choice-actions > button { position: relative; display: block; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #fffdf4; transition: background .25s ease; }
-.model-choice-actions > button + button { border-left: 1px solid #f9f6ed70; }
-.model-choice-actions > button:hover { background: #ffffff14; }
-.model-choice-actions > button:active { background: #29292520; }
-.model-choice-actions > button:focus-visible { outline: 2px solid #fffdf4; outline-offset: -5px; }
-.model-choice-actions > button[aria-pressed="true"]::after { content: none; }
-.model-choice-number { position: absolute; left: 12px; bottom: 8px; padding: 1px 3px; background: #29292570; font-size: 8px; line-height: 1.2; letter-spacing: .12em; }
+#model-toggle.is-model-switch-still { transition: width .28s cubic-bezier(.22,.7,.25,1), height .28s cubic-bezier(.22,.7,.25,1); }
+.is-model-switch-still .model-choice-slider rect { transition: none; }
+#model-toggle.model-image-switch:focus-visible { outline: 2px solid var(--theme-dark); outline-offset: 4px; }
+[data-hover-side="left"] .model-choice-images > span:first-child img,
+[data-hover-side="right"] .model-choice-images > span:last-child img,
+#model-toggle:focus-visible[data-selection="left"] .model-choice-images > span:first-child img,
+#model-toggle:focus-visible[data-selection="right"] .model-choice-images > span:last-child img { scale: 1.11; }
 @media (max-width: 760px) {
-  #model-toggle.model-image-switch, body.on-personal #model-toggle.model-image-switch { display: block; width: 126px; height: 48px; min-height: 0; padding: 0; }
-  .model-choice-number { font-size: 7px; left: 8px; bottom: 5px; }
+  #model-toggle.model-image-switch, body.on-personal #model-toggle.model-image-switch { display: block; width: 112px; height: 48px; min-height: 0; padding: 0; }
   .site-brand-mark { width: 22px; height: 22px; }
 }
-@media (prefers-reduced-motion: reduce) { #model-toggle.model-image-switch, .model-choice-slider rect, .model-choice-color, .model-choice-actions > button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #model-toggle.model-image-switch, .model-choice-slider rect, .model-choice-color, .model-choice-images img { transition: none; } }
 
-/* Hover intent moves independently of the committed color window. */
-.model-control { scale:1; transition:opacity .3s var(--easing),scale .28s cubic-bezier(.22,.7,.25,1); transform-origin:right bottom; }
-body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)) { scale:1.065; }
-.model-switch-pointer { position:absolute; z-index:5; width:24px; height:16px; left:var(--model-pointer-x,50%); bottom:5px; translate:-50% 0; opacity:0; color:#fffdf4; pointer-events:none; overflow:visible; filter:drop-shadow(0 1px 2px #0009); transition:left .14s ease-out,opacity .2s ease,translate .25s ease; transform:skewX(11deg); }
-.model-switch-pointer path { fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
-.model-control:is(:hover,:has(:focus-visible)) .model-switch-pointer { opacity:1;translate:-50% -3px; }
+/* The smaller resting control stays anchored to the lower-right safe edge. */
+.model-control { right: 18px; bottom: max(16px,calc(env(safe-area-inset-bottom) + 8px)); scale: 1; transition: opacity .3s var(--easing); }
+body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)) #model-toggle.model-image-switch { width: 178px; height: 58px; }
+@media(max-width:760px) {
+  .model-control { right: 16px; }
+  body.on-personal #model-toggle.model-image-switch { width: 104px; height: 48px; }
+  body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)) #model-toggle.model-image-switch { width: 126px; height: 52px; }
+  body.on-personal:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)) #model-toggle.model-image-switch { width: 116px; height: 52px; }
+}
+@media(hover:none) {
+  body:not(.watch-mode) .model-control:hover:not(:has(:focus-visible)) #model-toggle.model-image-switch { width: 112px; height: 48px; }
+  body.on-personal:not(.watch-mode) .model-control:hover:not(:has(:focus-visible)) #model-toggle.model-image-switch { width: 104px; height: 48px; }
+}
 .theme-curtain { inset:0 calc(-1 * max(20vw,12svh)); width:calc(100vw + max(40vw,24svh)); opacity:0; transform:translateX(-130%) skewX(-11deg); transition:none; }
 .theme-curtain.is-visible { opacity:1; }
-@media(prefers-reduced-motion:reduce){.model-control,.model-switch-pointer {transition:none;} body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)){scale:1;} }
+@media(prefers-reduced-motion:reduce){.model-control {transition:none;} }
 
 body.is-model-switching .scene-clover { animation-play-state:paused; }
+
+:root { --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans","Microsoft YaHei","Noto Sans CJK SC","Noto Sans CJK JP",sans-serif;--display:var(--body); }
+.section-number,.personal-name,.personal-journal-title { font-family:var(--body); }
+#model-toggle.model-image-switch > .model-choice-images { display:grid;grid-template-columns:1fr 1fr;flex-direction:row;gap:0;font-size:inherit; }
+body:has(#hello.is-current):not(.theme-preview) .side-highlight { opacity:1;filter:drop-shadow(0 2px 1px #4548202e); }
+/* Keep the outfit selector legible where the raised floor passes behind it. */
+.primary-intro .outfit-rail-clover { color:var(--theme-dark); }
+.primary-intro .outfit-dot-ink { background:color-mix(in srgb,var(--theme-dark) calc(var(--dot-influence,0) * 75%),var(--theme)); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INTRO_ENTRANCE_TIMING, introPopScale, introActorPose, createIntroEntrance } from '../src/intro-entrance.js';
+import { INTRO_ENTRANCE_TIMING, introLineProgress, introPopScale, introActorPose, createIntroEntrance } from '../src/intro-entrance.js';
 
 class Node {
   constructor(name = 'div', attributes = {}) {
@@ -218,4 +218,12 @@ test('destruction resolves active work, stops floating and detaches all lifecycl
   assert.equal(f.frames.size, 0);
   assert.equal(await f.controller.enter(), false);
   for (const node of [f.doc, f.win]) assert.ok([...node.events.values()].every((listeners) => listeners.size === 0));
+});
+
+test('new geometry uses pronounced natural acceleration and deceleration, not uniform travel',()=>{
+ assert.equal(introLineProgress(0),0);assert.equal(introLineProgress(.5),.5);assert.equal(introLineProgress(1),1);
+ assert.ok(introLineProgress(.2)<.08);assert.ok(introLineProgress(.8)>.92);
+ const start=introLineProgress(.1)-introLineProgress(.09),middle=introLineProgress(.5)-introLineProgress(.49),end=introLineProgress(.99)-introLineProgress(.98);
+ assert.ok(middle>start*5);assert.ok(middle>end*5);
+ for(let i=1;i<=100;i++)assert.ok(introLineProgress(i/100)>=introLineProgress((i-1)/100));
 });

@@ -87,6 +87,9 @@ test('album creates three entry-safe papers, truthful labels and disabled empty 
   assert.equal(f.find('album-group-title').textContent, '日期待补充'); assert.match(f.find('album-source-note').textContent, /视频摘帧/);
   assert.equal(f.find('album-previous').disabled, true); assert.equal(f.find('album-next').disabled, true);
   assert.equal(f.find('album-photo').children[0].classList.contains('album-photo-card'), true);
+  assert.equal(f.find('album-cover').parentElement,f.find('album-filter-tab').parentElement);
+  assert.equal(f.find('album-cover-unit').classList.contains('album-cover-unit'),true);
+  assert.equal(f.find('rule-top'),undefined);
   assert.deepEqual(f.api.state, { pageIndex: 0, pageCount: 1, view: 'day', filter: 'model', count: 4, playerOpen: false });
 });
 

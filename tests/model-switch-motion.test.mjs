@@ -15,7 +15,7 @@ class Node {
   getAttribute(key) { return this.attributes.get(key) ?? null; }
   addEventListener(event,handler) { if(!this.events.has(event))this.events.set(event,new Set());this.events.get(event).add(handler); }
   removeEventListener(event,handler) { this.events.get(event)?.delete(handler); }
-  emit(event) { for(const handler of this.events.get(event)||[])handler({type:event}); }
+  emit(event,fields={}) { for(const handler of this.events.get(event)||[])handler({type:event,...fields}); }
   querySelector(selector) { return selector==='.model-choice-color'?this.color:null; }
 }
 
@@ -111,4 +111,17 @@ test('page handoff receives the very same continuous travel as the visible slide
    assert.ok(Math.abs(b.center-a.center)>1e-7,'intermediate boundaries do not impose pauses');
    assert.ok(Math.abs(b.center-a.center)<.001,'the path does not jump');
  }
+});
+
+
+test('pointer intent enlarges only the approached image without moving the selected window',t=>{
+ const f=fixture();t.after(()=>f.controller.destroy());
+ f.root.getBoundingClientRect=()=>({left:100,width:200});
+ const rest=f.controller.pose,url=f.color.style.clipPath;
+ f.root.emit('pointermove',{clientX:110,pointerType:'mouse'});assert.equal(f.root.dataset.hoverSide,'left');
+ f.root.emit('pointermove',{clientX:290,pointerType:'mouse'});assert.equal(f.root.dataset.hoverSide,'right');
+ assert.deepEqual(f.controller.pose,rest);assert.equal(f.color.style.clipPath,url);assert.equal(f.frames.size,0);
+ f.root.emit('pointerleave');assert.equal(f.root.dataset.hoverSide,undefined);
+ f.root.emit('pointermove',{clientX:110,pointerType:'touch'});assert.equal(f.root.dataset.hoverSide,undefined);
+ f.root.emit('pointermove',{clientX:110,pointerType:'mouse'});f.doc.hidden=true;f.doc.emit('visibilitychange');assert.equal(f.root.dataset.hoverSide,undefined);
 });

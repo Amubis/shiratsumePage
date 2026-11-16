@@ -20,7 +20,9 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#B7BB5A">
-  <meta name="demo-version" content="0.13.0">
+
+  <style>@font-face{font-family:"Shiratsume Album Display";src:url("./assets/fonts/dela-gothic-one-album.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}@font-face{font-family:"Shiratsume Album CJK";src:url("./assets/fonts/noto-sans-sc-album-black.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
+  <meta name="demo-version" content="0.13.1">
   <meta name="description" content="しらつめ的模型展示与日常影像。">
   <title>しらつめ · Avatar Portfolio</title>
   <style>@font-face{font-family:"Shiratsume Display";src:url("./assets/fonts/dela-gothic-one-display.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
@@ -181,11 +183,11 @@
   </main>
 
   <div class="video-controls"><button id="watch-toggle" style="--entry-x:.04" aria-pressed="false" aria-label="清晰观看视频"><span class="control-disc" aria-hidden="true"></span><span class="round-icon"><svg class="icon"><use href="#icon-play"/></svg></span><span id="watch-label" class="sr-only" data-i18n="watch">看一会儿视频</span></button><button id="pause-toggle" aria-label="暂停视频"><span class="control-disc" aria-hidden="true"></span><svg class="icon"><use href="#icon-pause"/></svg></button></div>
-  <div class="model-control"><div id="model-toggle" class="model-image-switch" role="group" aria-label="切换模型" data-selection="left" style="--entry-x:.96">
-    <div class="model-choice-images model-choice-muted" aria-hidden="true"><span><img src="./assets/poster.jpg" alt="" decoding="async" fetchpriority="low"></span><span><img src="./assets/outfits/outfit-v2-02-front.png" alt="" decoding="async" fetchpriority="low"></span></div>
-    <div class="model-choice-images model-choice-color" aria-hidden="true"><span><img src="./assets/poster.jpg" alt="" decoding="async" fetchpriority="low"></span><span><img src="./assets/outfits/outfit-v2-02-front.png" alt="" decoding="async" fetchpriority="low"></span></div>
-    <div class="model-choice-actions"><button type="button" data-model="shiratsume" aria-pressed="true"><span class="model-choice-label sr-only">しらつめ</span></button><button type="button" data-model="preview" aria-pressed="false"><span class="model-choice-label sr-only">第二模型预览</span></button></div>
-  </div></div>
+  <div class="model-control"><button id="model-toggle" class="model-image-switch" type="button" role="switch" aria-checked="false" aria-label="切换模型" data-selection="left" style="--entry-x:.96">
+    <span class="model-choice-images model-choice-muted" aria-hidden="true"><span><img src="./assets/poster.jpg" alt="" decoding="async" fetchpriority="low"></span><span><img src="./assets/outfits/outfit-v2-02-front.png" alt="" decoding="async" fetchpriority="low"></span></span>
+    <span class="model-choice-images model-choice-color" aria-hidden="true"><span><img src="./assets/poster.jpg" alt="" decoding="async" fetchpriority="low"></span><span><img src="./assets/outfits/outfit-v2-02-front.png" alt="" decoding="async" fetchpriority="low"></span></span>
+    <span class="model-toggle-label sr-only">切换模型</span>
+  </button></div>
   <div id="theme-status" class="theme-status" hidden data-i18n="previewNotice">第二主题预览 · 等待新的模型素材</div>
 
   <div class="transition-wipe" aria-hidden="true"><div class="wipe-flower" data-clover data-clover-variant="large"></div></div>

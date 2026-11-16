@@ -141,10 +141,11 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const dateYear = element('span', 'album-date-year'); const dateMonth = element('span', 'album-date-month');
   dateMark.append(dateYear, dateMonth);
   const composition = element('div', 'album-composition'); composition.setAttribute('aria-hidden', 'true');
-  for (const classes of ['album-rule album-art-line rule-top line-top', 'album-rule album-art-line rule-bottom line-bottom', 'album-angle album-art-line', 'album-dot-accent album-art-dots dot-top dots-top', 'album-dot-accent album-art-dots dot-bottom dots-bottom']) composition.append(element('span', classes));
+  for (const classes of ['album-rule album-art-line rule-bottom line-bottom', 'album-angle album-art-line', 'album-dot-accent album-art-dots dot-top dots-top', 'album-dot-accent album-art-dots dot-bottom dots-bottom']) composition.append(element('span', classes));
   front.append(composition, albumHeading, heading, grid, empty, dateMark, footer);
   const tabs = element('div', 'album-tabs'); const previous = button('album-tab album-previous'); const mode = button('album-tab album-view'); const next = button('album-tab album-next');
-  tabs.append(previous, mode, next); root.append(back, middle, front, cover, filterButton, tabs); container.replaceChildren(root); container.classList.add('album-showcase');
+  const coverUnit=element('div','album-cover-unit');coverUnit.append(cover,filterButton);
+  tabs.append(previous, mode, next); root.append(back, middle, front, coverUnit, tabs); container.replaceChildren(root); container.classList.add('album-showcase');
 
   const dialog = element('dialog', 'album-player');
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');

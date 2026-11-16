@@ -2,7 +2,6 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const clamp = value => Math.max(0, Math.min(1, value));
 const smooth = value => { const t = clamp(value); return t * t * (3 - 2 * t); };
 const mix = (a, b, amount) => a + (b - a) * amount;
-const fields = ['center', 'width', 'height', 'shellX', 'shellY'];
 let switchSerial = 0;
 
 export const MODEL_SWITCH_TIMING = Object.freeze({ duration: 760 });
@@ -48,10 +47,10 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
   (doc.body || doc.documentElement).append(definitions);
   const outline = create('svg'); outline.setAttribute('class', 'model-choice-slider'); outline.setAttribute('viewBox', '0 0 1 1'); outline.setAttribute('preserveAspectRatio', 'none'); outline.setAttribute('aria-hidden', 'true'); outline.setAttribute('focusable', 'false');
   const rim = create('rect'); rim.setAttribute('vector-effect', 'non-scaling-stroke'); outline.append(rim); root.append(outline);
-  const pointer=doc.createElementNS(SVG_NS,'svg');pointer.setAttribute('class','model-switch-pointer');pointer.setAttribute('viewBox','0 0 24 16');pointer.setAttribute('aria-hidden','true');
-  const arrow=create('path');arrow.setAttribute('d','M3 8h18M7 3 2 8l5 5m10-10 5 5-5 5');pointer.append(arrow);root.append(pointer);
   const previousClip = color.style.clipPath, previousWebkitClip = color.style.webkitClipPath;
   const previousAccent = root.style.getPropertyValue('--model-accent');
+  const previousHoverSide=root.dataset.hoverSide;
+  let pointerInside=false;
   color.style.clipPath = `url("#${id}")`; color.style.webkitClipPath = `url("#${id}")`;
   root.classList.add('has-model-switch-motion');
   const listeners = [];
@@ -101,10 +100,17 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
   const Observer = win.MutationObserver;
   const observer = typeof Observer === 'function' ? new Observer(syncSelection) : null;
   observer?.observe(root, { attributes: true, attributeFilter: ['data-selection'] });
-  bind(root,'pointermove',event=>{const rect=root.getBoundingClientRect?.();if(rect?.width)root.style.setProperty('--model-pointer-x',`${18+clamp((event.clientX-rect.left)/rect.width)*64}%`);});
-  bind(root,'pointerleave',()=>root.style.setProperty('--model-pointer-x','50%'));
+  const clearHover=()=>{pointerInside=false;delete root.dataset.hoverSide;};
+  bind(root,'pointermove',event=>{
+    if(event.pointerType==='touch' || !Number.isFinite(event.clientX))return;
+    const rect=root.getBoundingClientRect?.();
+    if(rect?.width){pointerInside=true;root.dataset.hoverSide=event.clientX<rect.left+rect.width/2?'left':'right';}
+  });
+  bind(root,'pointerleave',clearHover);
+  bind(root,'focus',()=>{if(root.matches?.(':focus-visible'))root.dataset.hoverSide=selection;});
+  bind(root,'blur',()=>{if(!pointerInside)delete root.dataset.hoverSide;});
   bind(win, 'resize', settle);
-  bind(doc, 'visibilitychange', () => { if (doc.hidden) settle(); });
+  bind(doc, 'visibilitychange', () => { if (doc.hidden) {clearHover();settle();} });
   bind(win, 'pagehide', settle);
   paintAccent(true); paint(pose);
   return {
@@ -115,8 +121,9 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     destroy() {
       if (destroyed) return;
       stop(); destroyed = true; observer?.disconnect(); listeners.splice(0).forEach(dispose => dispose());
-      definitions.remove(); outline.remove(); pointer.remove(); root.classList.remove('has-model-switch-motion');
+      definitions.remove(); outline.remove(); root.classList.remove('has-model-switch-motion');
       root.classList.remove('is-model-switch-still');
+      if(previousHoverSide===undefined)delete root.dataset.hoverSide;else root.dataset.hoverSide=previousHoverSide;
       root.style.removeProperty('--model-shell-x'); root.style.removeProperty('--model-shell-y');
       if (previousAccent) root.style.setProperty('--model-accent', previousAccent);
       else root.style.removeProperty('--model-accent');

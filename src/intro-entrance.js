@@ -8,8 +8,22 @@ export const INTRO_ENTRANCE_TIMING = Object.freeze({
   actorDelay: 140, actorDuration: 900,
   controlsDelay: 1120, controlsDuration: 320,
   textDelay: 1230, textStagger: 90, textDuration: 410,
-  decorDelay: 2110, decorDuration: 650, total: 2760,
+  decorDelay: 2110, decorDuration: 800, total: 2910,
 });
+
+/** Symmetric cubic-bezier(.68,0,.32,1): clear acceleration and a soft stop. */
+export function introLineProgress(progress) {
+  const value=clamp(progress);
+  if(value===0 || value===.5 || value===1)return value;
+  let low=0,high=1,parameter=value;
+  for(let index=0;index<18;index++){
+    parameter=(low+high)/2;
+    const inverse=1-parameter;
+    const x=3*inverse*inverse*parameter*.68+3*inverse*parameter*parameter*.32+parameter**3;
+    if(x<value)low=parameter;else high=parameter;
+  }
+  return parameter*parameter*(3-2*parameter);
+}
 
 /** Radius-only bounce keeps circles round and retains the single group alpha mask. */
 export function introPopScale(progress) {
@@ -135,7 +149,7 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
       if (node.localName === 'button' || node.localName === 'a') node.inert = amount < .98;
     });
     const decor = phase(time, timing.decorDelay, timing.decorDuration);
-    set(scope, '--intro-line-progress', smooth(decor).toFixed(5));
+    set(scope, '--intro-line-progress', introLineProgress(decor).toFixed(5));
     set(scope, '--intro-decor-alpha', smooth(decor / .5).toFixed(5));
     set(scope, '--intro-decor-scale', introPopScale(decor).toFixed(5));
   }

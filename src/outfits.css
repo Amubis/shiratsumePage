@@ -29,9 +29,9 @@
   height: clamp(24px, 3.7svh, 36px);
   border-radius: 50%;
   background: radial-gradient(ellipse at center,
-    #29292527 0%,
-    color-mix(in srgb, var(--theme-dark) 17%, transparent) 34%,
-    color-mix(in srgb, var(--theme-dark) 5%, transparent) 58%, transparent 74%);
+    #29292550 0%,
+    #45482d40 57%,
+    #45482d2e 77%,transparent 91%);
   opacity: var(--intro-actor-alpha, 1);
   transform: translate(-50%, -42%) scaleX(calc(.75 + var(--intro-actor-alpha, 1) * .25));
 }

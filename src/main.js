@@ -168,10 +168,10 @@ function applyLanguage() {
   $('#language-label').textContent = language === 'zh' ? '中文' : '日本語';
   $('.language-other').textContent = language === 'zh' ? 'JP' : '中';
   $('#language-toggle').setAttribute('aria-label', translate('switchLanguage'));
-  $('#model-toggle').setAttribute('aria-label',translate('switchModel'));
-  const primaryChoiceName=typeof activeGarden.modelProfile.name==='object'?(activeGarden.modelProfile.name[language]||activeGarden.modelProfile.name.zh):activeGarden.modelProfile.name;
-  $('[data-model="shiratsume"] .model-choice-label').textContent=primaryChoiceName||(language==='ja'?'モデル 01':'模型 01');
-  $('[data-model="preview"] .model-choice-label').textContent=typeof MODELS.preview.name==='object'?MODELS.preview.name[language]:MODELS.preview.name;
+  const choiceName=MODELS[modelId].preview?MODELS.preview.name:activeGarden.modelProfile.name;
+  const currentChoiceName=typeof choiceName==='object'?(choiceName[language]||choiceName.zh):choiceName;
+  $('#model-toggle').setAttribute('aria-label',`${translate('switchModel')} · ${currentChoiceName}`);
+  $('.model-toggle-label').textContent=translate('switchModel');
   $('#lightbox-close').setAttribute('aria-label', translate('close'));
   $('.scroll-cue').setAttribute('aria-label', translate('scrollExplore'));
   $('.side-nav').setAttribute('aria-label', translate('menu'));
@@ -578,7 +578,7 @@ function switchModel(nextId){
   const changed=modelSwitchMotion?.setSelection(selection);
   if(!changed)paintModelChange({progress:1,travel:1});
 }
-$$('[data-model]').forEach((button) => button.addEventListener('click', () => { void switchModel(button.dataset.model); }));
+$('#model-toggle').addEventListener('click',()=>switchModel($('#model-toggle').dataset.selection==='right'?'shiratsume':'preview'));
 
 function applyTheme() {
   const model=MODELS[modelId];
@@ -612,7 +612,7 @@ function applyTheme() {
   $('#model-toggle').dataset.selection=modelId==='preview'?'right':'left';
   imageSources.forEach((original,image) => {image.src=model.preview?model.poster:original.src;});
   lightboxSources.forEach((original,button) => {button.dataset.lightbox=model.preview?model.poster:original;});
-  $$('[data-model]').forEach((button) => button.setAttribute('aria-pressed',String(button.dataset.model===modelId)));
+  $('#model-toggle').setAttribute('aria-checked',String(model.preview));
   scene.setTheme(model.theme,modelId);
   heroInteractions?.refresh();
   renderHalftone();

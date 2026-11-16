@@ -93,7 +93,7 @@ body:not(.on-home) .hero .scene-clover,
 body.is-background :is(.hero-clovers .scene-clover, .hero .explore-flower) { animation-play-state: paused !important; }
 
 /* The second chapter's decoration occupies both diagonal edges. */
-.intro-halftone-seam { opacity: .17; }
+.intro-halftone-seam { opacity: .23; }
 
 .side-highlight {
   transition: left .52s cubic-bezier(.3, 0, .25, 1.08),
