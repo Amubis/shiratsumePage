@@ -1,0 +1,57 @@
+/* Prints are decorative, with closeups cropped from the selected outfit's real PNGs. */
+.intro-photo-notes[data-outfit-notes] { perspective: 850px; pointer-events: none; }
+.intro-photo-notes .outfit-note-print {
+  transform-origin: 36% 0%;
+  transform: var(--note-rest-transform) translateY(calc((1 - var(--intro-decor-alpha, 1)) * -18px)) rotateX(calc((1 - var(--intro-decor-alpha, 1)) * -15deg)) scale(calc(.97 + var(--intro-decor-alpha, 1) * .03));
+  backface-visibility: hidden;
+  box-shadow: 0 4px 10px #24241e21, 0 1px 2px #24241e16;
+}
+.intro-photo-notes .outfit-note-print::before {
+  z-index: 2;
+  opacity: calc(var(--intro-decor-alpha, 1) * .88);
+  transform-origin: 50% 0%;
+  box-shadow: 0 1px 1px #2929250c;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--theme) 88%, #fffdf5), var(--theme) 72%, color-mix(in srgb, var(--theme) 92%, var(--theme-dark)));
+}
+.outfit-note-window {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.35;
+  overflow: hidden;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--theme) 19%, var(--paper)), color-mix(in srgb, var(--theme) 6%, #fffef8));
+}
+.intro-photo-notes img.outfit-note-image {
+  position: absolute;
+  display: block;
+  max-width: none;
+  width: var(--note-image-width, 100%);
+  height: var(--note-image-height, 100%);
+  left: var(--note-image-left, 0%);
+  top: var(--note-image-top, 0%);
+  aspect-ratio: auto;
+  object-fit: fill;
+  object-position: initial;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.intro-enter-managed .intro-photo-notes[data-outfit-notes] { transform: none; }
+.outfit-note-print.is-note-peeling { will-change: transform, opacity; }
+.outfit-note-print.is-note-peeling::before { animation: outfitNoteTapePeel .34s ease-in both; animation-delay: calc(var(--note-order, 0) * 45ms); }
+.outfit-note-print.is-note-sticking { will-change: transform, opacity; }
+.outfit-note-print.is-note-sticking::before { animation: outfitNoteTapeStick .45s cubic-bezier(.2,.7,.3,1) both; animation-delay: calc(var(--note-order, 0) * 45ms); }
+@keyframes outfitNoteTapePeel {
+  0%, 25% { transform: rotate(-5deg) translateY(0); opacity: .88; }
+  67% { transform: rotate(-11deg) translate(1px,-2px) scaleY(.65); opacity: .7; }
+  100% { transform: rotate(-16deg) translate(3px,-5px) scaleY(.25); opacity: 0; }
+}
+@keyframes outfitNoteTapeStick {
+  0% { transform: rotate(-5deg) translateY(-4px) scaleY(1.1); opacity: 0; }
+  45% { transform: rotate(-5deg) translateY(1px) scaleY(.93); opacity: .88; }
+  75% { transform: rotate(-5deg) translateY(-.5px) scaleY(1.025); opacity: .88; }
+  100% { transform: rotate(-5deg) translateY(0) scaleY(1); opacity: .88; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .intro-photo-notes .outfit-note-print { transform: var(--note-rest-transform); }
+  .outfit-note-print::before { animation: none !important; }
+}

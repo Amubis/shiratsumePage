@@ -135,6 +135,7 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
       if (node.localName === 'button' || node.localName === 'a') node.inert = amount < .98;
     });
     const decor = phase(time, timing.decorDelay, timing.decorDuration);
+    set(scope, '--intro-line-progress', smooth(decor).toFixed(5));
     set(scope, '--intro-decor-alpha', smooth(decor / .5).toFixed(5));
     set(scope, '--intro-decor-scale', introPopScale(decor).toFixed(5));
   }

@@ -1,4 +1,5 @@
 import { cloverSVG } from './scene.js';
+import { createOutfitRailFeedback } from './outfit-rail-feedback.js';
 
 /** Each pair uses the supplied front and back of the same outfit. */
 export const OUTFITS = Object.freeze([
@@ -267,13 +268,16 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   dots.setAttribute('role', 'group');
   const railClover = element('span', 'outfit-rail-clover');
   railClover.setAttribute('aria-hidden', 'true');
-  railClover.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'small' });
+  const railCloverInk = element('span', 'outfit-rail-clover-feedback');
+  railCloverInk.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'small' });
+  railClover.append(railCloverInk);
   const dotButtons = records.map((outfit, index) => {
     const button = element('button', 'outfit-dot');
     button.type = 'button';
     button.style.left = `${index * 44}px`;
     const circle = element('span', 'outfit-dot-circle');
     circle.setAttribute('aria-hidden', 'true');
+    circle.append(element('span', 'outfit-dot-ink'));
     button.append(circle);
     dots.append(button);
     bind(button, 'click', (event) => {
@@ -294,6 +298,10 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     return button;
   });
   dots.append(railClover);
+  const railFeedback = createOutfitRailFeedback({
+    root: dots, buttons: dotButtons, circles: dotButtons.map(button => button.children[0].children[0]), clover: railCloverInk,
+    pickIndex: pickPointerDot, isEnabled: () => enabled && !destroyed && records.length > 1, reducedMotion,
+  });
   const status = element('p', 'outfit-status sr-only');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
@@ -894,6 +902,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
       if (destroyed) return;
       enabled = Boolean(nextEnabled);
       if (!enabled) {
+        railFeedback.cancel();
         hintHovered = hintFocused = false;
         serial += 1;
         busy = false;
@@ -914,6 +923,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      railFeedback.destroy();
       hideHint();
       serial += 1;
       listeners.splice(0).forEach((dispose) => dispose());

@@ -3,13 +3,58 @@
   width: 100%;
   min-width: 0;
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
+/* This stationary floor belongs to the showcase, outside the floating and
+   flipping pair. The measured alpha-foot position also follows outfit changes. */
+.outfit-showcase::before,
+.outfit-showcase::after {
+  content: '';
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  transition: top .55s var(--water-easing, var(--easing)), left .55s var(--water-easing, var(--easing));
+}
+.outfit-showcase::before {
+  --ground-band-height: clamp(124px, 13vw, 196px);
+  z-index: -1;
+  left: calc(var(--outfit-ground-x, 50%) - 112.5%);
+  top: calc(var(--outfit-ground-y, calc(100% - 66px)) - var(--ground-band-height) * .7);
+  width: 180%;
+  height: var(--ground-band-height);
+  background: linear-gradient(112deg,
+    color-mix(in srgb, var(--theme) 94%, var(--paper)) 0%,
+    var(--theme) 56%,
+    color-mix(in srgb, var(--theme) 85%, var(--theme-dark)) 100%);
+  clip-path: polygon(0 8%, 62.5% 70%, 100% 22%, 100% 54%, 62.5% 88%, 0 40%);
+  transform-origin: left 70%;
+  transform: scaleX(var(--intro-line-progress, var(--intro-decor-alpha, 1)));
+}
+.outfit-showcase::after {
+  z-index: 0;
+  left: var(--outfit-ground-x, 50%);
+  top: var(--outfit-ground-y, calc(100% - 66px));
+  width: 52%;
+  max-width: 315px;
+  height: clamp(24px, 3.7svh, 36px);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+    #29292527 0%,
+    color-mix(in srgb, var(--theme-dark) 17%, transparent) 34%,
+    color-mix(in srgb, var(--theme-dark) 5%, transparent) 58%, transparent 74%);
+  opacity: var(--intro-actor-alpha, 1);
+  transform: translate(-50%, -42%) scaleX(calc(.75 + var(--intro-actor-alpha, 1) * .25));
+}
+.outfit-showcase:not(.has-outfit-ground)::before,
+.outfit-showcase:not(.has-outfit-ground)::after { display: none; }
+
 .outfit-pair {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: min(86svh, calc(100svh - 142px), 920px);
   min-height: 350px;
@@ -18,6 +63,15 @@
 
 @media (min-width: 761px) {
   .outfit-pair { max-height: calc(65vw - 26px); }
+}
+@media (max-width: 760px) {
+  .outfit-showcase::before { --ground-band-height: 124px; }
+  .outfit-showcase::after { width: 57%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .outfit-showcase::before, .outfit-showcase::after { transition: none; }
+  .outfit-showcase::before { transform: none; }
+  .outfit-showcase::after { opacity: 1; transform: translate(-50%, -42%); }
 }
 @media (min-width: 1200px) {
   .outfit-showcase { translate: clamp(22px, 3vw, 48px) 0; }

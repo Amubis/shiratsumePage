@@ -109,8 +109,9 @@ test('portrait settles before controls, text appears top-to-bottom and decorativ
   f.at(2050);
   assert.ok(f.texts.every((node) => value(node, '--intro-text-alpha') > .98));
   assert.equal(value(f.section, '--intro-decor-alpha'), 0);
-  f.at(2350);
-  assert.ok(value(f.section, '--intro-decor-alpha') > .9);
+  f.at(INTRO_ENTRANCE_TIMING.decorDelay + INTRO_ENTRANCE_TIMING.decorDuration / 2);
+  assert.equal(value(f.section, '--intro-decor-alpha'), 1);
+  assert.equal(value(f.section, '--intro-line-progress'), .5, 'lines keep growing after decoration becomes opaque');
   f.at(INTRO_ENTRANCE_TIMING.total);
   assert.equal(await done, true);
   assert.equal(f.footer.inert, false); assert.equal(f.texts.at(-1).inert, false);
@@ -200,6 +201,7 @@ test('reduced motion, disabled model, interruption and keyboard escape leave rea
     await done;
     assert.deepEqual(f.circles.map(radius), [10, 4, 4, 10], kind);
     assert.equal(value(f.section, '--intro-actor-alpha'), 1, kind);
+    assert.equal(value(f.section, '--intro-line-progress'), 1, kind);
     assert.equal(f.stage.inert, false, kind); assert.equal(f.footer.inert, false, kind);
     assert.equal(f.frames.size, 0, kind);
     f.controller.destroy();

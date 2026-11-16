@@ -8,7 +8,7 @@ import { createVideoReveal } from './video-reveal.js';
 import { createVideoPlayer } from './media.js';
 import { createSectionNavigator } from './navigation.js';
 import { MODELS, COPY, SECTION_IDS, getSelection } from './content.js';
-import { createOutfitShowcase, MODEL_PROFILE, OUTFITS, OUTFIT_COPY } from './outfits.js';
+import { createOutfitShowcase, normalizeOutfits, MODEL_PROFILE, OUTFITS, OUTFIT_COPY } from './outfits.js';
 import { createHeroInteractions } from './hero-interactions.js';
 import { createIntroEntrance } from './intro-entrance.js';
 import { createAlbum, ALBUM_MEDIA, ALBUM_COPY } from './album.js';
@@ -23,6 +23,8 @@ import { COMMENTS_COPY, createCommentService } from './comments.js';
 import { normalizeGardenContent, resolveGardenMedia } from './garden-content.js';
 import { FIXED_COPY, readGardenData, setGardenText, loadPublishedGarden, acceptGardenPreview } from './garden-runtime.js';
 import { createWaterFooter } from './water-footer.js';
+import { createModelSwitchMotion } from './model-switch-motion.js';
+import { createOutfitPhotoNotes } from './outfit-photo-notes.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -63,6 +65,9 @@ let wipeFade;
 let wipeSerial = 0;
 let pageReveal;
 let outfitShowcase;
+let outfitPhotoNotes;
+let modelSwitchMotion;
+let outfitGroundObserver;
 let heroInteractions;
 let introEntrance;
 let album;
@@ -112,9 +117,42 @@ function renderTitle() {
   document.title=`${name} · Avatar Portfolio`;
 }
 
+function selectedOutfit(){
+  const record=activeGarden.outfits.find(outfit=>outfit.id===outfitShowcase?.outfitId);
+  return record ? normalizeOutfits([record])[0] || null : null;
+}
+
+function syncOutfitGround(outfit=selectedOutfit()){
+  const container=$('#outfit-showcase');
+  const pair=container.querySelector('.outfit-pair');
+  const stage=container.querySelector('.outfit-stage');
+  const visible=Boolean(outfit && pair && stage);
+  container.classList.toggle('has-outfit-ground',visible);
+  if(!visible || !container.offsetWidth || !pair.offsetHeight)return;
+  const [width,height]=outfit.frontSize || [outfit.imageWidth || 1440,outfit.imageHeight || 2560];
+  const fit=Math.min(1440/width,2560/height);
+  const bounds=outfit.frontBounds || [0,0,width,height];
+  const foot=(2560-height*fit)/2+bounds[3]*fit;
+  const center=(1440-width*fit)/2+(bounds[0]+bounds[2])*.5*fit;
+  const x=pair.offsetLeft+stage.offsetLeft+stage.offsetWidth*(center/1440-(outfit.back ? .62 : .5));
+  container.style.setProperty('--outfit-ground-x',`${(x/container.offsetWidth*100).toFixed(3)}%`);
+  container.style.setProperty('--outfit-ground-y',`${(pair.offsetTop+pair.offsetHeight*Math.min(1,foot/2560)).toFixed(3)}px`);
+}
+
+function syncOutfitDecoration(outfit=selectedOutfit()){
+  void outfitPhotoNotes?.setOutfit(outfit);
+  syncOutfitGround(outfit);
+}
+
 function ensureOutfitShowcase(){
   if(!outfitShowcase){
-    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits});
+    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits,onChange(_index,outfit){syncOutfitDecoration(outfit);}});
+    outfitPhotoNotes=createOutfitPhotoNotes({container:$('.intro-photo-notes'),reducedMotion,initialOutfit:selectedOutfit(),active:false});
+    syncOutfitGround();
+    if(typeof ResizeObserver==='function'){
+      outfitGroundObserver=new ResizeObserver(()=>syncOutfitGround());
+      outfitGroundObserver.observe($('#outfit-showcase'));
+    }
     introEntrance?.refresh();
   }
   return outfitShowcase;
@@ -386,6 +424,7 @@ navigator = createSectionNavigator({
   onActive(index,{source}) {
     const previousIndex = currentIndex;
     currentIndex = index;
+    outfitPhotoNotes?.setActive(index===1 && !MODELS[modelId].preview);
     if (index !== 1 && previousIndex === 1) introEntrance?.finish();
     else if (index === 1 && previousIndex !== 1 && !introInWipe && !albumScroll?.busy && !MODELS[modelId].preview) {
       introEntrance?.prepare(); void introEntrance?.enter();
@@ -552,6 +591,7 @@ function applyTheme() {
   $('#hello').setAttribute('aria-labelledby',model.preview?'preview-hello-heading':'hello-heading');
   if(!model.preview)ensureOutfitShowcase();
   outfitShowcase?.setEnabled(!model.preview);
+  outfitPhotoNotes?.setActive(currentIndex===1 && !model.preview);
   $('.primary-album').hidden=model.preview;
   $('.preview-album').hidden=!model.preview;
   $('#moments').setAttribute('aria-labelledby',model.preview?'moments-heading':'album-heading');
@@ -600,7 +640,7 @@ window.addEventListener('keydown', (event) => {
   if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
 document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();personalEntrance?.refresh();if(!document.hidden)syncPersonalEntrance();queueMicrotask(prepareIntroOffscreen);});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();modelSwitchMotion?.refresh();outfitPhotoNotes?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
@@ -684,6 +724,7 @@ heroInteractions=createHeroInteractions({
 });
 personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,isEnabled:()=>!MODELS[modelId].preview,theme:MODELS[modelId].theme,seed:modelId});
 waterFooter=createWaterFooter({container:$('.personal-water-footer'),reducedMotion});
+modelSwitchMotion=createModelSwitchMotion({root:$('#model-toggle'),reducedMotion,themes:{left:MODELS.shiratsume.theme,right:MODELS.preview.theme}});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
 function applyGardenContent(next) {
   const previous=activeGarden;
@@ -694,7 +735,7 @@ function applyGardenContent(next) {
   if(changedCopy('owner'))ownerProfile.setCopy(activeGarden.texts.owner);
   if(changedCopy('personal'))personalPage.setCopy(activeGarden.texts.personal);
   if(changed('journal'))personalPage.setPosts(activeGarden.journal);
-  if(changed('outfits') && outfitShowcase?.setOutfits(activeGarden.outfits))introEntrance.refresh();
+  if(changed('outfits') && outfitShowcase?.setOutfits(activeGarden.outfits)){syncOutfitDecoration();introEntrance.refresh();}
   if(changedCopy('outfits'))outfitShowcase?.setCopy(activeGarden.texts.outfits);
   if(changedCopy('album'))album.setCopy(activeGarden.texts.album);
   if(changed('media')){pendingAlbumMedia=activeGarden.media;flushAlbumMedia();}

@@ -19,6 +19,8 @@ body:not(.on-home) .language-dock .language-control button {
 
 .primary-intro { position: relative; min-height: 100svh; isolation: isolate; }
 .model-intro-inner {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
   gap: clamp(24px, 2.8vw, 46px);
@@ -32,28 +34,25 @@ body:not(.on-home) .language-dock .language-control button {
 .intro-geometry {
   position: absolute;
   inset: 0;
-  z-index: -2;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
 }
-.intro-geometry > span { position: absolute; display: block; background: var(--theme); }
-.intro-geometry > span:first-child {
-  left: -7%;
-  top: 57%;
-  width: 63%;
-  height: 23%;
-  opacity: .27;
-  clip-path: polygon(0 30%, 100% 0, 100% 65%, 0 100%);
-  transform: rotate(-8deg);
-}
+.intro-geometry > span { position: absolute; display: block; }
+/* The large folded band now belongs to the measured figure group, so its
+   corner stays beneath the feet on both desktop and vertically stacked pages. */
+.intro-geometry > span:first-child { display: none; }
 .intro-geometry > span:last-child {
   right: -3%;
   top: 18%;
   width: 22%;
   height: 17%;
-  opacity: .16;
+  background: linear-gradient(112deg,
+    color-mix(in srgb, var(--theme) 78%, var(--paper)),
+    color-mix(in srgb, var(--theme) 93%, var(--paper)));
   clip-path: polygon(13% 0, 100% 0, 87% 100%, 0 100%);
-  transform: rotate(-8deg);
+  transform-origin: right center;
+  transform: rotate(-8deg) scaleX(var(--intro-line-progress, var(--intro-decor-alpha, 1)));
 }
 .intro-geometry::before,
 .intro-geometry::after {
@@ -61,12 +60,12 @@ body:not(.on-home) .language-dock .language-control button {
   position: absolute;
   height: 1px;
   background: var(--theme-dark);
-  opacity: .35;
+  opacity: .58;
   transform-origin: left center;
-  transform: rotate(-8deg);
+  transform: rotate(-8deg) scaleX(var(--intro-line-progress, var(--intro-decor-alpha, 1)));
 }
 .intro-geometry::before { top: 18%; left: 12%; width: 36%; }
-.intro-geometry::after { bottom: 13%; right: 3%; width: 42%; }
+.intro-geometry::after { bottom: 13%; right: 3%; width: 42%; transform-origin: right center; }
 .intro-halftone-seam {
   position: absolute;
   inset: 0 0 auto;
@@ -110,7 +109,8 @@ body:not(.on-home) .language-dock .language-control button {
   width: 7px;
   height: 54px;
   background: var(--theme);
-  transform: skewX(-12deg);
+  transform-origin: center top;
+  transform: skewX(-12deg) scaleY(var(--intro-line-progress, var(--intro-decor-alpha, 1)));
 }
 /* The existing marks remain in the entrance collection; the new short bar is
    the visible quote accent, so no text or interaction controller changes. */
@@ -150,8 +150,7 @@ body:not(.on-home) .language-dock .language-control button {
   clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%);
   transform: rotate(-5deg);
 }
-.intro-enter-managed :is(.intro-geometry, .intro-photo-notes),
-.intro-enter-managed .model-intro-quote::before { opacity: var(--intro-decor-alpha, 1); }
+.intro-enter-managed .intro-photo-notes { opacity: var(--intro-decor-alpha, 1); }
 .intro-enter-managed .intro-photo-notes { transform: translateY(calc((1 - var(--intro-decor-alpha, 1)) * 14px)) scale(calc(.96 + var(--intro-decor-alpha, 1) * .04)); }
 
 /* A small pull is enough to communicate the next complete chapter. */
@@ -200,8 +199,7 @@ body:not(.on-home) .language-dock .language-control button {
   .model-intro-copy > .text-link { margin-left: 19px; }
   .intro-photo-notes { margin-top: 30px; padding-right: 12px; }
   .intro-photo-notes figure { width: clamp(110px, 30vw, 140px); }
-  .intro-geometry > span:first-child { top: 240px; left: -26%; width: 115%; height: 220px; opacity: .23; }
-  .intro-geometry > span:last-child { top: 51%; right: -12%; width: 49%; height: 130px; opacity: .13; }
+  .intro-geometry > span:last-child { top: 51%; right: -12%; width: 49%; height: 130px; }
   .intro-geometry::before { top: 160px; left: -5%; width: 79%; }
   .intro-geometry::after { right: -7%; bottom: 8%; width: 82%; }
 }
@@ -234,5 +232,7 @@ body:not(.on-home) .language-dock .language-control button {
   .page-section.is-current .section-inner { transform: none; }
   .hero-copy { transform: translateY(-50%); }
   .intro-enter-managed :is(.intro-geometry, .intro-photo-notes) { opacity: 1; transform: none; }
-  .intro-enter-managed .model-intro-quote::before { opacity: 1; }
+  .intro-geometry::before, .intro-geometry::after,
+  .intro-geometry > span:last-child { transform: rotate(-8deg); }
+  .intro-enter-managed .model-intro-quote::before { opacity: 1; transform: skewX(-12deg); }
 }

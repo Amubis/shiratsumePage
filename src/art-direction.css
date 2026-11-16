@@ -6,14 +6,21 @@ body:not(.theme-preview) .model-intro-title h2 { font-family: var(--display-stro
 .site-brand-mark > svg { width: 100%; height: 100%; }
 .site-brand-logo { display: block; max-width: 180px; max-height: 38px; object-fit: contain; }
 body.is-model-switching .model-control { z-index: 86; }
-/* Two small image surfaces share one sliding color window. Neither starts media. */
+/* Idle opacity belongs to the outer control, leaving phase/watch hiding intact. */
+html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .model-control { opacity: .7; }
+html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .model-control:hover { opacity: 1; }
+html:is([data-phase="controls"], [data-phase="ready"]) body:not(.watch-mode) .model-control:has(:focus-visible) { opacity: 1; }
+/* The rounded rim and colored image window use the same persistent geometry. */
 #model-toggle.model-image-switch {
   position: relative; display: block; width: 194px; height: 62px; min-height: 0;
-  padding: 0; border: 0; border-radius: 0; isolation: isolate;
-  background: var(--paper); clip-path: polygon(6% 0,100% 0,94% 100%,0 100%);
-  box-shadow: 0 3px 14px #29292520;
+  padding: 0; border: 2px solid var(--model-accent, var(--theme)); border-radius: 13px; isolation: isolate;
+  background: var(--paper); overflow: hidden; clip-path: none;
+  scale: var(--model-shell-x, 1) var(--model-shell-y, 1);
+  transform-origin: center;
+  box-shadow: 0 7px 20px #29292528, 0 2px 5px #2929251c;
+  transition: border-color .62s cubic-bezier(.22,.7,.25,1);
 }
-.model-image-switch::after { content: ''; position: absolute; inset: 2px; z-index: 2; border-block: 1px solid #fffdf5b8; pointer-events: none; }
+.model-image-switch::after { content: none; }
 .model-choice-images, .model-choice-actions { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
 .model-choice-images { pointer-events: none; }
 .model-choice-images > span { display: block; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
@@ -21,19 +28,23 @@ body.is-model-switching .model-control { z-index: 86; }
 .model-choice-images > span:first-child img { object-position: 53% 42%; transform: scale(1.9); transform-origin: 60% 40%; }
 .model-choice-images > span:last-child img { object-position: 50% 13%; transform: scale(1.8); transform-origin: 52% 14%; }
 .model-choice-muted { filter: saturate(.08) contrast(.58) brightness(1.22); opacity: .8; }
-.model-choice-color { clip-path: inset(0 50% 0 0); transition: clip-path .56s cubic-bezier(.22,.7,.25,1); }
-[data-selection="right"] > .model-choice-color { clip-path: inset(0 0 0 50%); }
+.model-choice-color { clip-path: inset(8% 52% 8% 2% round 8px); transition: clip-path .56s cubic-bezier(.22,.7,.25,1); }
+[data-selection="right"] > .model-choice-color { clip-path: inset(8% 2% 8% 52% round 8px); }
+.has-model-switch-motion > .model-choice-color { transition: none; }
+.model-choice-slider { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.model-choice-slider rect { fill: none; stroke: var(--model-accent, var(--theme)); stroke-width: 2; transition: stroke .62s cubic-bezier(.22,.7,.25,1); }
+#model-toggle.is-model-switch-still, .is-model-switch-still .model-choice-slider rect { transition: none; }
 .model-choice-actions { z-index: 3; }
 .model-choice-actions > button { position: relative; display: block; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #fffdf4; transition: background .25s ease; }
-.model-choice-actions > button + button { border-left: 1px solid #f9f6edbd; }
+.model-choice-actions > button + button { border-left: 1px solid #f9f6ed70; }
 .model-choice-actions > button:hover { background: #ffffff14; }
 .model-choice-actions > button:active { background: #29292520; }
 .model-choice-actions > button:focus-visible { outline: 2px solid #fffdf4; outline-offset: -5px; }
-.model-choice-actions > button[aria-pressed="true"]::after { content: ''; position: absolute; bottom: 3px; left: 18%; right: 18%; height: 3px; background: var(--theme); box-shadow: 0 1px 1px #29292555; }
+.model-choice-actions > button[aria-pressed="true"]::after { content: none; }
 .model-choice-number { position: absolute; left: 12px; bottom: 8px; padding: 1px 3px; background: #29292570; font-size: 8px; line-height: 1.2; letter-spacing: .12em; }
 @media (max-width: 760px) {
   #model-toggle.model-image-switch, body.on-personal #model-toggle.model-image-switch { display: block; width: 126px; height: 48px; min-height: 0; padding: 0; }
   .model-choice-number { font-size: 7px; left: 8px; bottom: 5px; }
   .site-brand-mark { width: 22px; height: 22px; }
 }
-@media (prefers-reduced-motion: reduce) { .model-choice-color, .model-choice-actions > button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #model-toggle.model-image-switch, .model-choice-slider rect, .model-choice-color, .model-choice-actions > button { transition: none; } }

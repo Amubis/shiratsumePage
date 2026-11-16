@@ -1,0 +1,22 @@
+/* Geometry and hit targets stay still; only these inner ink layers ripple. */
+.outfit-dot-circle:has(> .outfit-dot-ink) { background: transparent; }
+.outfit-dot-ink {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--theme) calc(var(--dot-influence, 0) * 75%), var(--theme-dark));
+  transform: translateX(var(--outfit-feedback-x, 0px)) scale(var(--outfit-feedback-scale, 1));
+  pointer-events: none;
+}
+.outfit-rail-clover-feedback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: scale(var(--outfit-feedback-scale, 1));
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .outfit-dot-ink,
+  .outfit-rail-clover-feedback { transform: none; }
+}
