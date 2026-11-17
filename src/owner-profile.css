@@ -57,7 +57,7 @@
   left: 26px;
   z-index: 6;
   width: min(320px, calc(100vw - 36px));
-  padding: 21px 22px;
+  padding: 21px 22px 48px;
   border: 1px solid #666b4d45;
   border-radius: 12px;
   background: #fbf7ef;
@@ -152,6 +152,35 @@
   color: #151b10;
 }
 
+/* A small decorative clover also leads to the content manager. Its larger
+   transparent hit area remains comfortable for touch and keyboard users. */
+.owner-admin-link {
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--theme-dark, #73782e);
+  text-decoration: none;
+  opacity: .68;
+  transition: opacity .28s var(--water-easing, cubic-bezier(.22,.68,.24,1));
+}
+
+.owner-admin-link .clover-svg {
+  width: 21px;
+  height: 21px;
+  pointer-events: none;
+  transform: rotate(-12deg);
+  transition: transform .42s cubic-bezier(.2,.76,.28,1.24);
+}
+
+.owner-admin-link:is(:hover, :focus-visible) { opacity: 1; }
+.owner-admin-link:is(:hover, :focus-visible) .clover-svg { transform: rotate(5deg) scale(1.2); }
+.owner-admin-link:active .clover-svg { transform: rotate(-4deg) scale(.84); }
+.owner-admin-link:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; border-radius: 50%; }
+
 [data-phase="text"] .owner-profile {
   opacity: 0;
 }
@@ -170,11 +199,13 @@
   .owner-profile { flex: 1 1 auto; padding-inline: 16px; }
   .owner-avatar { width: 40px; height: 40px; }
   .owner-avatar-fallback { width: 23px; height: 23px; }
-  .owner-card { left: 0; padding: 19px 20px; }
+  .owner-card { left: 0; padding: 19px 20px 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .owner-avatar,
   .owner-profile { animation: none; transition: none; }
   .owner-profile.is-open .owner-card { animation: none; }
+  .owner-admin-link,
+  .owner-admin-link .clover-svg { transition: none; }
 }

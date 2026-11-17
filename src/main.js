@@ -771,6 +771,7 @@ window.addEventListener('message',event=>{
   }
 });
 if(location.protocol!=='file:')void loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href}).then(({content,runtime,connected})=>{
+  ownerProfile?.setAdminUrl(runtime.adminUrl);
   if(previewReceived)return;
   if(!previewToken)commentsService.setBaseUrl(runtime.apiBaseUrl || (connected?new URL('/',location.href).href:null));
   applyGardenContent(content);

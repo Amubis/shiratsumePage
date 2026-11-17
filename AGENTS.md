@@ -40,3 +40,4 @@
 
 - 相册日文名称为「超アルバム」，导航、相册日文主标题与中文页旁的日文译文均保留该名称。普通相册文案及日期数字使用同源 Shiratsume Text，粗标题保持展示字库；无拍摄日期或无照片时大号日期标记显示 `None`，不能编造日期。第二、三页在保留左侧导航安全区的前提下平衡画面重心。
 - Cloudflare 可直接通过手动 Actions 工作流部署，无需用户先做本地试用。已提供公开 Account ID 与私有桶 shiratsume-page；令牌和管理密码仅由用户填写 GitHub Secrets，禁止写入仓库或对话。复用既有 R2/D1 与会话密钥，首次部署成功后再更新运行期 API 地址；未取得账号授权或未验证线上登录前不能声称云端后台已上线。
+- 用户已指定并授权创建 workers.dev 前缀 amubis-shiratsume，后台地址为 https://shiratsume-page.amubis-shiratsume.workers.dev/admin/。头像悬浮弹窗右下的小四叶草作为管理入口，运行期跟随 adminUrl；保留无可见文字的装饰样式与键盘/触屏可达性。云端首次生效等待与真实登录检查使用诚实项目 User-Agent，不能因默认客户端标识被边缘拦截而误判后台未部署。

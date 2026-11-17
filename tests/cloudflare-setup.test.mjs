@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { deployCloudflare, readDeploymentSettings, runWrangler } from '../scripts/cloudflare-setup.mjs';
+import { deployCloudflare, readDeploymentSettings, runWrangler, waitForCloudflareReadiness } from '../scripts/cloudflare-setup.mjs';
 
 const credentials = { CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32), CLOUDFLARE_API_TOKEN: 'private-token', ADMIN_PASSWORD: '  exact password  ' };
 const settings = readDeploymentSettings(credentials);
 const database = { name: 'shiratsume-comments', uuid: '12345678-1234-1234-1234-123456789abc' };
 const result = value => Response.json({ success: true, result: value });
 
-async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false } = {}) {
+async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false, nullSubdomain = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'cloudflare-setup-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'worker'));
@@ -25,6 +25,8 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
     calls.push({ path, method });
     if (parsed.hostname.endsWith('.workers.dev')) {
       assert.equal(options.headers?.Authorization, undefined, 'provider token is never sent to the website');
+      assert.equal(options.headers?.['User-Agent'], 'ShiratsumeDeploymentCheck/1.0 (+https://github.com/Amubis/shiratsumePage)', 'all public deployment checks identify the project honestly');
+      assert.equal(options.headers.Accept, 'application/json');
       assert.equal(options.redirect, 'error', 'credentials cannot follow a redirect to another origin');
       if (path === '/api/admin/login') {
         assert.equal(options.headers.Origin, parsed.origin);
@@ -51,6 +53,7 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
       subdomainReads++;
       if (concurrentSubdomain && subdomainReads > 1) return result({ subdomain: 'already-created' });
       if (noSubdomain && !createdSubdomain && emptySubdomain) return result({});
+      if (noSubdomain && !createdSubdomain && nullSubdomain) return result({ subdomain: null });
       return noSubdomain && !createdSubdomain ? new Response(null, { status: 404 }) : result({ subdomain: createdSubdomain || 'amubis' });
     }
     if (path === '/r2/buckets/shiratsume-page') return existing ? result({ name: settings.bucketName }) : new Response(null, { status: 404 });
@@ -151,6 +154,13 @@ test('a successful empty account subdomain object is treated as uninitialized', 
   assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
 });
 
+test('an explicit null account subdomain is treated as uninitialized', async t => {
+  const f = await fixture(t, { noSubdomain: true, nullSubdomain: true, requestedSubdomain: 'amubis-shiratsume' });
+  const deployed = await f.deploy();
+  assert.equal(deployed.origin, 'https://shiratsume-page.amubis-shiratsume.workers.dev');
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
+});
+
 test('an existing workers.dev prefix is reused even when a different prefix was explicitly entered', async t => {
   const f = await fixture(t, { requestedSubdomain: 'amubis-shiratsume' });
   const deployed = await f.deploy();
@@ -211,6 +221,40 @@ test('live credential failure reports only its HTTP status and never reflects a 
   });
   assert.equal(f.calls.filter(call => call.path === '/api/admin/login').length, 1);
   assert.ok(!f.logs.join('\n').includes(credentials.ADMIN_PASSWORD));
+});
+
+test('public edge readiness waits through gateway and secret propagation with safe status diagnostics', async () => {
+  let time = 0, requests = 0;
+  const logs = [], delays = [];
+  await waitForCloudflareReadiness('https://example.workers.dev', {
+    request: async () => {
+      requests++;
+      if (requests === 1) return new Response('private intermediary details must not be logged', { status: 503 });
+      if (requests === 2) return Response.json({ configured: false, authenticated: false, mode: 'cloud', csrfToken: 'private-csrf-token' });
+      return Response.json({ configured: true, authenticated: false, mode: 'cloud' });
+    },
+    now: () => time, delay: async ms => { delays.push(ms); time += ms; }, log: message => logs.push(message),
+  });
+  assert.equal(requests, 3);
+  assert.deepEqual(delays, [5000, 5000]);
+  assert.ok(logs[0].includes('HTTP 503; JSON=no'));
+  assert.ok(logs[1].includes('configured=false; authenticated=false; mode=cloud'));
+  assert.ok(!logs.join('\n').includes('private intermediary'));
+  assert.ok(!logs.join('\n').includes('private-csrf-token'));
+});
+
+test('public edge readiness stops at its time budget without exposing unknown response fields', async () => {
+  let time = 0, requests = 0;
+  const logs = [];
+  await assert.rejects(() => waitForCloudflareReadiness('https://example.workers.dev', {
+    request: async () => { requests++; return Response.json({ configured: 'private-string', authenticated: null, mode: 'private-string', error: 'private-string' }, { status: 503 }); },
+    now: () => time, timeoutMs: 12_000, retryMs: 5000,
+    delay: async ms => { time += ms; }, log: message => logs.push(message),
+  }), /did not become ready within 12 seconds/);
+  assert.equal(requests, 3);
+  assert.equal(time, 12_000);
+  assert.ok(logs.every(message => message.includes('configured=unknown; authenticated=unknown; mode=unknown')));
+  assert.ok(!logs.join('\n').includes('private-string'));
 });
 
 test('live login requires a working authenticated cookie round trip and logs out after a failed session check', async t => {

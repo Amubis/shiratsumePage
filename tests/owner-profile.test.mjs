@@ -105,7 +105,8 @@ test('default owner profile provides no fabricated owner avatar or contact infor
   assert.equal(f.card.getAttribute('aria-labelledby'), f.root.querySelector('.owner-name').id);
   assert.equal(f.root.querySelector('.owner-name').textContent, '关于我');
   assert.equal(f.root.querySelector('.owner-empty').textContent, '暂未公开联系方式');
-  assert.equal(f.root.querySelectorAll('a').length, 0);
+  assert.equal(f.root.querySelectorAll('.owner-contact-link').length, 0);
+  assert.equal(f.root.querySelector('.owner-admin-link').href, './admin/');
   assert.equal(f.root.querySelectorAll('img').length, 0);
   assert.ok(f.root.querySelector('.owner-avatar-fallback'));
 });
@@ -138,7 +139,7 @@ test('profile content stays text, unsafe contacts are omitted, and language chan
   assert.equal(f.root.querySelector('.owner-name').textContent, '<img onerror=alert(1)>');
   assert.equal(f.root.querySelector('.owner-name').children.length, 0);
   assert.equal(f.root.querySelectorAll('script').length, 0);
-  assert.equal(f.root.querySelectorAll('a').length, 1);
+  assert.equal(f.root.querySelectorAll('.owner-contact-link').length, 1);
   assert.equal(f.root.querySelector('a').textContent, '<b>邮件</b>');
   assert.equal(f.root.querySelector('a').href, 'mailto:owner@example.com');
   f.button.emit('click');
@@ -147,6 +148,29 @@ test('profile content stays text, unsafe contacts are omitted, and language chan
   assert.equal(f.root.querySelector('a').textContent, 'メール');
   assert.equal(f.card.hidden, false, 'localization does not close an already open card');
   assert.equal(localizeOwnerText({ zh: 'fallback' }, 'ja'), 'fallback');
+});
+
+test('decorative manager entry keeps an accessible name and follows configured destination safely', (t) => {
+  const f = fixture(t, { adminUrl: 'https://manager.example/admin/' });
+  const link = f.root.querySelector('.owner-admin-link');
+  assert.equal(link.href, 'https://manager.example/admin/');
+  assert.equal(link.getAttribute('aria-label'), '内容管理');
+  assert.equal(link.title, '内容管理');
+  assert.equal(link.target, '_blank');
+  assert.equal(link.rel, 'noopener noreferrer');
+  assert.equal(link.textContent, '', 'the entry has no visible label');
+  f.button.emit('click');
+  link.focus();
+  f.tick(200);
+  assert.equal(f.card.hidden, false, 'the manager entry is reachable while the card is open');
+  f.component.setLanguage('ja');
+  assert.equal(link.getAttribute('aria-label'), 'コンテンツ管理');
+  for (const unsafe of ['javascript:alert(1)', 'data:text/html,hi', '//other.example/admin/', 'https://user:password@other.example/admin/']) {
+    f.component.setAdminUrl(unsafe);
+    assert.equal(link.href, './admin/');
+  }
+  f.component.setAdminUrl('https://updated.example/admin/');
+  assert.equal(link.href, 'https://updated.example/admin/');
 });
 
 test('hover card stays reachable across the gap and closes after the pointer leaves the combined region', (t) => {

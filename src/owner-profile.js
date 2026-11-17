@@ -9,8 +9,8 @@ export const DEFAULT_OWNER_PROFILE = Object.freeze({
 });
 
 export const OWNER_COPY = Object.freeze({
-  zh: Object.freeze({ contacts: '联系方式', empty: '暂未公开联系方式' }),
-  ja: Object.freeze({ contacts: '連絡先', empty: '連絡先はまだ公開していません' }),
+  zh: Object.freeze({ contacts: '联系方式', empty: '暂未公开联系方式', admin: '内容管理' }),
+  ja: Object.freeze({ contacts: '連絡先', empty: '連絡先はまだ公開していません', admin: 'コンテンツ管理' }),
 });
 
 const ownerCopy = (input) => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
@@ -58,7 +58,7 @@ export function safeOwnerURL(value, kind = 'contact') {
 }
 
 /** Non-modal owner disclosure. No persistence or fabricated contact data. */
-export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, language = 'zh', copy } = {}) {
+export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, language = 'zh', copy, adminUrl } = {}) {
   if (!root?.ownerDocument) throw new TypeError('An owner profile root is required.');
   const doc = root.ownerDocument;
   const win = doc.defaultView;
@@ -67,6 +67,7 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
   let data = profile && typeof profile === 'object' ? profile : DEFAULT_OWNER_PROFILE;
   let locale = language === 'ja' ? 'ja' : 'zh';
   let dictionary = ownerCopy(copy);
+  let managementUrl = adminUrl;
   let opened = false;
   let openedBy = null;
   let closeTimer = null;
@@ -94,7 +95,11 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
   const contactsHeading = element('h3', 'owner-contacts-heading');
   const contacts = element('ul', 'owner-contacts');
   const empty = element('p', 'owner-empty');
-  card.append(name, bio, contactsHeading, contacts, empty);
+  const adminLink = element('a', 'owner-admin-link');
+  adminLink.target = '_blank';
+  adminLink.rel = 'noopener noreferrer';
+  adminLink.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'small' });
+  card.append(name, bio, contactsHeading, contacts, empty, adminLink);
   root.classList.add('owner-profile');
   root.replaceChildren(button, card);
 
@@ -142,6 +147,20 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
     return glyph;
   };
 
+  function renderAdminLink() {
+    const safeManagementUrl = safeOwnerURL(managementUrl, 'avatar');
+    let adminHref = './admin/';
+    if (safeManagementUrl) {
+      try {
+        const parsed = new URL(safeManagementUrl, 'https://owner-profile.invalid/');
+        if (!parsed.username && !parsed.password) adminHref = safeManagementUrl;
+      } catch { /* Invalid optional config keeps the local manager redirect. */ }
+    }
+    adminLink.href = adminHref;
+    adminLink.setAttribute('aria-label', dictionary[locale].admin);
+    adminLink.title = dictionary[locale].admin;
+  }
+
   function render() {
     const title = localizeOwnerText(data.name, locale) || localizeOwnerText(DEFAULT_OWNER_PROFILE.name, locale);
     name.textContent = title;
@@ -163,6 +182,7 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
     } else button.replaceChildren(fallbackAvatar());
     contactsHeading.textContent = dictionary[locale].contacts;
     empty.textContent = dictionary[locale].empty;
+    renderAdminLink();
     const items = [];
     for (const contact of Array.isArray(data.contacts) ? data.contacts : []) {
       if (!contact || typeof contact !== 'object') continue;
@@ -219,6 +239,11 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
   render();
 
   return {
+    setAdminUrl(nextAdminUrl) {
+      if (destroyed) return;
+      managementUrl = nextAdminUrl;
+      renderAdminLink();
+    },
     setLanguage(nextLanguage) {
       if (destroyed) return;
       locale = nextLanguage === 'ja' ? 'ja' : 'zh';

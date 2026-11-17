@@ -8,6 +8,7 @@ const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const WRANGLER_VERSION = '4.164.0';
 const API = 'https://api.cloudflare.com/client/v4';
 const NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const CHECK_USER_AGENT = 'ShiratsumeDeploymentCheck/1.0 (+https://github.com/Amubis/shiratsumePage)';
 
 export function readDeploymentSettings(env = process.env) {
   const accountId = (env.CLOUDFLARE_ACCOUNT_ID || '').trim();
@@ -104,7 +105,7 @@ async function verifyAdministratorAccess(settings, origin, request) {
   let cookie = '', csrf = '', stage = 'sign-in', status;
   const send = (path, options = {}) => request(`${origin}${path}`, {
     ...options, redirect: 'error', signal: AbortSignal.timeout(15_000),
-    headers: { Origin: origin, ...options.headers },
+    headers: { Origin: origin, 'User-Agent': CHECK_USER_AGENT, Accept: 'application/json', ...options.headers },
   });
   try {
     const login = await send('/api/admin/login', {
@@ -141,6 +142,31 @@ async function verifyAdministratorAccess(settings, origin, request) {
   }
 }
 
+export async function waitForCloudflareReadiness(origin, {
+  request = fetch, log = console.log, delay = ms => new Promise(accept => setTimeout(accept, ms)),
+  now = () => Date.now(), timeoutMs = 180_000, retryMs = 5000,
+} = {}) {
+  const deadline = now() + timeoutMs;
+  const attempts = Math.ceil(timeoutMs / retryMs) + 1;
+  for (let attempt = 1; attempt <= attempts && now() < deadline; attempt++) {
+    let status = 'network-error', session = null;
+    try {
+      const response = await request(`${origin}/api/admin/session`, { headers: { 'User-Agent': CHECK_USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(Math.max(1, Math.min(10_000, deadline - now()))), redirect: 'error' });
+      status = response.status;
+      try { session = await response.json(); } catch { /* An edge gateway can temporarily return an HTML error. */ }
+      if (response.ok && session?.configured === true && session.authenticated === false && session.mode === 'cloud') return;
+    } catch { /* New workers.dev DNS/TLS and secret versions can need time to propagate. */ }
+    const flag = key => typeof session?.[key] === 'boolean' ? String(session[key]) : 'unknown';
+    const mode = ['cloud', 'local'].includes(session?.mode) ? session.mode : 'unknown';
+    // These fields have a fixed vocabulary. Never log response bodies, error text,
+    // cookies, CSRF values, or other fields returned by an intermediate gateway.
+    log(`Waiting for public edge (${attempt}/${attempts}): HTTP ${status}; JSON=${session !== null && typeof session === 'object' ? 'yes' : 'no'}; configured=${flag('configured')}; authenticated=${flag('authenticated')}; mode=${mode}.`);
+    const remaining = deadline - now();
+    if (attempt < attempts && remaining > 0) await delay(Math.min(retryMs, remaining));
+  }
+  throw new Error(`Deployment finished, but public authentication at ${origin} did not become ready within ${Math.ceil(timeoutMs / 1000)} seconds. The workers.dev DNS/TLS or secret deployment may still be propagating; inspect the safe status checks above and rerun. Existing resources, content and session secrets were kept.`);
+}
+
 export async function deployCloudflare(settings, {
   root = project, request = fetch, run = runWrangler, log = console.log,
   env = process.env, random = () => randomBytes(48).toString('hex'),
@@ -152,7 +178,7 @@ export async function deployCloudflare(settings, {
   // account-level hostname always wins over input; this workflow never renames it.
   const readSubdomain = async () => {
     const response = await api('/workers/subdomain', { missing: true });
-    if (response === null || response.result?.subdomain === '' || (response.result && typeof response.result === 'object' && !Array.isArray(response.result) && Object.keys(response.result).length === 0)) return '';
+    if (response === null || response.result === null || response.result?.subdomain === null || response.result?.subdomain === '' || (response.result && typeof response.result === 'object' && !Array.isArray(response.result) && Object.keys(response.result).length === 0)) return '';
     const value = response.result?.subdomain;
     if (typeof value !== 'string' || !NAME.test(value) || value.length > 63) throw new Error('Cloudflare returned an unexpected workers.dev subdomain. No account-level hostname was changed.');
     return value;
@@ -236,16 +262,7 @@ export async function deployCloudflare(settings, {
   } finally { await rm(configPath, { force: true }); }
 
   const origin = `https://${settings.workerName}.${subdomain}.workers.dev`;
-  let ready = false;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const response = await request(`${origin}/api/admin/session`, { signal: AbortSignal.timeout(15_000), redirect: 'error' });
-      const session = response.ok ? await response.json() : null;
-      if (session?.configured === true && session.authenticated === false && session.mode === 'cloud') { ready = true; break; }
-    } catch { /* workers.dev can take a moment to become available. */ }
-    if (attempt < 4) await delay(1500);
-  }
-  if (!ready) throw new Error(`Deployment finished, but the public authentication readiness check did not pass at ${origin}. Check Cloudflare logs and rerun; no data was reset.`);
+  await waitForCloudflareReadiness(origin, { request, log, delay });
   await verifyAdministratorAccess(settings, origin, request);
   log('Administrator sign-in and authenticated session verified; temporary login credentials were discarded.');
   log(`Cloudflare is ready: ${origin}/admin/`);

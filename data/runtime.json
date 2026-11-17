@@ -1,5 +1,5 @@
 {
   "schemaVersion": 1,
-  "apiBaseUrl": "",
-  "adminUrl": ""
+  "apiBaseUrl": "https://shiratsume-page.amubis-shiratsume.workers.dev",
+  "adminUrl": "https://shiratsume-page.amubis-shiratsume.workers.dev/admin/"
 }
