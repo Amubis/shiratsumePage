@@ -31,3 +31,14 @@
   .page-copy-card { padding: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .copy-language-tab, .page-copy-fields .field input, .page-copy-fields .field textarea { transition: none; } }
+
+.photo-model-field { min-width: 0; margin: 0 0 17px; padding: 0; border: 0; }
+.photo-model-field legend { margin-bottom: 9px; font-size: 12px; font-weight: 600; }
+.photo-model-options, .photo-model-legacy { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 18px; }
+.photo-model-option, .photo-model-mode { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.photo-model-option input, .photo-model-mode input { width: 17px; height: 17px; margin: 0; accent-color: var(--green); flex-shrink: 0; }
+.photo-model-field > .help { display: block; margin-top: 8px; }
+.photo-model-field:disabled { opacity: .55; }
+.photo-model-legacy { margin-top: 10px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.photo-model-batch { grid-column: 1 / -1; min-width: 0; }
+.photo-model-mode { margin: 2px 0 12px; }

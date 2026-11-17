@@ -200,8 +200,10 @@ test('editable album captions, world and small cover labels reach the visitor in
   assert.equal(f.find('.album-cover-note').textContent,'映像ノート');
   assert.equal(f.find('.album-photo-label').textContent,'PHOTO 01-01');
   album.openPlayer(0);const caption=()=>f.doc.body.querySelector('.album-player-caption').textContent;
-  assert.ok(caption().includes('夏日的一天'));assert.ok(caption().includes('Japan Shrine'));
-  album.setLanguage('ja');assert.ok(caption().includes('夏の一日'));
+  const description=()=>f.doc.body.querySelector('.album-player-description').textContent;
+  assert.equal(description(),'夏日的一天');assert.ok(caption().includes('Japan Shrine'));
+  assert.ok(!caption().includes('夏日的一天'));
+  album.setLanguage('ja');assert.equal(description(),'夏の一日');
 });
 
 test('photo player keeps comments on the selected photo, releases work on close and leaves text cursor arrow keys alone', async t => {

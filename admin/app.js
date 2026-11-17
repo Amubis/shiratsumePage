@@ -98,6 +98,30 @@ function check(label, value, change, help = '') {
   input.addEventListener('change', () => { change(input.checked); changed(); });
   return node('label', { class: 'field' }, input, node('span', {}, label), help ? node('span', { class: 'help' }, help) : null);
 }
+function photoModelPicker(value, change, { dirty = true, disabled = false } = {}) {
+  const options = [['shiratsume', 'Shiratsume'], ['milfy', 'Milfy']];
+  const existing = [...new Set(Array.isArray(value) ? value : [])];
+  let otherTags = existing.filter(tag => !options.some(([id]) => id === tag));
+  const inputs = [];
+  const update = () => {
+    change([...inputs.filter(input => input.checked).map(input => input.value), ...otherTags]);
+    if (dirty) changed();
+  };
+  const root = node('fieldset', { class: 'photo-model-field', disabled }, node('legend', {}, '模型标签'));
+  const choices = node('div', { class: 'photo-model-options' });
+  for (const [id, label] of options) {
+    const input = node('input', { type: 'checkbox', value: id, checked: existing.includes(id) });
+    input.addEventListener('change', update); inputs.push(input);
+    choices.append(node('label', { class: 'photo-model-option' }, input, label));
+  }
+  root.append(choices, node('span', { class: 'help' }, '可多选；不选择模型的照片仍会显示在「全部照片」。'));
+  if (otherTags.length) {
+    const legacy = node('div', { class: 'photo-model-legacy' }, node('span', {}, `其他已有标签：${otherTags.join('、')}`));
+    legacy.append(button('移除其他标签', () => { otherTags = []; legacy.hidden = true; update(); }, 'secondary small'));
+    root.append(legacy);
+  }
+  return root;
+}
 function intro(title, description, ...actions) {
   return node('div', { class: 'section-intro' }, node('div', {}, node('h2', {}, title), node('p', {}, description)), actions.length ? node('div', { class: 'section-actions' }, actions) : null);
 }
@@ -331,15 +355,20 @@ async function publish() {
   if ($('#publish').disabled) return;
   const errors = validateGardenContent(state.content);
   if (errors.length) { showValidation(errors); return; }
-  const photoCount = state.content.media.filter(item => item.enabled).length, postCount = state.content.journal.filter(item => item.published).length;
-  if (!await confirmAction('将草稿发布到网站？', `即将发布已保存的全部文案、作者资料和服装，以及 ${photoCount} 张已勾选照片、${postCount} 条已勾选碎碎念。未勾选项目继续保留在草稿中。`, '确认发布')) return;
+  const totalPhotoCount = state.content.media.length;
+  const photoCount = state.content.media.filter(item => item.enabled).length, omittedPhotoCount = totalPhotoCount - photoCount;
+  const postCount = state.content.journal.filter(item => item.published).length;
+  const omittedNote = omittedPhotoCount ? `另有 ${omittedPhotoCount} 张照片未纳入相册，本次不会显示。若要显示，请先在照片相册中选择它们并点击「纳入相册」，再保存草稿。` : '所有照片均已纳入相册。';
+  if (!await confirmAction('将草稿发布到网站？', `相册将显示 ${photoCount} 张照片。${omittedNote}\n\n同时发布已保存的全部文案、作者资料、服装及 ${postCount} 条已勾选碎碎念。`, '确认发布')) return;
   if (cloudLocked()) return;
   state.busy = true; updateChrome();
   try {
     const result = await api('/api/admin/publish', { method: 'POST', body: { revision: state.revision } });
     if (result.published !== true) throw new Error('服务端未确认发布成功，请检查后重试。');
     if (result.revision !== undefined) state.revision = result.revision;
-    persistLocal(); toast('发布成功，网站内容已更新。');
+    const publishedPhotoCount = Array.isArray(result.content?.media) ? result.content.media.length : photoCount;
+    const excludedPhotoCount = Math.max(0, totalPhotoCount - publishedPhotoCount);
+    persistLocal(); toast(`发布成功：相册 ${publishedPhotoCount} 张照片，${excludedPhotoCount} 张未纳入相册。刷新已打开的网站查看。`);
   } catch (error) { reportError(error, '发布失败：'); }
   finally { state.busy = false; updateChrome(); }
 }
@@ -388,7 +417,7 @@ function renderOverview() {
   return [
     node('section', { class: 'welcome' }, node('h2', {}, '管理你的展示内容'), node('p', {}, '修改页面文案、整理照片与服装、记录碎碎念。先保存草稿并检查预览，再发布到网站。'), node('span', { class: 'big-clover', 'aria-hidden': 'true' }, '✤')),
     node('div', { class: 'stats' }, ...[
-      ['照片相册', media.length, `${media.filter(item => item.enabled).length} 张已勾选发布`, 'photos'], ['服装展示', outfits.length, '正面 · 背面 · 校准', 'outfits'],
+      ['照片相册', media.length, `${media.filter(item => item.enabled).length} 张纳入相册`, 'photos'], ['服装展示', outfits.length, '正面 · 背面 · 校准', 'outfits'],
       ['碎碎念', journal.length, `${journal.filter(item => item.published).length} 条已勾选发布`, 'journal'], ['语言版本', 2, '中文 · 日本語', 'texts'],
     ].map(([label, amount, detail, section]) => node('section', { class: 'stat' }, node('span', { class: 'stat-label' }, label), node('span', { class: 'stat-number' }, amount), node('div', { class: 'stat-detail' }, detail), node('button', { type: 'button', class: 'text-button', style: 'margin-top:14px', onclick: () => selectSection(section) }, '开始整理 →')))),
     panel(node('h2', {}, '一次轻松的更新'), node('div', { class: 'steps' }, ...[
@@ -504,27 +533,28 @@ function renderPhotos() {
     state.selectedPhoto = null;
   }
   const picker = uploadPicker('选择照片', 'image/png,image/jpeg,image/webp', files => queueFiles(files, { kind: 'photo' }), true);
-  const drop = node('div', { class: 'dropzone' }, node('div', {}, node('h3', {}, '批量导入照片'), node('p', {}, '拖入多张 PNG、JPEG 或 WebP。先读取元数据，再保留私有原图，生成公开展示图与缩略图。', node('br'), '最多同时导入 2 张；新照片默认不发布。')), picker);
+  const drop = node('div', { class: 'dropzone' }, node('div', {}, node('h3', {}, '批量导入照片'), node('p', {}, '拖入多张 PNG、JPEG 或 WebP。先读取元数据，再保留私有原图，生成公开展示图与缩略图。', node('br'), '最多同时导入 2 张。新照片默认纳入相册草稿，保存草稿并发布到网站后才会公开。')), picker);
   drop.addEventListener('dragover', event => { event.preventDefault(); drop.classList.add('dragover'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
   drop.addEventListener('drop', event => { event.preventDefault(); drop.classList.remove('dragover'); queueFiles([...event.dataTransfer.files], { kind: 'photo' }); });
   const search = node('input', { type: 'search', value: state.photoSearch, placeholder: '搜索世界、说明或模型…', 'aria-label': '搜索照片' });
   let debounce; search.addEventListener('input', () => { state.photoSearch = search.value; clearTimeout(debounce); debounce = setTimeout(() => renderPhotoGrid(grid), 150); });
-  const filter = node('select', { 'aria-label': '照片发布筛选' }, ...[['all', '全部照片'], ['draft', '草稿照片'], ['published', '已勾选发布']].map(([value, label]) => node('option', { value }, label)));
+  const filter = node('select', { 'aria-label': '相册收录筛选' }, ...[['all', '全部照片'], ['draft', '未纳入相册'], ['published', '已纳入相册']].map(([value, label]) => node('option', { value }, label)));
   filter.value = state.photoFilter; filter.addEventListener('change', () => { state.photoFilter = filter.value; render(); });
   const all = node('input', { type: 'checkbox', checked: filteredPhotos().length > 0 && filteredPhotos().every(item => state.selectedPhotos.has(item.id)), 'aria-label': '选择当前筛选的全部照片' });
   all.addEventListener('change', () => { for (const item of filteredPhotos()) all.checked ? state.selectedPhotos.add(item.id) : state.selectedPhotos.delete(item.id); render(); });
   const grid = node('div', { class: 'photo-grid' }); renderPhotoGrid(grid);
-  return [intro('让照片留下旅途的温度', '拍摄日期与世界信息可逐张调整，也可选中后批量编辑。原图仅管理员可下载。'), drop, node('div', { class: 'toolbar' }, search, filter), node('div', { class: 'photo-toolbar' }, node('label', { class: 'selection-label' }, all, '选择当前筛选全部'), node('span', { class: 'small-note' }, `共 ${state.content.media.length} 张 · 已选择 ${state.selectedPhotos.size} 张`)), ...(state.selectedPhotos.size ? [photoBatchEditor()] : []), grid];
+  const includedCount = state.content.media.filter(item => item.enabled).length;
+  return [intro('让照片留下旅途的温度', '拍摄日期与世界信息可逐张调整，也可选中后批量编辑。原图仅管理员可下载。'), drop, node('div', { class: 'toolbar' }, search, filter), node('div', { class: 'photo-toolbar' }, node('label', { class: 'selection-label' }, all, '选择当前筛选全部'), node('span', { class: 'small-note' }, `共 ${state.content.media.length} 张 · 纳入相册 ${includedCount} 张 · 未纳入 ${state.content.media.length - includedCount} 张 · 已选择 ${state.selectedPhotos.size} 张`)), ...(state.selectedPhotos.size ? [photoBatchEditor()] : []), grid];
 }
 function renderPhotoGrid(grid) {
   const photos = filteredPhotos();
   grid.replaceChildren(...photos.map(item => {
     const select = node('input', { type: 'checkbox', class: 'photo-select', checked: state.selectedPhotos.has(item.id), 'aria-label': `选择照片：${photoName(item)}` });
     select.addEventListener('change', () => { select.checked ? state.selectedPhotos.add(item.id) : state.selectedPhotos.delete(item.id); render(); });
-    return node('article', { class: `photo-card${state.selectedPhotos.has(item.id) ? ' selected' : ''}` }, select, node('span', { class: `pill photo-status ${item.enabled ? 'published' : 'draft'}` }, item.enabled ? '发布' : '草稿'), node('button', { type: 'button', 'aria-label': `编辑照片：${photoName(item)}`, onclick: () => { state.selectedPhoto = item.id; render(); } }, image(item.thumbnail || item.url, localizedValue(item.alt), 'photo-image'), node('div', { class: 'photo-info' }, node('strong', {}, photoName(item)), node('small', {}, item.takenAt || '待补拍摄时间'))));
+    return node('article', { class: `photo-card${state.selectedPhotos.has(item.id) ? ' selected' : ''}` }, select, node('span', { class: `pill photo-status ${item.enabled ? 'published' : 'draft'}` }, item.enabled ? '已纳入相册' : '未纳入相册'), node('button', { type: 'button', 'aria-label': `编辑照片：${photoName(item)}`, onclick: () => { state.selectedPhoto = item.id; render(); } }, image(item.thumbnail || item.url, localizedValue(item.alt), 'photo-image'), node('div', { class: 'photo-info' }, node('strong', {}, photoName(item)), node('small', {}, item.takenAt || '待补拍摄时间'))));
   }));
-  if (!photos.length) grid.append(empty('这里还没有照片', state.photoSearch ? '换一个搜索条件，或查看其他发布状态。' : '导入照片后，可以先作为草稿慢慢整理。'));
+  if (!photos.length) grid.append(empty('这里还没有照片', state.photoSearch ? '换一个搜索条件，或查看其他收录状态。' : '导入照片后，可以先作为草稿慢慢整理。'));
 }
 function photoBatchEditor() {
   const values = {}, selected = () => state.content.media.filter(item => state.selectedPhotos.has(item.id));
@@ -533,22 +563,30 @@ function photoBatchEditor() {
     input.addEventListener('input', () => { values[key] = input.value; });
     return node('label', { class: 'field' }, node('span', {}, label), input, help ? node('span', { class: 'help' }, help) : null);
   };
+  let pickedModelTags = [];
+  const editModels = node('input', { type: 'checkbox' });
+  const models = photoModelPicker([], tags => { pickedModelTags = tags; if (editModels.checked) values.modelIds = [...tags]; }, { dirty: false, disabled: true });
+  editModels.addEventListener('change', () => {
+    models.disabled = !editModels.checked;
+    if (editModels.checked) values.modelIds = [...pickedModelTags]; else delete values.modelIds;
+  });
+  const modelField = node('div', { class: 'photo-model-batch' }, node('label', { class: 'photo-model-mode' }, editModels, '修改模型标签（覆盖原有选择）'), models);
   const apply = () => {
     for (const item of selected()) {
       for (const key of ['takenAt', 'worldName', 'worldId']) if (values[key]?.trim()) item[key] = values[key].trim();
-      if (values.modelIds?.trim()) item.modelIds = values.modelIds.split(/[,，\s]+/).filter(Boolean);
+      if (Array.isArray(values.modelIds)) item.modelIds = [...values.modelIds];
       for (const locale of ['zh', 'ja']) if (values[`alt_${locale}`]?.trim()) { if (typeof item.alt === 'string') item.alt = { zh: item.alt, ja: item.alt }; item.alt ||= {}; item.alt[locale] = values[`alt_${locale}`]; }
     }
     changed(); render(); toast('已应用批量编辑，尚未保存草稿。');
   };
-  return node('section', { class: 'batch-bar' }, node('h3', {}, `批量编辑 ${state.selectedPhotos.size} 张照片`), node('div', { class: 'batch-fields' }, batchField('takenAt', '拍摄时间', 'YYYY-MM-DD 或 YYYY-MM-DDTHH:mm:ss；无时区时保留原值'), batchField('worldName', '世界名称'), batchField('worldId', '世界 ID'), batchField('modelIds', '模型标签', '多个标签用空格或逗号分开'), batchField('alt_zh', '图片描述 · 中文'), batchField('alt_ja', '图片描述 · 日本語')),
-    node('div', { class: 'row-actions' }, button('取消选择', () => { state.selectedPhotos.clear(); render(); }), button('勾选发布', () => { selected().forEach(item => { item.enabled = true; }); changed(); render(); }), button('移回草稿', () => { selected().forEach(item => { item.enabled = false; }); changed(); render(); }), button('清空拍摄时间', () => { selected().forEach(item => { item.takenAt = null; item.timeZone = ''; }); changed(); render(); }), button('应用填写内容', apply, 'primary'), button('删除所选', async () => { if (!await confirmAction('删除所选照片？', `将移除 ${state.selectedPhotos.size} 张照片的内容引用，图片文件保留。`, '删除所选')) return; state.content.media = state.content.media.filter(item => !state.selectedPhotos.has(item.id)); state.selectedPhotos.clear(); changed(); render(); }, 'danger')));
+  return node('section', { class: 'batch-bar' }, node('h3', {}, `批量编辑 ${state.selectedPhotos.size} 张照片`), node('div', { class: 'batch-fields' }, batchField('takenAt', '拍摄时间', 'YYYY-MM-DD 或 YYYY-MM-DDTHH:mm:ss；无时区时保留原值'), batchField('worldName', '世界名称'), batchField('worldId', '世界 ID'), batchField('alt_zh', '图片描述 · 中文'), batchField('alt_ja', '图片描述 · 日本語'), modelField),
+    node('div', { class: 'row-actions' }, button('取消选择', () => { state.selectedPhotos.clear(); render(); }), button('纳入相册', () => { selected().forEach(item => { item.enabled = true; }); changed(); render(); }), button('移出相册', () => { selected().forEach(item => { item.enabled = false; }); changed(); render(); }), button('清空拍摄时间', () => { selected().forEach(item => { item.takenAt = null; item.timeZone = ''; }); changed(); render(); }), button('应用填写内容', apply, 'primary'), button('删除所选', async () => { if (!await confirmAction('删除所选照片？', `将移除 ${state.selectedPhotos.size} 张照片的内容引用，图片文件保留。`, '删除所选')) return; state.content.media = state.content.media.filter(item => !state.selectedPhotos.has(item.id)); state.selectedPhotos.clear(); changed(); render(); }, 'danger')));
 }
 function renderPhotoDetail(item) {
   const index = state.content.media.indexOf(item);
   return [intro('整理这一片回忆', '拍摄时间按填写值保存；没有时区的相机时间不会被自动换算。', button('← 返回照片', () => { state.selectedPhoto = null; render(); })),
-    panel(node('div', { class: 'detail-top' }, node('div', {}, node('h2', {}, photoName(item)), node('p', { class: 'small-note' }, `照片 ${index + 1} / ${state.content.media.length} · ${item.width || '?'} × ${item.height || '?'}`)), check('勾选发布这张照片', item.enabled, value => { item.enabled = value; })), image(item.url, localizedValue(item.alt), 'detail-image')),
-    panel(node('div', { class: 'field-grid' }, field('拍摄时间', item.takenAt, value => { item.takenAt = value || null; item.timeZone = /(?:Z|[+-]\d\d:?\d\d)$/.test(value) ? 'offset' : value.includes('T') ? 'unspecified' : ''; }, { placeholder: '2026-11-15T18:30:00', help: '支持日期、无时区本地时间或带 Z / +09:00 的时间' }), field('模型标签', item.modelIds.join(', '), value => { item.modelIds = value.split(/[,，\s]+/).filter(Boolean); }, { help: '多个模型 ID 用空格或逗号分开' }), field('世界名称', item.worldName, value => { item.worldName = value; }), field('世界 ID', item.worldId, value => { item.worldId = value; }, { placeholder: 'wrld_…' })), localizedFields('照片说明', item, 'caption', { multiline: true }), localizedFields('图片描述（辅助阅读）', item, 'alt', { multiline: true }),
+    panel(node('div', { class: 'detail-top' }, node('div', {}, node('h2', {}, photoName(item)), node('p', { class: 'small-note' }, `照片 ${index + 1} / ${state.content.media.length} · ${item.width || '?'} × ${item.height || '?'}`)), check('纳入相册', item.enabled, value => { item.enabled = value; })), image(item.url, localizedValue(item.alt), 'detail-image')),
+    panel(node('div', { class: 'field-grid' }, field('拍摄时间', item.takenAt, value => { item.takenAt = value || null; item.timeZone = /(?:Z|[+-]\d\d:?\d\d)$/.test(value) ? 'offset' : value.includes('T') ? 'unspecified' : ''; }, { placeholder: '2026-11-15T18:30:00', help: '支持日期、无时区本地时间或带 Z / +09:00 的时间' }), photoModelPicker(item.modelIds, tags => { item.modelIds = tags; }), field('世界名称', item.worldName, value => { item.worldName = value; }), field('世界 ID', item.worldId, value => { item.worldId = value; }, { placeholder: 'wrld_…' })), localizedFields('照片说明', item, 'caption', { multiline: true }), localizedFields('图片描述（辅助阅读）', item, 'alt', { multiline: true }),
       node('details', {}, node('summary', {}, '图片地址与导入信息'), field('展示图', item.url, value => { item.url = value; }), field('缩略图', item.thumbnail, value => { item.thumbnail = value; }), node('p', { class: 'metadata-note' }, `原文件：${item.originalName || '无'}\n时间来源：${item.metadataSource?.takenAt || '手动或未知'}\n世界来源：${item.metadataSource?.world || '手动或未知'}\n时区：${item.timeZone || '未提供'}`), item.warnings?.length ? node('p', { class: 'metadata-note metadata-warning' }, item.warnings.join('\n')) : null),
       node('div', { class: 'row-actions' }, item.originalKey && state.authenticated ? node('a', { class: 'button secondary', href: `/api/admin/original?key=${encodeURIComponent(item.originalKey)}`, download: item.originalName || '' }, '下载私有原图') : null, reorderButtons(state.content.media, index, '照片'), button('删除这张照片', async () => { if (!await confirmAction('删除这张照片？', '从草稿移除内容引用，原图与展示图文件保留。', '删除照片')) return; state.content.media.splice(index, 1); state.selectedPhotos.delete(item.id); state.selectedPhoto = null; changed(); render(); }, 'danger')))];
 }
@@ -602,7 +640,7 @@ async function pumpUploads() {
     const job = state.jobs.find(item => item.status === 'queued'); if (!job) break;
     state.running++; job.status = 'running'; renderUploads();
     runUpload(job).then(result => {
-      job.status = 'done'; job.progress = 100; job.note = result || '已加入草稿，请检查后勾选发布。';
+      job.status = 'done'; job.progress = 100; job.note = result || '已加入草稿，保存后发布到网站。';
       // Completed jobs no longer retain the full-resolution file or browser derivative blobs.
       job.file = { name: job.file.name }; job.cache = {};
     }).catch(error => { job.status = 'error'; job.note = error.message; if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error); }).finally(() => { state.running = Math.max(0, state.running - 1); renderUploads(); pumpUploads(); });
@@ -671,11 +709,13 @@ async function runUpload(job) {
     if (!cache.display) { setJobProgress(job, '上传公开展示图…', 70); cache.display = await uploadBlob(job, cache.displayBlob, 'display', `${file.name}-display.jpg`, 70, 90); }
     if (!cache.thumbnail) { setJobProgress(job, '上传公开缩略图…', 90); cache.thumbnail = await uploadBlob(job, cache.thumbnailBlob, 'thumbnail', `${file.name}-thumb.jpg`, 90, 99); }
     if (cloudLocked() || !state.content || !state.jobs.includes(job)) throw staleRequest();
-    const item = { id: job.photoId, url: cache.display.key, thumbnail: cache.thumbnail.key, alt: { zh: '', ja: '' }, caption: { zh: '', ja: '' }, modelIds: [state.content.settings.defaultModelId || 'shiratsume'], takenAt: metadata.takenAt, timeZone: metadata.timeZone || '', worldName: metadata.worldName || '', worldId: metadata.worldId || '', sourceKind: 'photo', enabled: false, width: cache.width, height: cache.height, originalKey: cache.original.key, originalName: file.name, metadataSource: { ...metadata.source, fileModifiedAt: metadata.fileModifiedAt }, warnings: metadata.warnings || [] };
+    // Include only this new reference in the next explicit publication. Uploading
+    // never saves or publishes the draft, or changes existing exclusion choices.
+    const item = { id: job.photoId, url: cache.display.key, thumbnail: cache.thumbnail.key, alt: { zh: '', ja: '' }, caption: { zh: '', ja: '' }, modelIds: [], takenAt: metadata.takenAt, timeZone: metadata.timeZone || '', worldName: metadata.worldName || '', worldId: metadata.worldId || '', sourceKind: 'photo', enabled: true, width: cache.width, height: cache.height, originalKey: cache.original.key, originalName: file.name, metadataSource: { ...metadata.source, fileModifiedAt: metadata.fileModifiedAt }, warnings: metadata.warnings || [] };
     const following = state.jobs.slice(state.jobs.indexOf(job) + 1).find(other => other.photoId && state.content.media.some(photo => photo.id === other.photoId));
     const insertAt = following ? state.content.media.findIndex(photo => photo.id === following.photoId) : state.content.media.length;
     state.content.media.splice(insertAt, 0, item); changed(); if (state.section === 'photos' && !state.selectedPhoto) render();
-    return `已导入草稿${metadata.takenAt ? ` · 拍摄时间 ${metadata.takenAt}` : ' · 请补充拍摄时间'}${metadata.fileModifiedAt && !metadata.takenAt ? `；文件修改时间仅供参考：${formatDate(metadata.fileModifiedAt)}` : ''}`;
+    return `已加入相册草稿，保存后发布到网站${metadata.takenAt ? ` · 拍摄时间 ${metadata.takenAt}` : ' · 请补充拍摄时间'}${metadata.fileModifiedAt && !metadata.takenAt ? `；文件修改时间仅供参考：${formatDate(metadata.fileModifiedAt)}` : ''}`;
   }
   if (!cache.width) { const decoded = await decodeImage(file); cache.width = decoded.width; cache.height = decoded.height; decoded.close?.(); }
   if (!cache.uploaded) { setJobProgress(job, '上传图片…', 10); cache.uploaded = await uploadBlob(job, file, options.kind, file.name, 10, 99, cache.mime); }

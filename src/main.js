@@ -684,7 +684,7 @@ outfitHintObserver.observe(outfitHintSection,{attributes:true,attributeFilter:['
 refreshOutfitHint();
 album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,reducedMotion,onReady({reason}){
   $('.album-title').id='album-heading';
-  if (albumTransition && !['page','view','filter','language','copy'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
+  if (albumTransition && !['page','view','filter','order','language','copy','player-return'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
 }});
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
 albumScroll=createAlbumScroll({

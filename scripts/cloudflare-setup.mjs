@@ -101,7 +101,29 @@ async function checkAssets(root) {
   await visit(output);
 }
 
-async function verifyAdministratorAccess(settings, origin, request) {
+export function summarizeCloudContent(draft, published) {
+  if (!Array.isArray(draft?.content?.media) || !Array.isArray(published?.media)) throw new Error('Content inspection did not receive valid draft and public photo lists.');
+  const items = draft.content.media;
+  const included = item => item?.enabled !== false;
+  const uploaded = item => item?.sourceKind === 'upload' || (typeof item?.url === 'string' && /^(?:\.?\/)?media\/|^https?:\/\/[^/]+\/media\//.test(item.url));
+  const shiratsume = item => Array.isArray(item?.modelIds) && item.modelIds.includes('shiratsume');
+  const uploads = items.filter(uploaded);
+  return {
+    draftTotal: items.length,
+    draftIncluded: items.filter(included).length,
+    draftExcluded: items.filter(item => !included(item)).length,
+    draftUploadedTotal: uploads.length,
+    draftUploadedIncluded: uploads.filter(included).length,
+    draftUploadedExcluded: uploads.filter(item => !included(item)).length,
+    draftShiratsumeTotal: items.filter(shiratsume).length,
+    draftShiratsumeIncluded: items.filter(item => included(item) && shiratsume(item)).length,
+    publishedTotal: published.media.length,
+    publishedUploaded: published.media.filter(uploaded).length,
+    publishedShiratsume: published.media.filter(shiratsume).length,
+  };
+}
+
+async function verifyAdministratorAccess(settings, origin, request, { inspectContent = false, log = console.log } = {}) {
   let cookie = '', csrf = '', stage = 'sign-in', status;
   const send = (path, options = {}) => request(`${origin}${path}`, {
     ...options, redirect: 'error', signal: AbortSignal.timeout(15_000),
@@ -124,6 +146,19 @@ async function verifyAdministratorAccess(settings, origin, request) {
     const session = await send('/api/admin/session', { headers: { Cookie: cookie } });
     status = session.status;
     if (!session.ok || (await session.json()).authenticated !== true) throw new Error();
+    if (inspectContent === true) {
+      stage = 'read-only content counts';
+      status = undefined;
+      const draft = await send('/api/admin/content', { headers: { Cookie: cookie } });
+      status = draft.status;
+      if (!draft.ok) throw new Error();
+      const draftBody = await draft.json();
+      const published = await send('/api/content');
+      status = published.status;
+      if (!published.ok) throw new Error();
+      const summary = summarizeCloudContent(draftBody, await published.json());
+      log(`Content inspection (counts only): ${JSON.stringify(summary)}`);
+    }
   } catch {
     // Provider response text, cookies, CSRF tokens and credential-bearing errors are never logged.
     throw new Error(`Administrator ${stage} check failed${status ? ` (HTTP ${status})` : ''}. Check ADMIN_USERNAME and the ADMIN_PASSWORD Actions secret, then rerun; no content was changed.`);
@@ -171,6 +206,7 @@ export async function deployCloudflare(settings, {
   root = project, request = fetch, run = runWrangler, log = console.log,
   env = process.env, random = () => randomBytes(48).toString('hex'),
   delay = ms => new Promise(accept => setTimeout(accept, ms)),
+  inspectContent = false,
 } = {}) {
   await checkAssets(root);
   const api = cloudflareApi(settings, request);
@@ -263,7 +299,7 @@ export async function deployCloudflare(settings, {
 
   const origin = `https://${settings.workerName}.${subdomain}.workers.dev`;
   await waitForCloudflareReadiness(origin, { request, log, delay });
-  await verifyAdministratorAccess(settings, origin, request);
+  await verifyAdministratorAccess(settings, origin, request, { inspectContent, log });
   log('Administrator sign-in and authenticated session verified; temporary login credentials were discarded.');
   log(`Cloudflare is ready: ${origin}/admin/`);
   return { origin, adminUrl: `${origin}/admin/`, apiBaseUrl: origin, bucketName: settings.bucketName, databaseName: settings.databaseName };
@@ -272,7 +308,7 @@ export async function deployCloudflare(settings, {
 async function main() {
   const settings = readDeploymentSettings();
   if (process.argv.includes('--check')) { console.log('Cloudflare deployment inputs are present and valid. No cloud request was made.'); return; }
-  const result = await deployCloudflare(settings);
+  const result = await deployCloudflare(settings, { inspectContent: process.env.CLOUDFLARE_INSPECT_CONTENT === 'true' });
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `origin=${result.origin}\nadmin_url=${result.adminUrl}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, [
     '## Cloudflare deployment ready', '',

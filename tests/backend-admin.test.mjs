@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { once } from 'node:events';
+import { runInNewContext } from 'node:vm';
 import { createLocalAdminServer, createLocalStorage } from '../server/local-admin.mjs';
 import { createAdminApi } from '../server/admin-api.mjs';
 import { normalizeGardenContent } from '../src/garden-content.js';
@@ -104,6 +105,58 @@ test('draft save, concurrent revision conflict and publish remain distinct over 
   assert.equal(state.draft.revision, saved.revision);
   assert.equal(state.published.revision, saved.revision);
   assert.equal(state.previousPublished.revision, original.revision);
+});
+
+test('new photo imports join the private album draft and become visible only after save and explicit publication', async t => {
+  const { origin, headers } = await local(t);
+  const original = await json(await fetch(`${origin}/api/admin/content`));
+  const source = await readFile(new URL('../admin/app.js', import.meta.url), 'utf8');
+  const runUpload = source.match(/^async function runUpload\(job\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(runUpload, 'execute the real photo import handler');
+  const file = new Blob([PNG], { type: 'image/png' });
+  const job = {
+    file: Object.assign(file, { name: 'VRChat_2026-11-17_12-00-00.png' }),
+    photoId: 'new-upload', options: { kind: 'photo' },
+    cache: { mime: 'image/png', width: 1, height: 1, metadata: { takenAt: '2026-11-17T12:00:00', timeZone: 'unspecified', source: {}, warnings: [] }, displayBlob: file, thumbnailBlob: file },
+  };
+  const state = { content: structuredClone(original.content), jobs: [job], section: 'photos' };
+  let localChanges = 0;
+  const uploadBlob = async (_job, blob, role, name) => json(await fetch(`${origin}/api/admin/upload?role=${role}&name=${encodeURIComponent(name)}`, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'image/png' }, body: blob,
+  }), 201);
+  await runInNewContext(`(${runUpload})(job)`, { state, job, uploadBlob, cloudLocked: () => false, changed: () => { localChanges++; }, render() {}, setJobProgress() {} });
+  const imported = state.content.media.find(item => item.id === 'new-upload');
+  assert.equal(imported.enabled, true, 'new imports are included in the next explicit album publication');
+  assert.deepEqual(Array.from(imported.modelIds), [], 'uploading does not infer or preselect a model');
+  assert.equal(state.content.media.find(item => item.id === 'hidden-photo').enabled, false, 'existing excluded photos remain excluded');
+  assert.equal(localChanges, 1);
+  assert.equal((await json(await fetch(`${origin}/api/admin/content`))).content.media.length, original.content.media.length, 'uploading files does not save or publish their draft reference');
+  assert.deepEqual((await json(await fetch(`${origin}/api/content`))).media.map(item => item.id), ['public-photo']);
+  const saved = await json(await fetch(`${origin}/api/admin/content`, { method: 'PUT', headers, body: JSON.stringify({ content: state.content, revision: original.revision }) }));
+  assert.deepEqual((await json(await fetch(`${origin}/api/content`))).media.map(item => item.id), ['public-photo'], 'saving an included photo still keeps it private until publication');
+  await json(await fetch(`${origin}/api/admin/publish`, { method: 'POST', headers, body: JSON.stringify({ revision: saved.revision }) }));
+  assert.deepEqual((await json(await fetch(`${origin}/api/content`))).media.map(item => item.id), ['public-photo', 'new-upload']);
+});
+
+test('publication confirmation and success report the included and omitted album photo counts', async () => {
+  const source = await readFile(new URL('../admin/app.js', import.meta.url), 'utf8');
+  const publish = source.match(/^async function publish\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(publish, 'execute the real publication handler');
+  const messages = [], requests = [];
+  const state = { content: { media: [{ enabled: true }, { enabled: false }, { enabled: false }], journal: [] }, revision: 'draft-revision' };
+  await runInNewContext(`(${publish})()`, {
+    state, $: () => ({ disabled: false }), validateGardenContent: () => [], cloudLocked: () => false,
+    confirmAction: async (_title, message) => { messages.push(message); return true; },
+    api: async (path, options) => { requests.push([path, options]); return { published: true, content: { media: [{}] } }; },
+    updateChrome() {}, persistLocal() {}, toast: message => messages.push(message), reportError: error => { throw error; },
+  });
+  assert.match(messages[0], /相册将显示 1 张照片/);
+  assert.match(messages[0], /2 张照片未纳入相册，本次不会显示/);
+  assert.match(messages[1], /相册 1 张照片，2 张未纳入相册/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0][0], '/api/admin/publish');
+  assert.equal(requests[0][1].method, 'POST');
+  assert.deepEqual(state.content.media.map(item => item.enabled), [true, false, false], 'publishing does not silently include excluded photos');
 });
 
 test('HTTP content writes reject malformed JSON, invalid content and missing or inconsistent revisions', async t => {

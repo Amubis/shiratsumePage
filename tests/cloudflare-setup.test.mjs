@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { deployCloudflare, readDeploymentSettings, runWrangler, waitForCloudflareReadiness } from '../scripts/cloudflare-setup.mjs';
+import { deployCloudflare, readDeploymentSettings, runWrangler, summarizeCloudContent, waitForCloudflareReadiness } from '../scripts/cloudflare-setup.mjs';
 
 const credentials = { CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32), CLOUDFLARE_API_TOKEN: 'private-token', ADMIN_PASSWORD: '  exact password  ' };
 const settings = readDeploymentSettings(credentials);
 const database = { name: 'shiratsume-comments', uuid: '12345678-1234-1234-1234-123456789abc' };
 const result = value => Response.json({ success: true, result: value });
 
-async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false, nullSubdomain = false } = {}) {
+async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false, nullSubdomain = false, inspectContent = false, draftMedia = [], publishedMedia = [], badInspection = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'cloudflare-setup-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'worker'));
@@ -38,6 +38,15 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
         assert.equal(options.headers.Cookie, '__Host-garden_session=private-cookie');
         assert.equal(options.headers['X-Garden-CSRF'], 'private-csrf-token');
         return Response.json({ authenticated: false });
+      }
+      if (inspectContent && path === '/api/admin/content') {
+        assert.equal(options.headers.Cookie, '__Host-garden_session=private-cookie');
+        if (badInspection) return Response.json({ error: credentials.ADMIN_PASSWORD }, { status: 503 });
+        return Response.json({ content: { media: draftMedia }, revision: 'private-revision' });
+      }
+      if (inspectContent && path === '/api/content') {
+        assert.equal(options.headers.Cookie, undefined, 'public content check does not need a private cookie');
+        return Response.json({ media: publishedMedia });
       }
       assert.equal(path, '/api/admin/session', 'deployment checks never fetch private draft content');
       return Response.json({ authenticated: Boolean(options.headers?.Cookie) && !brokenSession, configured: true, mode: 'cloud' });
@@ -70,7 +79,7 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
     commands.push({ args, options, config });
     if (failRun) throw new Error('Mock migration failure');
   };
-  const deploy = () => deployCloudflare({ ...settings, workersSubdomain: requestedSubdomain }, { root, request, run, log: message => logs.push(message), env: credentials, random: () => 'unlogged-session-'.repeat(4), delay: async () => {} });
+  const deploy = () => deployCloudflare({ ...settings, workersSubdomain: requestedSubdomain }, { root, request, run, log: message => logs.push(message), env: credentials, random: () => 'unlogged-session-'.repeat(4), delay: async () => {}, inspectContent });
   return { root, request, run, calls, commands, logs, deploy };
 }
 
@@ -263,6 +272,41 @@ test('live login requires a working authenticated cookie round trip and logs out
   assert.equal(f.calls.at(-1).path, '/api/admin/logout');
   assert.ok(!f.logs.join('\n').includes('private-cookie'));
   assert.ok(!f.logs.join('\n').includes('private-csrf-token'));
+});
+
+test('explicit content inspection logs aggregate upload and model counts without revealing or changing private content', async t => {
+  const media = [
+    { id: 'private-photo-id', filename: 'private-filename.png', url: 'media/private-image.png', enabled: false, modelIds: ['shiratsume'], caption: '<script>private-text</script>' },
+    { id: 'another-private-id', url: 'https://private.example/media/private-url.jpg', enabled: true, modelIds: ['shiratsume'] },
+    { sourceKind: 'upload', url: 'private-source-path', enabled: true, modelIds: ['other-model'] },
+    { url: 'assets/seed.jpg', enabled: true, modelIds: ['shiratsume'] },
+  ];
+  const published = [media[3]];
+  const before = JSON.stringify(media);
+  const f = await fixture(t, { existing: true, inspectContent: true, draftMedia: media, publishedMedia: published });
+  await f.deploy();
+  const line = f.logs.find(message => message.startsWith('Content inspection (counts only): '));
+  assert.deepEqual(JSON.parse(line.slice('Content inspection (counts only): '.length)), {
+    draftTotal: 4, draftIncluded: 3, draftExcluded: 1,
+    draftUploadedTotal: 3, draftUploadedIncluded: 2, draftUploadedExcluded: 1,
+    draftShiratsumeTotal: 3, draftShiratsumeIncluded: 2,
+    publishedTotal: 1, publishedUploaded: 0, publishedShiratsume: 1,
+  });
+  assert.equal(JSON.stringify(media), before);
+  for (const forbidden of ['private-photo-id', 'private-filename', 'private.example', 'private-url', 'private-text', 'private-revision', 'private-cookie', 'private-csrf-token']) assert.ok(!f.logs.join('\n').includes(forbidden));
+  assert.deepEqual(f.calls.filter(call => call.method !== 'GET').map(call => call.path), ['/api/admin/login', '/api/admin/logout']);
+  assert.equal(f.calls.at(-1).path, '/api/admin/logout');
+});
+
+test('inspection failures do not log private provider errors and still discard the login session', async t => {
+  const f = await fixture(t, { inspectContent: true, badInspection: true });
+  await assert.rejects(f.deploy, error => {
+    assert.ok(error.message.includes('read-only content counts check failed (HTTP 503)'));
+    assert.ok(!error.message.includes(credentials.ADMIN_PASSWORD));
+    return true;
+  });
+  assert.equal(f.calls.at(-1).path, '/api/admin/logout');
+  assert.throws(() => summarizeCloudContent({ content: {} }, { media: [] }), /valid draft and public photo lists/);
 });
 
 test('a failing secret command cannot echo protected stdin and never inherits the admin password', async t => {

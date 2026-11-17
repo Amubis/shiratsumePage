@@ -75,6 +75,13 @@ function unique(items, convert) {
 }
 function bounds(value) { return Array.isArray(value) && value.length === 4 && value.every(Number.isFinite) ? [...value] : undefined; }
 function size(value) { return Array.isArray(value) && value.length === 2 && value.every(number => Number.isFinite(number) && number > 0 && number <= 32768) ? [...value] : undefined; }
+function photoModelIds(value) {
+  return [...new Set((Array.isArray(value) ? value : []).filter(item => typeof item === 'string').map(item => {
+    const name = text(item, 120).trim(), known = name.toLowerCase();
+    if (!name || known === 'none') return '';
+    return ['shiratsume', 'milfy'].includes(known) ? known : name;
+  }).filter(Boolean))];
+}
 
 /** One portable content document is shared by the editor, server and visitor page. */
 export function normalizeGardenContent(input, defaults = {}) {
@@ -101,7 +108,7 @@ export function normalizeGardenContent(input, defaults = {}) {
     }),
     media: unique(raw.media ?? base.media, (item, index) => ({
       id: id(item.id, `photo-${index + 1}`), url: safeGardenURL(item.url) || '', thumbnail: safeGardenURL(item.thumbnail) || safeGardenURL(item.url) || '',
-      alt: localized(item.alt), caption: localized(item.caption), modelIds: [...new Set((Array.isArray(item.modelIds) ? item.modelIds : []).filter(value => typeof value === 'string').map(value => text(value, 120)))],
+      alt: localized(item.alt), caption: localized(item.caption), modelIds: photoModelIds(item.modelIds),
       takenAt: validGardenDate(item.takenAt) ? item.takenAt : null, worldName: text(item.worldName, 1000), worldId: text(item.worldId, 120),
       sourceKind: text(item.sourceKind, 40) || 'photo', enabled: item.enabled !== false,
       width: Math.max(0, finite(item.width, 0)), height: Math.max(0, finite(item.height, 0)), timeZone: text(item.timeZone, 80),

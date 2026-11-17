@@ -24,6 +24,7 @@ class Element {
   find(className) { return this.all((node) => node.classList.contains(className))[0]; }
   findAll(className) { return this.all((node) => node.classList.contains(className)); }
   getBoundingClientRect() { return { left: 10, top: 20, width: 200, height: 180, right: 210, bottom: 200 }; }
+  scrollIntoView(options) { this.scrollOptions = options; }
   focus() { this.ownerDocument.activeElement = this; this.emit('focus'); }
   showModal() { this.open = true; }
   close() { this.open = false; this.emit('close'); }
@@ -68,10 +69,10 @@ test('day month and year group existing dates while unknown dates stay explicitl
 
 test('model tags control filtering and pages never silently wrap or duplicate photos', () => {
   const media = Array.from({ length: 13 }, (_, index) => sample(String(index), null)); media.push(sample('another', null, ['another-model']));
-  const pages = buildAlbumPages(media); assert.deepEqual(pages.map((page) => page.items.length), [8, 5]);
+  const pages = buildAlbumPages(media, { filter: 'model' }); assert.deepEqual(pages.map((page) => page.items.length), [8, 5]);
   assert.equal(new Set(pages.flatMap((page) => page.items.map((item) => item.id))).size, 13);
   assert.equal(buildAlbumPages(media, { filter: 'all', view: 'year' }).flatMap((page) => page.items).length, 14);
-  assert.equal(buildAlbumPages(media, { modelId: 'absent' }).length, 0);
+  assert.equal(buildAlbumPages(media, { modelId: 'absent', filter: 'model' }).length, 0);
 });
 
 test('paper placement is stable and stays within the requested ten-percent jitter', () => {
@@ -90,14 +91,14 @@ test('album creates three entry-safe papers, truthful labels and disabled empty 
   assert.equal(f.find('album-cover').parentElement,f.find('album-filter-tab').parentElement);
   assert.equal(f.find('album-cover-unit').classList.contains('album-cover-unit'),true);
   assert.equal(f.find('rule-top'),undefined);
-  assert.deepEqual(f.api.state, { pageIndex: 0, pageCount: 1, view: 'day', filter: 'model', count: 4, playerOpen: false });
+  assert.deepEqual(f.api.state, { pageIndex: 0, pageCount: 1, view: 'day', filter: 'all', order: 'desc', count: 4, playerOpen: false });
 });
 
 test('tabs switch scope and density, and locale updates keep content selection', (t) => {
-  const f = fixture(t); f.find('album-filter-tab').emit('click'); assert.equal(f.api.state.filter, 'all'); assert.equal(f.api.state.count, 4);
+  const f = fixture(t); f.find('album-filter-tab').emit('click'); assert.equal(f.api.state.filter, 'model'); assert.equal(f.api.state.count, 4);
   f.find('album-view').emit('click'); assert.equal(f.api.state.view, 'month'); assert.equal(f.find('album-desk').classList.contains('view-month'), true);
   const poses = f.container.findAll('album-photo-card').map((card) => card.style.getPropertyValue('--jitter-x'));
-  f.api.setLanguage('ja'); assert.equal(f.find('album-group-title').textContent, '日付未設定'); assert.equal(f.find('album-filter-tab').textContent, 'すべての写真');
+  f.api.setLanguage('ja'); assert.equal(f.find('album-group-title').textContent, '日付未設定'); assert.equal(f.find('album-filter-tab').textContent, 'このモデル');
   assert.deepEqual(f.container.findAll('album-photo-card').map((card) => card.style.getPropertyValue('--jitter-x')), poses);
 });
 
@@ -131,13 +132,13 @@ test('photo player opens correct photo, cycles with keys and restores focus on c
   const event = f.dialog.emit('keydown', { key: 'ArrowRight' }); assert.equal(event.prevented, true); assert.equal(event.stopped, true);
   assert.equal(f.dialog.find('album-player-image').src, './assets/frame-04.jpg');
   f.dialog.find('album-player-next').emit('click'); assert.equal(f.dialog.find('album-player-image').src, './assets/frame-01.jpg');
-  f.api.closePlayer(); assert.equal(f.doc.activeElement, card); assert.equal(f.doc.body.classList.contains('modal-open'), false);
+  f.api.closePlayer(); assert.equal(f.doc.activeElement === f.find('album-photo-card'), true); assert.equal(f.doc.body.classList.contains('modal-open'), false);
 });
 
 test('disable, model switch and destruction close player and remove listeners', (t) => {
   const f = fixture(t); f.api.openPlayer(0); f.api.setEnabled(false);
   assert.equal(f.api.state.playerOpen, false); assert.equal(f.api.openPlayer(0), false); assert.equal(f.find('album-photo-card').disabled, true);
-  f.api.setEnabled(true); f.api.setModel('unknown'); assert.equal(f.api.state.count, 0); assert.equal(f.find('album-empty').hidden, false);
+  f.api.setEnabled(true); f.api.setModel('unknown'); assert.equal(f.api.state.count, 4); f.api.setFilter('model'); assert.equal(f.api.state.count, 0); assert.equal(f.find('album-empty').hidden, false);
   f.api.setFilter('all'); assert.equal(f.api.state.count, 4);
   f.api.destroy(); f.api.destroy(); assert.equal(f.container.children.length, 0); assert.equal(f.frames.size, 0); assert.equal(f.doc.body.find('album-player'), undefined);
   assert.ok([...f.doc.listeners.values()].every((listeners) => listeners.size === 0)); assert.equal(f.api.openPlayer(0), false);
@@ -165,7 +166,124 @@ test('missing and empty capture dates use None without inventing a calendar labe
  assert.equal(f.find('album-date-mark').getAttribute('aria-label'), '日期待补充');
  f.api.setLanguage('ja');
  assert.equal(f.find('album-date-year').textContent, 'None');
- f.api.setModel('unknown');
+ f.api.setMedia([]);
  assert.equal(f.find('album-date-year').textContent, 'None');
  assert.equal(f.find('album-date-mark').getAttribute('aria-label'), '表示する写真がありません');
+});
+
+test('all photos is the initial scope, including unclassified and other-model records', t => {
+ const f = fixture(t, { media: [sample('unclassified', null, []), sample('shiratsume', null), sample('milfy', null, ['milfy'])] });
+ assert.equal(f.api.state.filter, 'all'); assert.equal(f.api.state.count, 3);
+ assert.equal(f.find('album-filter-tab').textContent, '全部照片');
+ assert.equal(f.find('album-group-count').parentElement, f.find('album-page-meta'));
+ f.find('album-filter-tab').emit('click'); assert.equal(f.api.state.count, 1);
+ assert.equal(f.find('album-photo-image').src, './shiratsume-small.jpg');
+ f.api.setModel('milfy'); assert.equal(f.api.state.count, 1);
+ assert.equal(f.find('album-photo-image').src, './milfy-small.jpg');
+ f.api.setFilter('all'); f.api.setModel('unknown'); assert.equal(f.api.state.count, 3);
+});
+
+test('chronological order sorts groups and their overflow without mixing months or moving undated photos first', () => {
+ const media = [...Array.from({ length: 10 }, (_, i) => sample(`nov${i}`, `2026-11-${String(i + 1).padStart(2, '0')}`)), sample('undated', null), sample('oct', '2026-10-04'), sample('old', '2025-12-31')];
+ const before = JSON.stringify(media);
+ const pages = buildAlbumPages(media, { order: 'asc' });
+ assert.deepEqual(pages.map(page => [page.key, page.items.length]), [['2025-12', 1], ['2026-10', 1], ['2026-11', 8], ['2026-11', 2], ['undated', 1]]);
+ assert.deepEqual(pages[2].items.map(item => item.id), Array.from({ length: 8 }, (_, i) => `nov${i}`));
+ assert.deepEqual(pages[3].items.map(item => item.id), ['nov8', 'nov9']);
+ assert.equal(buildAlbumPages(media, { order: 'desc' }).at(-1).key, 'undated');
+ assert.deepEqual(buildAlbumPages(media, { view: 'month', order: 'asc' }).map(page => page.key), ['2025', '2026', '2026', 'undated']);
+ assert.equal(JSON.stringify(media), before);
+});
+
+test('position rail changes pages on release, clamps its target and stays in sync after sorting and localization', t => {
+ const f = fixture(t, { media: [sample('new', '2026-11-02'), sample('old', '2025-06-03'), sample('undated', null, [])] });
+ const rail = f.find('album-page-position'); const sort = f.find('album-sort');
+ assert.equal(rail.type, 'range'); assert.equal(rail.max, '3'); assert.equal(rail.disabled, false);
+ rail.value = '3'; rail.emit('input');
+ assert.equal(f.api.state.pageIndex, 0, 'dragging previews the rail without repeatedly replacing photos');
+ assert.equal(rail.getAttribute('aria-valuetext'), '03 / 03');
+ rail.emit('change'); assert.equal(f.api.state.pageIndex, 2); assert.equal(f.find('album-date-year').textContent, 'None');
+ rail.value = '99'; rail.emit('change'); assert.equal(f.api.state.pageIndex, 2);
+ sort.value = 'asc'; sort.emit('change');
+ assert.equal(f.api.state.order, 'asc'); assert.equal(f.api.state.pageIndex, 0); assert.equal(f.api.state.filter, 'all');
+ assert.equal(f.find('album-date-year').textContent, '2025'); assert.equal(rail.value, '1');
+ f.api.setLanguage('ja'); assert.equal(sort.value, 'asc'); assert.equal(sort.children[1].textContent, '古い順');
+ assert.equal(rail.getAttribute('aria-label'), 'アルバムのページ位置');
+ assert.equal(f.api.setOrder('random'), false); assert.equal(f.api.state.order, 'asc');
+ f.api.setEnabled(false); assert.equal(rail.disabled, true); assert.equal(sort.disabled, true);
+});
+
+test('empty and single-page albums expose truthful positions without an unusable page rail', t => {
+ const f = fixture(t, { media: [] }); const rail = f.find('album-page-position');
+ assert.equal(rail.disabled, true); assert.equal(rail.getAttribute('aria-valuetext'), '00 / 00');
+ f.api.setMedia([sample('only', null)]);
+ assert.equal(rail.disabled, true); assert.equal(rail.getAttribute('aria-valuetext'), '01 / 01');
+});
+
+test('player description sits above its date metadata and the photo aspect updates without stale closures', t => {
+ const f = fixture(t, { media: [{ ...sample('portrait', '2025-03-12', []), width: 1200, height: 1800, caption: { zh: '梦开始的地方', ja: '夢の始まり' }, worldName: 'A quiet world' }] });
+ f.api.openPlayer(0);
+ const description = f.dialog.find('album-player-description'); const metadata = f.dialog.find('album-player-caption'); const image = f.dialog.find('album-player-image');
+ assert.equal(description.textContent, '梦开始的地方'); assert.equal(description.hidden, false);
+ assert.equal(metadata.textContent, '01 / 01 · 2025 / 03 / 12 · A quiet world');
+ assert.deepEqual(f.dialog.find('album-player-figure').children, [image, description, metadata]);
+ assert.equal(f.dialog.style.getPropertyValue('--player-image-aspect'), '0.666667');
+ assert.equal(f.dialog.getAttribute('data-photo-orientation'), 'portrait');
+ image.naturalWidth = 3840; image.naturalHeight = 2160; image.emit('load');
+ assert.equal(f.dialog.style.getPropertyValue('--player-image-aspect'), '1.777778');
+ image.naturalWidth = 0; image.naturalHeight = 0; image.emit('load');
+ assert.equal(f.dialog.style.getPropertyValue('--player-image-aspect'), '1.777778');
+ f.api.setLanguage('ja'); assert.equal(description.textContent, '夢の始まり');
+});
+
+test('closing a photo reached on another page quietly returns to its page, card and focus', t => {
+ const media = Array.from({ length: 17 }, (_, i) => sample(`p${i}`, null, []));
+ const before = JSON.stringify(media); const f = fixture(t, { media });
+ f.find('album-photo-card').focus(); f.api.openPlayer(0);
+ for (let i = 0; i < 9; i++) f.dialog.find('album-player-next').emit('click');
+ assert.equal(f.dialog.find('album-player-image').src, './p9.jpg');
+ assert.equal(f.api.state.pageIndex, 0, 'the paper stays covered until closing starts');
+ f.api.closePlayer();
+ assert.equal(f.api.state.pageIndex, 1); assert.equal(f.api.state.playerOpen, false);
+ assert.equal(f.find('album-page-status').textContent, '02 / 03');
+ const target = f.container.findAll('album-photo-card')[1];
+ assert.equal(target.children[0].src, './p9-small.jpg');
+ assert.equal(target.children[0].loading, 'eager');
+ assert.equal(f.doc.activeElement === target, true);
+ assert.deepEqual(target.scrollOptions, { block: 'nearest', inline: 'nearest', behavior: 'instant' });
+ assert.equal(f.ready.filter(event => event.reason === 'player-return').length, 1);
+ assert.equal(f.find('album-desk').getAttribute('data-page-motion'), 'idle');
+ assert.equal(JSON.stringify(media), before);
+});
+
+test('immediate player shutdown never navigates to a viewed photo or replays return preparation', t => {
+ const f = fixture(t, { media: Array.from({ length: 10 }, (_, i) => sample(`p${i}`, null)) });
+ f.api.openPlayer(0);
+ for (let i = 0; i < 9; i++) f.dialog.find('album-player-next').emit('click');
+ f.api.setEnabled(false);
+ assert.equal(f.api.state.pageIndex, 0); assert.equal(f.api.state.playerOpen, false);
+ assert.equal(f.ready.some(event => event.reason === 'player-return'), false);
+ f.api.setEnabled(true); f.api.openPlayer(0);
+ f.api.setMedia([sample('replacement', null)]);
+ assert.equal(f.api.state.pageIndex, 0); assert.equal(f.api.state.playerOpen, false);
+ assert.equal(f.ready.some(event => event.reason === 'player-return'), false);
+});
+
+test('a selected photo excluded from the current album falls back to closing without changing the page', t => {
+ const f = fixture(t, { media: [sample('shiratsume', null), sample('milfy', null, ['milfy'])] });
+ f.api.openPlayer('milfy'); f.api.setFilter('model');
+ const events = f.ready.length; f.api.closePlayer();
+ assert.equal(f.api.state.pageIndex, 0); assert.equal(f.api.state.playerOpen, false);
+ assert.equal(f.api.state.count, 1); assert.equal(f.ready.length, events);
+});
+
+test('Escape follows the selected photograph back to its page before closing', t => {
+ const f = fixture(t, { media: Array.from({ length: 9 }, (_, i) => sample(`p${i}`, null)) });
+ f.api.openPlayer(0);
+ for (let i = 0; i < 8; i++) f.dialog.find('album-player-next').emit('click');
+ const cancel = f.dialog.emit('cancel');
+ assert.equal(cancel.prevented, true); assert.equal(f.api.state.playerOpen, false);
+ assert.equal(f.api.state.pageIndex, 1);
+ assert.equal(f.doc.activeElement === f.find('album-photo-card'), true);
+ assert.equal(f.find('album-photo-image').src, './p8-small.jpg');
 });

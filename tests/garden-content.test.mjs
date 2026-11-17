@@ -4,6 +4,17 @@ import { normalizeGardenContent, publicGardenContent, resolveGardenMedia, safeGa
 
 const privateKey = `private/originals/${'a'.repeat(64)}.png`;
 
+test('photo model choices normalize known names and treat the old None placeholder as unclassified', () => {
+  const input = { media: [
+    { id: 'unclassified', url: 'media/a.webp', modelIds: ['None', ' none ', ''] },
+    { id: 'both', url: 'media/b.webp', modelIds: ['Shiratsume', 'shiratsume', 'MILFY', 'a-future-model'] },
+  ] };
+  const before = JSON.stringify(input), result = normalizeGardenContent(input);
+  assert.deepEqual(result.media[0].modelIds, []);
+  assert.deepEqual(result.media[1].modelIds, ['shiratsume', 'milfy', 'a-future-model']);
+  assert.equal(JSON.stringify(input), before, 'reading a document must not mutate the stored draft');
+});
+
 test('existing drafts migrate only the retired stock branding and keep custom text',()=>{
   const input={texts:{site:{zh:{chooseModel:'选择一座小庭院',heroDescription:'我的自定义介绍'},ja:{chooseModel:'小さな庭を選ぶ'}},fixed:{zh:{coordinate:"SHIRATSUME'S LITTLE GARDEN"}},personal:{zh:{eyebrow:'THE PERSON BEHIND THIS LITTLE GARDEN.'}}}};
   const result=normalizeGardenContent(input);

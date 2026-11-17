@@ -17,12 +17,23 @@ export function albumPagePhotoFrames(kind = 'stick', rest = 'none') {
   ];
 }
 
+/** Dates travel left to right while their stationary CSS rotation stays intact. */
+export function albumPageDateFrames(kind = 'stick', rest = 'none') {
+  const base = rest && rest !== 'none' ? `${rest} ` : '';
+  const at = (x, opacity, offset) => ({ transform: x ? `${base}translateX(${x}px)` : rest, opacity, offset });
+  return kind === 'peel' ? [
+    at(0, 1, 0), at(6, 1, .2), at(36, 0, 1),
+  ] : [
+    at(-42, 0, 0), at(2, 1, .76), at(0, 1, 1),
+  ];
+}
+
 /** Bound the total wait even for the densest twelve-photo page. */
 export function albumPagePhotoDelay(index, count) {
   return Math.max(0, index) * Math.min(ALBUM_PAGE_MOTION_TIMING.stagger, ALBUM_PAGE_MOTION_TIMING.spread / Math.max(1, count - 1));
 }
 
-/** Owns page-change prints only. Chapter paper entrance has a separate clock. */
+/** Owns page-change prints and dates. Chapter paper entrance has a separate clock. */
 export function createAlbumPageMotion({ root, reducedMotion = () => false, isActive = () => true } = {}) {
   if (!root?.ownerDocument) throw new TypeError('An album page root is required.');
   const doc = root.ownerDocument, win = doc.defaultView;
@@ -79,6 +90,17 @@ export function createAlbumPageMotion({ root, reducedMotion = () => false, isAct
       current.animations.push(animation);
       return animation.finished.catch(() => false);
     });
+    const date = root.querySelector?.('.album-date-mark');
+    if (date && typeof date.animate === 'function') {
+      const rest = win?.getComputedStyle?.(date)?.transform || 'none';
+      const animation = date.animate(albumPageDateFrames(kind, rest), {
+        // Finish with the last print rather than leaving a gap after its stagger.
+        duration: ALBUM_PAGE_MOTION_TIMING[kind] + albumPagePhotoDelay(nodes.length - 1, nodes.length),
+        easing: kind === 'peel' ? 'cubic-bezier(.4,0,.62,1)' : 'cubic-bezier(.2,.7,.3,1)', fill: 'both',
+      });
+      current.animations.push(animation);
+      promises.push(animation.finished.catch(() => false));
+    }
     return Promise.all(promises);
   }
   async function transition(current, oldPhotos) {

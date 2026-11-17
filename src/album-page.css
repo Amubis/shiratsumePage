@@ -1,9 +1,9 @@
 /* The front sheet bleeds past the desk; the ink keeps an independent safe area. */
-.primary-album.album-inner { --album-inset-top: 5svh; --album-bleed-left: 20vw; --album-bleed-bottom: 14svh; width: 81.5vw; margin-left: 14.5vw; min-height: 100svh; padding: var(--album-inset-top) 2vw 6svh 0; }
+.primary-album.album-inner { --album-inset-top: 3svh; --album-bleed-left: 20vw; --album-bleed-bottom: 14svh; width: 81.5vw; margin-left: 14.5vw; min-height: 100svh; padding: var(--album-inset-top) 2vw 6svh 0; }
 body:not(.theme-preview) #moments { overflow: clip; }
 .primary-album .album-desk { height: 89svh; min-height: 570px; }
 .primary-album .album-paper { background-color: #faf5eb; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.065' filter='url(%23n)'/%3E%3C/svg%3E"); }
-.primary-album .album-paper.layer-front { --paper-rotation: -1.1deg; left: calc(-1 * var(--album-bleed-left)); bottom: calc(-1 * var(--album-bleed-bottom)); padding: 32px 38px calc(var(--album-bleed-bottom) + 23px) calc(var(--album-bleed-left) + 12px); isolation: isolate; }
+.primary-album .album-paper.layer-front { --paper-rotation: -1.1deg; left: calc(-1 * var(--album-bleed-left)); bottom: calc(-1 * var(--album-bleed-bottom)); padding: 24px 38px calc(var(--album-bleed-bottom) + 23px) calc(var(--album-bleed-left) + 12px); isolation: isolate; }
 .primary-album .album-paper.layer-middle { left: calc(8px - var(--album-bleed-left)); bottom: calc(5px - var(--album-bleed-bottom)); --paper-rotation: 1.3deg; }
 .primary-album .album-paper.layer-back { left: calc(19px - var(--album-bleed-left)); bottom: calc(15px - var(--album-bleed-bottom)); --paper-rotation: -2deg; }
 .primary-album .album-cover { background-color: #eeebd7; width: 105vw; left: -19vw; top: calc(-1 * var(--album-inset-top) - 365px); height: 400px; z-index: 60; }
@@ -55,9 +55,9 @@ body.on-album .side-highlight { color: var(--theme); }
 @media (max-width:1100px) and (min-width:761px) { .primary-album.album-inner { width: 79.5vw; margin-left: 14.5vw; padding-right: 3vw; } .primary-album .album-heading { column-gap: 12px; padding-left: 5px; } .primary-album .album-photo-card { padding: 6px 6px 22px; } .primary-album .album-title { font-size: 4.1vw; } }
 @media (max-width:760px) {
  html { scroll-snap-type: y proximity; }
- .primary-album.album-inner { --album-inset-top: 108px; --album-bleed-left: 32px; --album-bleed-bottom: 30px; width: auto; margin: 0; padding: 108px 40px 118px 26px; }
+ .primary-album.album-inner { --album-inset-top: 100px; --album-bleed-left: 32px; --album-bleed-bottom: 30px; width: auto; margin: 0; padding: 100px 40px 118px 26px; }
  .primary-album .album-desk { height: auto; min-height: 820px; width: 100%; margin: 0; }
- .primary-album .album-paper.layer-front { position: relative; left: auto; bottom: auto; width: calc(100% + var(--album-bleed-left)); margin-left: calc(-1 * var(--album-bleed-left)); margin-bottom: -30px; padding: 55px 14px 86px calc(var(--album-bleed-left) + 12px); min-height: 820px; }
+ .primary-album .album-paper.layer-front { position: relative; left: auto; bottom: auto; width: calc(100% + var(--album-bleed-left)); margin-left: calc(-1 * var(--album-bleed-left)); margin-bottom: -30px; padding: 47px 14px 86px calc(var(--album-bleed-left) + 12px); min-height: 820px; }
  .primary-album .album-cover { left: -56px; top: -450px; width: 130vw; }
  .primary-album .album-filter-tab { left: 12px; top: -12px; font-size: 10px; min-height: 58px; width: 106px; }
  .primary-album .album-heading { grid-template-columns: 1fr auto; gap: 10px 12px; margin: 0 0 13px; padding-left: 0; }
@@ -94,17 +94,35 @@ body.on-album .side-highlight { color: var(--theme); }
 .primary-album .album-tab:active:not(:disabled) { scale:.96; }
 
 /* A single tilted plane keeps the filter tab tucked under its paper edge. */
-.primary-album .album-cover-unit { position:absolute;top:calc(-1 * var(--album-inset-top) - 260px);left:-19vw;width:105vw;height:400px;transform:rotate(-8deg);transform-origin:left bottom;z-index:60;isolation:isolate;pointer-events:none; }
+.primary-album .album-cover-unit { position:absolute;top:calc(-1 * var(--album-inset-top) - 292px);left:-19vw;width:105vw;height:400px;transform:rotate(-8deg);transform-origin:left bottom;z-index:60;isolation:isolate;pointer-events:none; }
 .primary-album .album-cover-unit .album-cover { inset:0;top:0;left:0;width:100%;height:100%;transform:none;transform-origin:left bottom;z-index:2; }
 .primary-album .album-cover-unit .album-filter-tab { top:calc(100% - 10px);left:calc(19vw - 116px);width:120px;min-height:72px;padding:22px 12px 12px;transform:none;transform-origin:left top;z-index:1;pointer-events:auto; }
 /* Display type stays heavy; the translated heading sits directly beside it. */
 .primary-album .album-heading { display:flex;align-items:center;flex-wrap:nowrap;gap:clamp(16px,1.6vw,30px);padding-left:16px;margin-top:14px;margin-bottom:12px; }
 .primary-album .album-title { flex:0 1 auto;min-width:0;font-family:"Shiratsume Album Display","Shiratsume Album CJK","Shiratsume Text",var(--display-strong);font-size:clamp(70px,7.2vw,132px);font-weight:400;font-style:normal;font-synthesis:none;line-height:1.08;letter-spacing:-.055em;transform:skewX(-5deg); }
+/* Dela lacks simplified 级: keep a Chinese heading in one real heavy face. */
+html[lang="zh-CN"] .primary-album .album-title { font-family:"Shiratsume Text",sans-serif;font-weight:900;font-variation-settings:"wght" 900; }
 .album-title-clover { left:-52px;top:-5px;width:clamp(86px,8.2vw,146px);height:clamp(86px,8.2vw,146px); }
 .primary-album .album-cover-note { flex:0 0 auto;margin-left:0;font-family:var(--body);font-size:clamp(11px,1.05vw,18px);font-weight:650;font-style:normal;max-width:none;white-space:nowrap; }
-.primary-album .album-page-status { flex:0 0 auto;min-width:80px;margin-left:auto; }
+.primary-album .album-page-meta { display:flex;flex-direction:column;align-items:stretch;flex:0 0 auto;width:clamp(96px,8vw,138px);margin-left:auto;text-align:right; }
+.primary-album .album-page-status { flex:0 0 auto;min-width:0;margin:0;padding:0;border-bottom:0;line-height:1.3; }
+.primary-album .album-page-meta .album-group-count { font-size:8px;font-weight:500;letter-spacing:.08em;line-height:1.3; }
+/* A thin visible rail retains the larger native keyboard and pointer target. */
+.primary-album .album-page-position { appearance:none;-webkit-appearance:none;display:block;width:100%;height:24px;margin:0;padding:0;background:transparent;cursor:ew-resize;accent-color:var(--theme-dark);touch-action:pan-y; }
+.primary-album .album-page-position::-webkit-slider-runnable-track { height:3px;border-radius:3px;background:color-mix(in srgb,var(--theme-dark) 24%,transparent); }
+.primary-album .album-page-position::-webkit-slider-thumb { appearance:none;-webkit-appearance:none;width:26px;height:7px;margin-top:-2px;border:0;border-radius:5px;background:var(--theme-dark);transition:box-shadow .22s var(--easing); }
+.primary-album .album-page-position::-moz-range-track { height:3px;border-radius:3px;background:color-mix(in srgb,var(--theme-dark) 24%,transparent); }
+.primary-album .album-page-position::-moz-range-thumb { width:26px;height:7px;border:0;border-radius:5px;background:var(--theme-dark);transition:box-shadow .22s var(--easing); }
+.primary-album .album-page-position:hover:not(:disabled)::-webkit-slider-thumb { box-shadow:0 0 0 3px color-mix(in srgb,var(--theme) 24%,transparent); }
+.primary-album .album-page-position:hover:not(:disabled)::-moz-range-thumb { box-shadow:0 0 0 3px color-mix(in srgb,var(--theme) 24%,transparent); }
+.primary-album .album-page-position:disabled { opacity:.45;cursor:default; }
+.primary-album .album-page-position:focus-visible { outline:2px solid var(--theme-dark);outline-offset:2px;border-radius:4px; }
+.primary-album .album-group-heading { justify-content:flex-start;align-items:center;gap:18px; }
+.primary-album .album-sort-label { display:inline-flex;align-items:center;gap:8px;font-size:10px;color:var(--muted); }
+.primary-album .album-sort { max-width:180px;min-height:30px;padding:3px 23px 3px 5px;border:0;border-bottom:1px solid color-mix(in srgb,var(--theme-dark) 35%,transparent);border-radius:0;background:transparent;color:var(--ink);font-size:10px;line-height:1.5;cursor:pointer; }
+.primary-album .album-sort:focus-visible { outline:2px solid var(--theme-dark);outline-offset:3px; }
 /* Ordinary labels use the same bundled sans face in both languages. */
-.primary-album :is(.album-cover-note,.album-page-status,.album-filter-tab,.album-tab,.album-group-title,.album-group-count,.album-photo-label,.album-source-note) { font-family:var(--body);font-variation-settings:normal;font-synthesis:none; }
+.primary-album :is(.album-cover-note,.album-page-status,.album-filter-tab,.album-tab,.album-group-title,.album-group-count,.album-photo-label,.album-source-note,.album-sort-label,.album-sort) { font-family:var(--body);font-variation-settings:normal;font-synthesis:none; }
 /* Keep the date in the paper's background, with the large clean numerals of the reference. */
 .primary-album .album-date-mark { right:18px;bottom:calc(var(--album-bleed-bottom) + 56px);width:35%;max-width:510px;color:color-mix(in srgb,var(--theme) 60%,var(--paper));font-family:var(--body);font-weight:750;font-variation-settings:"wght" 750;font-style:normal;line-height:.88;rotate:-8deg; }
 .primary-album .album-date-year { font-size:clamp(42px,4vw,76px);letter-spacing:-.06em; }
@@ -114,11 +132,13 @@ body.on-album .side-highlight { color: var(--theme); }
 .primary-album .album-date-mark.is-undated .album-date-year { font-size:clamp(120px,13vw,250px);line-height:.95;letter-spacing:-.055em;white-space:nowrap; }
 @media(max-width:1100px) and (min-width:761px){.primary-album .album-title{font-size:6.5vw;}.primary-album .album-cover-note{font-size:11px;}.primary-album .album-heading{gap:16px;}.primary-album .album-page-status{min-width:64px;font-size:11px;}}
 @media(max-width:760px){
- .primary-album .album-cover-unit { left:-55px;top:calc(-1 * var(--album-inset-top) - 320px);width:135vw; }
+ .primary-album .album-cover-unit { left:-55px;top:calc(-1 * var(--album-inset-top) - 334px);width:135vw; }
  .primary-album .album-cover-unit .album-filter-tab{left:68px;min-height:62px;width:106px;padding:18px 10px 11px;font-size:10px;}
  .primary-album .album-heading { display:grid;grid-template-columns:1fr auto;gap:5px 12px;padding-left:0;margin-top:0; }
  .primary-album .album-title { font-size:clamp(43px,12.5vw,68px);grid-column:1/-1; }
  .primary-album .album-cover-note { font-size:10px; }.primary-album .album-page-status{min-width:58px;font-size:10px;}
+ .primary-album .album-page-meta { width:92px; }.primary-album .album-page-meta .album-group-count { font-size:7px; }
+ .primary-album .album-group-heading { gap:10px;flex-wrap:wrap; }.primary-album .album-sort-label,.primary-album .album-sort { font-size:9px; }
  .album-title-clover { width:66px;height:66px;left:-20px;top:-12px; }
  .primary-album .album-date-mark { width:65%;max-width:260px;right:12px;bottom:48px; }
  .primary-album .album-date-year { font-size:32px; }.primary-album .album-date-month{font-size:124px;}

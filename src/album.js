@@ -13,10 +13,11 @@ export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) =>
 })));
 
 export const ALBUM_VIEWS = Object.freeze(['day', 'month', 'year']);
+export const ALBUM_ORDERS = Object.freeze(['desc', 'asc']);
 const PAGE_SIZES = Object.freeze({ day: 8, month: 9, year: 12 });
 export const ALBUM_COPY = Object.freeze({
-  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片' },
-  ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません' },
+  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片', pagePosition: '相册页位置', dateOrder: '拍摄时间排序', newestFirst: '由新到旧', oldestFirst: '由旧到新' },
+  ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません', pagePosition: 'アルバムのページ位置', dateOrder: '撮影日時の並び順', newestFirst: '新しい順', oldestFirst: '古い順' },
 });
 const albumCopyDictionary = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(ALBUM_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
@@ -49,8 +50,9 @@ export function normalizeAlbumMedia(media) {
   });
 }
 
-export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'model', view = 'day' } = {}) {
+export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'all', view = 'day', order = 'desc' } = {}) {
   const mode = ALBUM_VIEWS.includes(view) ? view : 'day';
+  const direction = order === 'asc' ? 1 : -1;
   const filtered = normalizeAlbumMedia(media).filter((item) => filter === 'all' || item.modelIds.includes(modelId));
   const groups = new Map();
   for (const item of filtered) {
@@ -60,9 +62,9 @@ export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'model
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
-  const keys = [...groups.keys()].sort((a, b) => a === 'undated' ? 1 : b === 'undated' ? -1 : b.localeCompare(a));
+  const keys = [...groups.keys()].sort((a, b) => a === 'undated' ? 1 : b === 'undated' ? -1 : direction * a.localeCompare(b));
   return keys.flatMap((key) => {
-    const items = groups.get(key).sort((a, b) => String(b.takenAt || '').localeCompare(String(a.takenAt || '')));
+    const items = groups.get(key).sort((a, b) => direction * String(a.takenAt || '').localeCompare(String(b.takenAt || '')));
     const pages = [];
     for (let offset = 0; offset < items.length; offset += PAGE_SIZES[mode]) pages.push({ key, items: items.slice(offset, offset + PAGE_SIZES[mode]), groupPage: pages.length });
     return pages;
@@ -86,8 +88,9 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let locale = language === 'ja' ? 'ja' : 'zh';
   let dictionary = albumCopyDictionary(copy);
   let records = normalizeAlbumMedia(media);
-  let filter = 'model';
+  let filter = 'all';
   let view = 'day';
+  let order = 'desc';
   let pageIndex = 0;
   let pages = [];
   let enabled = true;
@@ -129,14 +132,22 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const filterButton = button('album-filter-tab');
   const heading = element('div', 'album-group-heading');
   const groupTitle = element('p', 'album-group-title'); const groupCount = element('span', 'album-group-count');
-  heading.append(groupTitle, groupCount);
+  const orderSelect = element('select', 'album-sort');
+  const newestOption = element('option'); newestOption.value = 'desc';
+  const oldestOption = element('option'); oldestOption.value = 'asc';
+  orderSelect.append(newestOption, oldestOption);
+  heading.append(groupTitle, orderSelect);
   const grid = element('div', 'album-photo-grid');
   const empty = element('p', 'album-empty');
   const footer = element('div', 'album-paper-footer');
   const pageStatus = element('span', 'album-page-status');
   pageStatus.setAttribute('role', 'status'); pageStatus.setAttribute('aria-live', 'polite'); pageStatus.setAttribute('aria-atomic', 'true');
+  const pageMeta = element('div', 'album-page-meta');
+  const pagePosition = element('input', 'album-page-position');
+  pagePosition.type = 'range'; pagePosition.min = '1'; pagePosition.max = '1'; pagePosition.step = '1';
+  pageMeta.append(pageStatus, pagePosition, groupCount);
   const sourceNote = element('span', 'album-source-note'); footer.append(sourceNote);
-  albumHeading.append(pageStatus);
+  albumHeading.append(pageMeta);
   const dateMark = element('div', 'album-date-mark');
   const dateYear = element('span', 'album-date-year'); const dateMonth = element('span', 'album-date-month');
   dateMark.append(dateYear, dateMonth);
@@ -150,10 +161,10 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const dialog = element('dialog', 'album-player');
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');
   const playerContent = element('div', 'album-player-content'); const playerStage = element('div', 'album-player-stage'); const playerComments = element('aside', 'album-player-comments');
-  const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerCaption = element('figcaption', 'album-player-caption');
-  playerFigure.append(playerImage, playerCaption); playerStage.append(playerPrevious, playerFigure, playerNext); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent); doc.body.append(dialog);
+  const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerDescription = element('p', 'album-player-description'); const playerCaption = element('figcaption', 'album-player-caption');
+  playerFigure.append(playerImage, playerDescription, playerCaption); playerStage.append(playerPrevious, playerFigure, playerNext); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent); doc.body.append(dialog);
   const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
-  const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion});
+  const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion,onRequestClose:()=>closePlayer()});
   const pageMotion = createAlbumPageMotion({root,reducedMotion,isActive(){
     const section=root.closest?.('.page-section');
     return Boolean(section?.classList.contains('is-current') && !['album-entry-prepared','album-entry-playing','album-exit-playing','album-boundary-seeking'].some(name=>section.classList.contains(name)));
@@ -196,12 +207,22 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       else paintPointer();
     }
   }
+  function setPlayerAspect(width, height) {
+    const ratio = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0 ? width / height : 16 / 9;
+    dialog.style.setProperty('--player-image-aspect', ratio.toFixed(6));
+    dialog.setAttribute('data-photo-orientation', ratio < .9 ? 'portrait' : ratio > 1.1 ? 'landscape' : 'square');
+  }
+  bind(playerImage, 'load', () => {
+    if (playerImage.naturalWidth > 0 && playerImage.naturalHeight > 0) setPlayerAspect(playerImage.naturalWidth, playerImage.naturalHeight);
+  });
   function renderPlayer() {
     const item = playerItems[playerIndex]; if (!item) return;
+    setPlayerAspect(item.width, item.height);
     playerImage.src = item.url; playerImage.alt = altFor(item);
     const date = dateKey(item.takenAt, 'day');
     const caption = typeof item.caption === 'string' ? item.caption : item.caption?.[locale] || item.caption?.zh || '';
-    playerCaption.textContent = [`${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')}`, date === 'undated' ? text().undated : groupLabel(date), caption, item.worldName].filter(Boolean).join(' · ');
+    playerDescription.textContent = caption; playerDescription.hidden = !caption;
+    playerCaption.textContent = [`${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')}`, date === 'undated' ? text().undated : groupLabel(date), item.worldName].filter(Boolean).join(' · ');
     playerPrevious.disabled = playerNext.disabled = playerItems.length < 2;
     commentPanel.setTarget('photo', item.id);
   }
@@ -215,8 +236,29 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     commentPanel.setActive(false);
     const hide = () => { if(dialog.open)dialog.close();else restorePlayerFocus(); };
     if (immediate === true) { playerMotion.cancel({hide}); return; }
-    if (dialog.open) void playerMotion.close({hide});
-    else restorePlayerFocus();
+    if (playerMotion.phase === 'close') return;
+    if (!dialog.open) { restorePlayerFocus(); return; }
+    const selectedId = playerItems[playerIndex]?.id;
+    const targetPage = pages.findIndex(page => page.items.some(item => item.id === selectedId));
+    let target = null;
+    if (targetPage >= 0) {
+      // Update the covered paper without replaying its page or chapter entrance.
+      // This also settles an interrupted page motion before measuring the landing.
+      pageMotion.cancel({commitPending:false});
+      if (targetPage !== pageIndex) { pageIndex = targetPage; render('player-return'); }
+      else clearInspection();
+      const slot = pages[pageIndex]?.items.findIndex(item => item.id === selectedId) ?? -1;
+      const card = cards[slot];
+      if (card && card.isConnected !== false) {
+        target = card;
+        if (card.children[0]) card.children[0].loading = 'eager';
+        try { card.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'instant'}); }
+        catch { card.scrollIntoView?.({block:'nearest',inline:'nearest'}); }
+        returnFocus = card;
+      }
+    }
+    playerPrevious.disabled = playerNext.disabled = true;
+    void playerMotion.close({target,image:playerImage,hide});
   }
   function openPlayer(idOrIndex = 0) {
     if (!enabled || destroyed) return false;
@@ -234,14 +276,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     return true;
   }
   function changePlayer(direction) {
-    if (!playerItems.length) return;
+    if (!playerItems.length || playerMotion.phase === 'close') return;
     playerIndex = ((playerIndex + direction) % playerItems.length + playerItems.length) % playerItems.length;
     renderPlayer();
   }
   function render(reason = 'initial') {
     if (destroyed) return;
     clearInspection(); cardBindings.splice(0).forEach((dispose) => dispose());
-    pages = buildAlbumPages(records, { modelId, filter, view }); pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
+    pages = buildAlbumPages(records, { modelId, filter, view, order }); pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
     const page = pages[pageIndex]; const total = pages.reduce((sum, page) => sum + page.items.length, 0);
     root.setAttribute('data-photo-count', String(page?.items.length || 0));
     root.style.setProperty('--album-photo-count', String(page?.items.length || 0));
@@ -251,9 +293,15 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     filterButton.setAttribute('aria-label', `${text().toggle} · ${filterButton.textContent}`); filterButton.setAttribute('aria-pressed', String(filter === 'all'));
     previous.textContent = `↑ ${text().previous}`; next.textContent = `${text().next} ↓`; mode.textContent = `◌ ${text()[view]}`;
     previous.setAttribute('aria-label', text().previous); next.setAttribute('aria-label', text().next); mode.setAttribute('aria-label', `${text().view} · ${text()[view]}`);
-    previous.disabled = !enabled || pageIndex <= 0; next.disabled = !enabled || pageIndex >= pages.length - 1; mode.disabled = filterButton.disabled = !enabled;
+    previous.disabled = !enabled || pageIndex <= 0; next.disabled = !enabled || pageIndex >= pages.length - 1; mode.disabled = filterButton.disabled = orderSelect.disabled = !enabled;
+    orderSelect.setAttribute('aria-label', text().dateOrder);
+    newestOption.textContent = text().newestFirst; oldestOption.textContent = text().oldestFirst; orderSelect.value = order;
     groupTitle.textContent = page ? groupLabel(page.key) : text().noPhoto; groupCount.textContent = `${total} ${text().photoCount}`;
     pageStatus.textContent = pages.length ? `${String(pageIndex + 1).padStart(2, '0')} / ${String(pages.length).padStart(2, '0')}` : '00 / 00';
+    pagePosition.max = String(Math.max(1, pages.length)); pagePosition.value = String(pageIndex + 1);
+    pagePosition.disabled = !enabled || pages.length <= 1;
+    pagePosition.setAttribute('aria-label', text().pagePosition); pagePosition.setAttribute('aria-valuetext', pageStatus.textContent);
+    pagePosition.style.setProperty('--album-page-position', `${pages.length > 1 ? pageIndex / (pages.length - 1) * 100 : 0}%`);
     const dated = page && page.key !== 'undated';
     dateMark.classList.toggle('is-undated', !dated);
     dateMark.setAttribute('aria-label', page ? groupLabel(page.key) : text().noPhoto);
@@ -292,7 +340,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     dialog.setAttribute('aria-label', text().player); playerClose.textContent = '×'; playerClose.setAttribute('aria-label', text().close);
     playerPrevious.textContent = '←'; playerNext.textContent = '→'; playerPrevious.setAttribute('aria-label', text().photoPrevious); playerNext.setAttribute('aria-label', text().photoNext);
     if (dialog.open) renderPlayer();
-    onReady({ pageIndex, pages: pages.length, count: total, view, filter, reason, pageKey: page?.key || null });
+    onReady({ pageIndex, pages: pages.length, count: total, view, filter, order, reason, pageKey: page?.key || null });
   }
   function goToPage(index) {
     if (!enabled || destroyed || !Number.isInteger(index) || index < 0 || index >= pages.length) return false;
@@ -300,9 +348,24 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     pageIndex = index; void pageMotion.run(()=>render('page')); return true;
   }
   function redraw(reason){pageMotion.cancel({commitPending:false});render(reason);}
+  function setOrder(nextOrder) {
+    if (destroyed || !ALBUM_ORDERS.includes(nextOrder)) return false;
+    order = nextOrder; pageIndex = 0; void pageMotion.run(() => render('order')); return true;
+  }
   bind(previous, 'click', () => goToPage(pageIndex - 1)); bind(next, 'click', () => goToPage(pageIndex + 1));
   bind(mode, 'click', () => { view = ALBUM_VIEWS[(ALBUM_VIEWS.indexOf(view) + 1) % ALBUM_VIEWS.length]; pageIndex = 0; void pageMotion.run(()=>render('view')); });
   bind(filterButton, 'click', () => { filter = filter === 'model' ? 'all' : 'model'; pageIndex = 0; void pageMotion.run(()=>render('filter')); });
+  bind(orderSelect, 'change', () => { if (enabled) setOrder(orderSelect.value); });
+  bind(pagePosition, 'input', () => {
+    const index = Math.max(0, Math.min(pages.length - 1, Math.round(Number(pagePosition.value)) - 1));
+    if (!Number.isFinite(index)) return;
+    pagePosition.style.setProperty('--album-page-position', `${pages.length > 1 ? index / (pages.length - 1) * 100 : 0}%`);
+    pagePosition.setAttribute('aria-valuetext', pages.length ? `${String(index + 1).padStart(2, '0')} / ${String(pages.length).padStart(2, '0')}` : '00 / 00');
+  });
+  bind(pagePosition, 'change', () => {
+    const index = Math.max(0, Math.min(pages.length - 1, Math.round(Number(pagePosition.value)) - 1));
+    if (!goToPage(index)) { pagePosition.value = String(pageIndex + 1); pagePosition.setAttribute('aria-valuetext', pageStatus.textContent); }
+  });
   bind(grid, 'pointerdown', () => { keyboardFocus = false; });
   bind(doc, 'keydown', (event) => { if (event.key === 'Tab') keyboardFocus = true; });
   bind(doc, 'visibilitychange', clearInspection);
@@ -315,7 +378,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   });
   render();
   return {
-    get state() { return { pageIndex, pageCount: pages.length, view, filter, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
+    get state() { return { pageIndex, pageCount: pages.length, view, filter, order, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
     setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; commentPanel.setLanguage(locale); redraw('language'); },
     setCopy(nextCopy) { if (destroyed) return; dictionary = albumCopyDictionary(nextCopy); redraw('copy'); },
     setCommentsService(next) { if (!destroyed) commentPanel.setService(next); },
@@ -325,7 +388,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     setMedia(nextMedia) { if (destroyed) return; closePlayer(true); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; redraw('media'); },
     setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; void pageMotion.run(()=>render('view')); return true; },
     setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; void pageMotion.run(()=>render('filter')); return true; },
-    goToPage, openPlayer, closePlayer,
+    setOrder, goToPage, openPlayer, closePlayer,
     destroy() { if (destroyed) return; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

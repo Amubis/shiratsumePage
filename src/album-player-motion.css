@@ -5,6 +5,12 @@
 .album-player.album-player-motion-opening::backdrop { animation: albumPlayerBackdropIn .18s ease-out both; }
 .album-player.album-player-motion-closing { will-change: opacity; }
 .album-player.album-player-motion-closing::backdrop { animation: albumPlayerBackdropOut .18s ease-out both; }
+.album-player.album-player-motion-returning { overflow: visible; }
+.album-player.album-player-motion-returning > :not(.album-player-return-print) { pointer-events: none; }
+.album-player.album-player-motion-returning::backdrop { animation-duration: .48s; animation-timing-function: cubic-bezier(.3,0,.2,1); }
+.album-player-return-print { position: absolute; z-index: 10; box-sizing: border-box; padding: var(--return-border, 10px) var(--return-border, 10px) var(--return-foot, 25px); background: var(--paper); box-shadow: 0 14px 34px #11170f35; pointer-events: none; transform-origin: 50% 50%; will-change: transform, opacity; }
+.album-player-return-print > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.album-photo-return-target { visibility: hidden; }
 .album-photo-charging { will-change: scale; }
 @keyframes albumPlayerBackdropIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes albumPlayerBackdropOut { from { opacity: var(--album-player-backdrop-from, 1); } to { opacity: 0; } }
