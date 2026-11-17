@@ -24,6 +24,10 @@ export function readDeploymentSettings(env = process.env) {
   };
   const username = (env.ADMIN_USERNAME || 'Amubis').trim();
   if (!username || username.length > 120 || /[\u0000-\u001f\u007f]/.test(username)) throw new Error('ADMIN_USERNAME must contain 1–120 characters.');
+  const workersSubdomain = (env.CLOUDFLARE_WORKERS_SUBDOMAIN || '').trim();
+  if (workersSubdomain && (!NAME.test(workersSubdomain) || workersSubdomain.length < 3 || workersSubdomain.length > 63)) {
+    throw new Error('CLOUDFLARE_WORKERS_SUBDOMAIN must be blank or 3–63 lowercase letters, digits or hyphens, with a letter or digit at each end.');
+  }
   const origins = (env.PUBLIC_SITE_ORIGINS || 'https://amubis.github.io').split(',').map(value => value.trim()).filter(Boolean);
   for (const value of origins) {
     let parsed;
@@ -31,7 +35,7 @@ export function readDeploymentSettings(env = process.env) {
     if (parsed.protocol !== 'https:' || parsed.origin !== value) throw new Error('PUBLIC_SITE_ORIGINS must be comma-separated HTTPS origins, without paths.');
   }
   return {
-    accountId, token, password, username, origins: [...new Set(origins)].join(','),
+    accountId, token, password, username, workersSubdomain, origins: [...new Set(origins)].join(','),
     workerName: named('CLOUDFLARE_WORKER_NAME', 'shiratsume-page', 1, 63),
     bucketName: named('CLOUDFLARE_R2_BUCKET', 'shiratsume-page', 3, 63),
     databaseName: named('CLOUDFLARE_D1_NAME', 'shiratsume-comments', 1, 63),
@@ -144,9 +148,35 @@ export async function deployCloudflare(settings, {
 } = {}) {
   await checkAssets(root);
   const api = cloudflareApi(settings, request);
-  // Read the account-level hostname before creating anything; never rename it implicitly.
-  const subdomain = (await api('/workers/subdomain', { missing: true }))?.result?.subdomain;
-  if (!subdomain || !NAME.test(subdomain)) throw new Error('Activate your workers.dev subdomain once in Cloudflare → Workers & Pages, then rerun. No account-level subdomain is changed by this workflow.');
+  // Read first, including once more immediately before creation. An existing
+  // account-level hostname always wins over input; this workflow never renames it.
+  const readSubdomain = async () => {
+    const response = await api('/workers/subdomain', { missing: true });
+    if (response === null || response.result?.subdomain === '' || (response.result && typeof response.result === 'object' && !Array.isArray(response.result) && Object.keys(response.result).length === 0)) return '';
+    const value = response.result?.subdomain;
+    if (typeof value !== 'string' || !NAME.test(value) || value.length > 63) throw new Error('Cloudflare returned an unexpected workers.dev subdomain. No account-level hostname was changed.');
+    return value;
+  };
+  let subdomain = await readSubdomain();
+  if (!subdomain) {
+    if (!settings.workersSubdomain) throw new Error('Activate your workers.dev subdomain in Cloudflare → Workers & Pages, or explicitly fill the optional workers_subdomain workflow input to create it, then rerun. An existing account-level subdomain is never renamed.');
+    subdomain = await readSubdomain();
+    if (!subdomain) {
+      let created;
+      try { created = await api('/workers/subdomain', { method: 'PUT', body: { subdomain: settings.workersSubdomain } }); }
+      catch (error) { throw new Error(`The requested workers.dev prefix could not be created. It may be unavailable; choose another explicit prefix or check Cloudflare permissions. ${error.message}`); }
+      subdomain = created.result?.subdomain;
+      if (subdomain !== settings.workersSubdomain) throw new Error('Cloudflare did not confirm the requested workers.dev prefix. Storage and Worker deployment were not started.');
+      let confirmed = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        confirmed = await readSubdomain();
+        if (confirmed) break;
+        if (attempt < 2) await delay(750);
+      }
+      if (confirmed !== subdomain) throw new Error('The new workers.dev prefix could not be verified. Rerun the workflow after Cloudflare finishes activation; storage and Worker deployment were not started.');
+      log(`Created the explicitly requested workers.dev prefix: ${subdomain}`);
+    }
+  }
 
   const bucketPath = `/r2/buckets/${settings.bucketName}`;
   if (!await api(bucketPath, { missing: true })) {

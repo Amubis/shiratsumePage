@@ -13,6 +13,11 @@ on:
         required: true
         default: shiratsume-page
         type: string
+      workers_subdomain:
+        description: 'Optional workers.dev prefix to create only if this account has none; existing prefix is never renamed'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -29,6 +34,7 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account_id || vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_R2_BUCKET: ${{ inputs.r2_bucket }}
+      CLOUDFLARE_WORKERS_SUBDOMAIN: ${{ inputs.workers_subdomain }}
       CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME || 'shiratsume-page' }}
       CLOUDFLARE_D1_NAME: ${{ vars.CLOUDFLARE_D1_NAME || 'shiratsume-comments' }}
       ADMIN_USERNAME: ${{ vars.ADMIN_USERNAME || 'Amubis' }}

@@ -10,13 +10,14 @@ const settings = readDeploymentSettings(credentials);
 const database = { name: 'shiratsume-comments', uuid: '12345678-1234-1234-1234-123456789abc' };
 const result = value => Response.json({ success: true, result: value });
 
-async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false } = {}) {
+async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'cloudflare-setup-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'worker'));
   await mkdir(join(root, 'dist'));
   await writeFile(join(root, 'dist/index.html'), 'website');
   const calls = [], commands = [], logs = [];
+  let createdSubdomain = '', subdomainReads = 0;
   const request = async (url, options = {}) => {
     const parsed = new URL(url);
     const path = parsed.pathname.replace(`/client/v4/accounts/${settings.accountId}`, '');
@@ -40,7 +41,18 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
       return Response.json({ authenticated: Boolean(options.headers?.Cookie) && !brokenSession, configured: true, mode: 'cloud' });
     }
     assert.equal(options.headers.Authorization, 'Bearer private-token');
-    if (path === '/workers/subdomain') return noSubdomain ? new Response(null, { status: 404 }) : result({ subdomain: 'amubis' });
+    if (path === '/workers/subdomain') {
+      if (method === 'PUT') {
+        assert.deepEqual(JSON.parse(options.body), { subdomain: requestedSubdomain });
+        if (unavailableSubdomain) return Response.json({ success: false, errors: [{ code: 10031, message: credentials.CLOUDFLARE_API_TOKEN }] }, { status: 409 });
+        createdSubdomain = requestedSubdomain;
+        return result({ subdomain: createdSubdomain });
+      }
+      subdomainReads++;
+      if (concurrentSubdomain && subdomainReads > 1) return result({ subdomain: 'already-created' });
+      if (noSubdomain && !createdSubdomain && emptySubdomain) return result({});
+      return noSubdomain && !createdSubdomain ? new Response(null, { status: 404 }) : result({ subdomain: createdSubdomain || 'amubis' });
+    }
     if (path === '/r2/buckets/shiratsume-page') return existing ? result({ name: settings.bucketName }) : new Response(null, { status: 404 });
     if (path === '/r2/buckets' && method === 'POST') return result({ name: settings.bucketName });
     if (path.endsWith('/domains/managed')) return result({ enabled: publicBucket });
@@ -55,7 +67,7 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
     commands.push({ args, options, config });
     if (failRun) throw new Error('Mock migration failure');
   };
-  const deploy = () => deployCloudflare(settings, { root, request, run, log: message => logs.push(message), env: credentials, random: () => 'unlogged-session-'.repeat(4), delay: async () => {} });
+  const deploy = () => deployCloudflare({ ...settings, workersSubdomain: requestedSubdomain }, { root, request, run, log: message => logs.push(message), env: credentials, random: () => 'unlogged-session-'.repeat(4), delay: async () => {} });
   return { root, request, run, calls, commands, logs, deploy };
 }
 
@@ -68,6 +80,8 @@ test('deployment validates only public input and presence of secrets without mak
   assert.throws(() => readDeploymentSettings({ ...credentials, CLOUDFLARE_R2_BUCKET: 'bad;command' }), /CLOUDFLARE_R2_BUCKET/);
   assert.throws(() => readDeploymentSettings({ ...credentials, PUBLIC_SITE_ORIGINS: 'https://example.com/path' }), /HTTPS origins/);
   assert.throws(() => readDeploymentSettings({ ...credentials, ADMIN_USERNAME: 'hidden\tcontrol' }), /ADMIN_USERNAME/);
+  for (const prefix of ['https://example.workers.dev', 'BadPrefix', '-prefix', 'x', 'x'.repeat(64)]) assert.throws(() => readDeploymentSettings({ ...credentials, CLOUDFLARE_WORKERS_SUBDOMAIN: prefix }), /CLOUDFLARE_WORKERS_SUBDOMAIN/);
+  assert.equal(readDeploymentSettings({ ...credentials, CLOUDFLARE_WORKERS_SUBDOMAIN: 'amubis-shiratsume' }).workersSubdomain, 'amubis-shiratsume');
 });
 
 test('first deploy creates only missing private resources, migrates before deployment, and sends secrets only in protected stdin', async t => {
@@ -119,6 +133,48 @@ test('an unconfigured account subdomain stops before any cloud mutation', async 
   const f = await fixture(t, { noSubdomain: true });
   await assert.rejects(f.deploy, /Activate your workers.dev subdomain/);
   assert.deepEqual(f.calls.map(call => call.path), ['/workers/subdomain']);
+});
+
+test('a missing workers.dev prefix is created only from explicit input before provisioning storage', async t => {
+  const f = await fixture(t, { noSubdomain: true, requestedSubdomain: 'amubis-shiratsume' });
+  const deployed = await f.deploy();
+  assert.equal(deployed.origin, 'https://shiratsume-page.amubis-shiratsume.workers.dev');
+  assert.deepEqual(f.calls.slice(0, 3), [{ path: '/workers/subdomain', method: 'GET' }, { path: '/workers/subdomain', method: 'GET' }, { path: '/workers/subdomain', method: 'PUT' }]);
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
+  assert.deepEqual(f.calls[3], { path: '/workers/subdomain', method: 'GET' }, 'new prefix is read back before storage setup');
+});
+
+test('a successful empty account subdomain object is treated as uninitialized', async t => {
+  const f = await fixture(t, { noSubdomain: true, emptySubdomain: true, requestedSubdomain: 'amubis-shiratsume' });
+  const deployed = await f.deploy();
+  assert.equal(deployed.origin, 'https://shiratsume-page.amubis-shiratsume.workers.dev');
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
+});
+
+test('an existing workers.dev prefix is reused even when a different prefix was explicitly entered', async t => {
+  const f = await fixture(t, { requestedSubdomain: 'amubis-shiratsume' });
+  const deployed = await f.deploy();
+  assert.equal(deployed.origin, 'https://shiratsume-page.amubis.workers.dev');
+  assert.ok(!f.calls.some(call => call.method === 'PUT'));
+});
+
+test('a workers.dev prefix created concurrently is preserved by the pre-creation recheck', async t => {
+  const f = await fixture(t, { noSubdomain: true, requestedSubdomain: 'amubis-shiratsume', concurrentSubdomain: true });
+  const deployed = await f.deploy();
+  assert.equal(deployed.origin, 'https://shiratsume-page.already-created.workers.dev');
+  assert.ok(!f.calls.some(call => call.method === 'PUT'));
+});
+
+test('an unavailable requested prefix stops before storage mutations and never echoes provider secrets', async t => {
+  const f = await fixture(t, { noSubdomain: true, requestedSubdomain: 'amubis-shiratsume', unavailableSubdomain: true });
+  await assert.rejects(f.deploy, error => {
+    assert.ok(error.message.includes('requested workers.dev prefix could not be created'));
+    assert.ok(error.message.includes('HTTP 409; codes 10031'));
+    assert.ok(!error.message.includes(credentials.CLOUDFLARE_API_TOKEN));
+    return true;
+  });
+  assert.equal(f.commands.length, 0);
+  assert.ok(f.calls.every(call => call.path === '/workers/subdomain'));
 });
 
 test('failed migration cleans temporary config and does not continue to deploy or modify secrets', async t => {

@@ -2,7 +2,7 @@
 
 这份指南把网站静态文件、管理 API 和图片存储部署到同一个 Cloudflare Worker，并用 D1 保存评论。网站仍可保留在 GitHub Pages，通过公开 API 读取已经发布的内容；管理页则始终在 Worker 的 `/admin/` 地址登录。
 
-下列步骤需要你自己的 Cloudflare 账号和已开通的 R2；绑定自有域名时还需要该域名的管理权限。示例中的域名、账号名和桶名请换成自己的值。下方的 GitHub Actions 快速入口可以代建私人桶、D1 并部署，无需本地安装或预览；账号、R2 订阅与一次性的 workers.dev 子域激活仍在你的 Cloudflare 控制台完成。
+下列步骤需要你自己的 Cloudflare 账号和已开通的 R2；绑定自有域名时还需要该域名的管理权限。示例中的域名、账号名和桶名请换成自己的值。下方的 GitHub Actions 快速入口可以代建私人桶、D1 并部署，无需本地安装或预览；未启用 workers.dev 时，也可以显式指定一个前缀由工作流首次创建。
 
 首次配置可以先使用 Cloudflare 提供的 `workers.dev` 地址，无需续费域名。各部分的用途如下：
 
@@ -17,7 +17,7 @@
 
 适合已经开通 R2、希望直接使用线上管理页的情况。本流程不需要 R2 Access Key、Secret Access Key、Cloudflare 全局 API Key，也不用先购买域名。
 
-1. 在 Cloudflare **Workers & Pages** 确认账号已经启用一个 `你的子域.workers.dev` 地址；如果是第一次使用 Workers，按控制台提示选择一次。自动脚本只读取它，不会替你修改账号级子域。
+1. 在 Cloudflare **Workers & Pages** 确认账号是否已经启用 `你的子域.workers.dev` 地址。首次使用时，可以在控制台选择，也可以在下方运行表单的可选 **workers_subdomain** 输入你决定的前缀（例如已确认的 `amubis-shiratsume`）。默认留空，不会自动挑选名称；仅当账号尚无前缀且明确输入时才首次创建。已有前缀会原样复用，即使输入不同值也不会重命名。[官方创建 API](https://developers.cloudflare.com/api/resources/workers/subresources/subdomains/methods/update/)。
 2. 这个仓库的运行表单已预填你提供的公开 **Account ID `1625a67d00c90d31ecaa89f00063e83d`** 和已有私人 **R2 桶 `shiratsume-page`**，无需重复填写。两项都是公开配置；换账号或桶时才调整表单。指定桶尚不存在时，部署会创建一个 Standard 私人桶。
 3. 打开 Cloudflare **My Profile → API Tokens → Create Token → Create Custom Token**。此快速入口使用个人资料页的兼容权限令牌；只选择以下账号权限，并将 **Account Resources** 限定为自己的目标账号：
 
@@ -40,7 +40,7 @@
 
    **不要在对话里发送令牌或密码，也不要把它们写进仓库文件。** 无需手动生成会话密钥：首次部署会生成随机 `SESSION_SECRET`，直接存入 Worker Secret；后续运行保留已有值。密码通过 JSON 标准输入传给 Wrangler，不写入配置文件或命令参数，也不输出到日志。
 
-5. 到仓库 **Actions → Cloudflare content management → Run workflow**，选择 `main`，确认预填的 Account ID 和私人 R2 桶名，运行即可。同一页面的 **Variables** 也可设置 `CLOUDFLARE_ACCOUNT_ID`，之后在运行表单清空 Account ID 时使用该变量。这个工作流只有手动触发，不会因普通页面修改自动创建云端资源；同一时间只运行一个生产部署。
+5. 到仓库 **Actions → Cloudflare content management → Run workflow**，选择 `main`，确认预填的 Account ID 和私人 R2 桶名；仅在需要首次创建 workers.dev 地址时填写可选 `workers_subdomain`，然后运行。同一页面的 **Variables** 也可设置 `CLOUDFLARE_ACCOUNT_ID`，之后在运行表单清空 Account ID 时使用该变量。这个工作流只有手动触发，不会因普通页面修改自动创建云端资源；同一时间只运行一个生产部署。
 
 运行会依次检查输入、测试和构建网站、确认 R2 没有公共域名、按名称复用或创建 D1、执行尚未应用的迁移、部署网站及 `/admin/`、设置管理员密码并检查登录服务就绪。随后 Runner 会用 Secrets 做一次真实登录与登录会话检查，再尝试退出并丢弃临时 Cookie；不读取私有草稿，密码、Cookie 和 CSRF 凭证均不输出到日志。已有桶和数据库不会被删除，已有草稿、发布内容、图片、评论不会用仓库初始数据覆盖；首次内容仍由现有的条件写入逻辑初始化。若桶开启了 `r2.dev` 或公共自定义域名，会停止并提示你关闭或换桶，不自动改变其访问规则。
 
