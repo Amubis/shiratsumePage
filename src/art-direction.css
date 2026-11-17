@@ -1,4 +1,4 @@
-:root { --display-strong: "Shiratsume Display", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Microsoft YaHei", sans-serif; }
+:root { --display-strong: "Shiratsume Display", "Shiratsume Text", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Microsoft YaHei", sans-serif; }
 body:not(.theme-preview) .hero-title { font-family: var(--display-strong); font-weight: 400; font-synthesis: none; letter-spacing: -.035em; line-height: 1.17; }
 body:not(.theme-preview) .model-intro-title h2 { font-family: var(--display-strong); font-weight: 400; font-synthesis: none; }
 .site-brand-name { font-family: var(--display-strong); font-weight: 400; font-synthesis: none; }
@@ -66,10 +66,13 @@ body:not(.watch-mode) .model-control:is(:hover,:has(:focus-visible)) #model-togg
 
 body.is-model-switching .scene-clover { animation-play-state:paused; }
 
-:root { --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans","Microsoft YaHei","Noto Sans CJK SC","Noto Sans CJK JP",sans-serif;--display:var(--body); }
+:root { --body:"Shiratsume Text",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans","Microsoft YaHei","Noto Sans CJK SC","Noto Sans CJK JP",sans-serif;--display:var(--body); }
 .section-number,.personal-name,.personal-journal-title { font-family:var(--body); }
 #model-toggle.model-image-switch > .model-choice-images { display:grid;grid-template-columns:1fr 1fr;flex-direction:row;gap:0;font-size:inherit; }
 body:has(#hello.is-current):not(.theme-preview) .side-highlight { opacity:1;filter:drop-shadow(0 2px 1px #4548202e); }
 /* Keep the outfit selector legible where the raised floor passes behind it. */
 .primary-intro .outfit-rail-clover { color:var(--theme-dark); }
-.primary-intro .outfit-dot-ink { background:color-mix(in srgb,var(--theme-dark) calc(var(--dot-influence,0) * 75%),var(--theme)); }
+.primary-intro .outfit-dot-ink { background:color-mix(in srgb,var(--theme-dark) calc(var(--dot-influence,0) * 75%),#fffef8); box-shadow:0 0 0 1px color-mix(in srgb,var(--theme-dark) 55%,transparent); }
+
+/* Static Dela remains unchanged; variable CJK fallback uses genuine black outlines. */
+.hero-title,.model-intro-title h2,.site-brand-name,.album-title,.album-date-mark {font-variation-settings:"wght" 900;}

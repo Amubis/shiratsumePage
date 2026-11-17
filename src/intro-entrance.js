@@ -8,6 +8,7 @@ export const INTRO_ENTRANCE_TIMING = Object.freeze({
   actorDelay: 140, actorDuration: 900,
   controlsDelay: 1120, controlsDuration: 320,
   textDelay: 1230, textStagger: 90, textDuration: 410,
+  geometryDelay: 1230, geometryDuration: 800,
   decorDelay: 2110, decorDuration: 800, total: 2910,
 });
 
@@ -148,8 +149,12 @@ export function createIntroEntrance({ section, reducedMotion = () => false, isEn
       set(node, '--intro-text-y', `${(4 * (1 - amount)).toFixed(3)}px`);
       if (node.localName === 'button' || node.localName === 'a') node.inert = amount < .98;
     });
+    // Background planes and rules join the first text. Photo notes and title
+    // accents retain their later entrance instead of racing the portrait.
+    const geometry = phase(time, timing.geometryDelay, timing.geometryDuration);
+    set(scope, '--intro-line-progress', introLineProgress(geometry).toFixed(5));
+    set(scope, '--intro-geometry-alpha', smooth(geometry / .5).toFixed(5));
     const decor = phase(time, timing.decorDelay, timing.decorDuration);
-    set(scope, '--intro-line-progress', introLineProgress(decor).toFixed(5));
     set(scope, '--intro-decor-alpha', smooth(decor / .5).toFixed(5));
     set(scope, '--intro-decor-scale', introPopScale(decor).toFixed(5));
   }

@@ -99,14 +99,14 @@ body.on-album .side-highlight { color: var(--theme); }
 .primary-album .album-cover-unit .album-filter-tab { top:calc(100% - 10px);left:calc(19vw - 116px);width:120px;min-height:72px;padding:22px 12px 12px;transform:none;transform-origin:left top;z-index:1;pointer-events:auto; }
 /* Display type stays heavy; the translated heading sits directly beside it. */
 .primary-album .album-heading { display:flex;align-items:center;flex-wrap:nowrap;gap:clamp(16px,1.6vw,30px);padding-left:16px;margin-top:14px;margin-bottom:12px; }
-.primary-album .album-title { flex:0 1 auto;min-width:0;font-family:"Shiratsume Album Display","Shiratsume Album CJK",var(--display-strong);font-size:clamp(70px,7.2vw,132px);font-weight:400;font-style:normal;font-synthesis:none;line-height:1.08;letter-spacing:-.055em;transform:skewX(-5deg); }
+.primary-album .album-title { flex:0 1 auto;min-width:0;font-family:"Shiratsume Album Display","Shiratsume Album CJK","Shiratsume Text",var(--display-strong);font-size:clamp(70px,7.2vw,132px);font-weight:400;font-style:normal;font-synthesis:none;line-height:1.08;letter-spacing:-.055em;transform:skewX(-5deg); }
 .album-title-clover { left:-52px;top:-5px;width:clamp(86px,8.2vw,146px);height:clamp(86px,8.2vw,146px); }
 .primary-album .album-cover-note { flex:0 0 auto;margin-left:0;font-family:var(--body);font-size:clamp(11px,1.05vw,18px);max-width:none;white-space:nowrap; }
 .primary-album .album-page-status { flex:0 0 auto;min-width:80px;margin-left:auto; }
-.album-date-mark { right:18px;bottom:calc(var(--album-bleed-bottom) + 56px);width:32%;max-width:440px;color:color-mix(in srgb,var(--theme) 64%,var(--paper));font-family:"Shiratsume Album Display","Shiratsume Album CJK",var(--display-strong);font-weight:400;font-style:normal;rotate:-8deg; }
+.album-date-mark { right:18px;bottom:calc(var(--album-bleed-bottom) + 56px);width:32%;max-width:440px;color:color-mix(in srgb,var(--theme) 64%,var(--paper));font-family:"Shiratsume Album Display","Shiratsume Album CJK","Shiratsume Text",var(--display-strong);font-weight:400;font-style:normal;rotate:-8deg; }
 .album-date-year { font-size:clamp(64px,6.5vw,118px);letter-spacing:-.07em; }
 .album-date-month { font-size:clamp(160px,17vw,310px);letter-spacing:-.08em; }
-.album-date-mark.is-undated { width:40%;max-width:450px;font-family:"Shiratsume Album Display","Shiratsume Album CJK",var(--display-strong);font-style:normal; }
+.album-date-mark.is-undated { width:40%;max-width:450px;font-family:"Shiratsume Album Display","Shiratsume Album CJK","Shiratsume Text",var(--display-strong);font-style:normal; }
 .album-date-mark.is-undated .album-date-year { font-size:clamp(44px,4.2vw,78px);line-height:1.1;letter-spacing:-.055em;white-space:nowrap; }
 @media(max-width:1100px) and (min-width:761px){.primary-album .album-title{font-size:6.5vw;}.primary-album .album-cover-note{font-size:11px;}.primary-album .album-heading{gap:16px;}.primary-album .album-page-status{min-width:64px;font-size:11px;}}
 @media(max-width:760px){

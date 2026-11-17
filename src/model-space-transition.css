@@ -1,0 +1,42 @@
+/* The curtain owns the solid destination color. Its center stays quiet while
+   the clover makes the intentional change of space visible. */
+.theme-curtain { transition: background-color .38s cubic-bezier(.4, 0, .2, 1); }
+.theme-curtain .model-space-loader {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  color: var(--model-loading-ink, var(--theme-dark));
+  opacity: var(--model-loader-alpha, 0);
+  transform: translate(-50%, -50%) skewX(11deg) scale(calc(.94 + var(--model-loader-alpha, 0) * .06));
+  pointer-events: none;
+}
+.model-space-loader > [data-clover] {
+  display: block;
+  width: 54px;
+  height: 54px;
+  transform-origin: center;
+  animation: modelSpaceLoadingTurn 1.1s cubic-bezier(.42, 0, .58, 1) infinite,
+    modelSpaceLoadingBreathe 1.6s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.theme-curtain.is-visible .model-space-loader > [data-clover] { animation-play-state: running; }
+@keyframes modelSpaceLoadingTurn {
+  from { rotate: -18deg; }
+  to { rotate: 342deg; }
+}
+@keyframes modelSpaceLoadingBreathe {
+  from { scale: .96; }
+  to { scale: 1.045; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-curtain { transition: none; }
+  .model-space-loader > [data-clover] { animation: none; }
+}
+
+/* Paint the reserved scrollbar gutter too, and skip the covered scene's raster work. */
+html:has(body.is-model-switching) { background-color:var(--model-space-fill,var(--theme)); }
+body:has(.theme-curtain.is-visible[data-model-space-stage="loading"]) main { visibility:hidden; }

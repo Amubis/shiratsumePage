@@ -90,13 +90,15 @@ test('outer rows pop first while opaque circles keep the original shared alpha m
   f.controller.destroy();
 });
 
-test('portrait settles before controls, text appears top-to-bottom and decorative supports arrive last', async () => {
+test('portrait settles before controls, geometry joins the text, and decorative supports arrive last', async () => {
   const f = fixture(); f.controller.prepare(); const done = f.controller.enter();
   f.at(900);
   assert.ok(value(f.section, '--intro-actor-alpha') > .99);
   assert.equal(value(f.section, '--intro-controls-alpha'), 0);
   assert.ok(f.texts.every((node) => value(node, '--intro-text-alpha') === 0));
   assert.equal(value(f.section, '--intro-decor-alpha'), 0);
+  assert.equal(value(f.section, '--intro-line-progress'), 0);
+  assert.equal(value(f.section, '--intro-geometry-alpha'), 0);
   assert.equal(f.stage.inert, true);
   f.at(1100);
   assert.equal(f.stage.inert, false);
@@ -106,12 +108,19 @@ test('portrait settles before controls, text appears top-to-bottom and decorativ
   assert.ok(value(f.texts[0], '--intro-text-alpha') > 0);
   assert.equal(value(f.texts[1], '--intro-text-alpha'), 0);
   assert.equal(value(f.section, '--intro-decor-alpha'), 0);
+  assert.ok(value(f.section, '--intro-line-progress') > 0);
+  assert.ok(value(f.section, '--intro-geometry-alpha') > 0);
+  f.at(INTRO_ENTRANCE_TIMING.geometryDelay + INTRO_ENTRANCE_TIMING.geometryDuration / 2);
+  assert.equal(value(f.section, '--intro-line-progress'), .5);
+  assert.equal(value(f.section, '--intro-geometry-alpha'), 1);
+  assert.equal(value(f.section, '--intro-decor-alpha'), 0, 'photo notes and title accents remain deferred');
   f.at(2050);
   assert.ok(f.texts.every((node) => value(node, '--intro-text-alpha') > .98));
   assert.equal(value(f.section, '--intro-decor-alpha'), 0);
+  assert.equal(value(f.section, '--intro-line-progress'), 1);
   f.at(INTRO_ENTRANCE_TIMING.decorDelay + INTRO_ENTRANCE_TIMING.decorDuration / 2);
   assert.equal(value(f.section, '--intro-decor-alpha'), 1);
-  assert.equal(value(f.section, '--intro-line-progress'), .5, 'lines keep growing after decoration becomes opaque');
+  assert.equal(value(f.section, '--intro-line-progress'), 1, 'background geometry has already settled while photo notes enter');
   f.at(INTRO_ENTRANCE_TIMING.total);
   assert.equal(await done, true);
   assert.equal(f.footer.inert, false); assert.equal(f.texts.at(-1).inert, false);
@@ -125,10 +134,16 @@ test('a sanitized wipe snapshot shares the same time and source radii without re
   const done = f.controller.enter(); f.at(700);
   assert.deepEqual(snapshot.circles.map(radius), f.circles.map(radius));
   assert.equal(snapshot.section.values.get('--intro-actor-y'), f.section.values.get('--intro-actor-y'));
+  assert.equal(snapshot.section.values.get('--intro-line-progress'), f.section.values.get('--intro-line-progress'));
+  assert.equal(snapshot.section.values.get('--intro-geometry-alpha'), f.section.values.get('--intro-geometry-alpha'));
   assert.equal(f.controller.elapsed, 700);
+  f.at(1700);
+  assert.ok(value(f.section, '--intro-line-progress') > 0);
+  assert.equal(snapshot.section.values.get('--intro-line-progress'), f.section.values.get('--intro-line-progress'));
+  assert.equal(snapshot.section.values.get('--intro-geometry-alpha'), f.section.values.get('--intro-geometry-alpha'));
   detach();
   const frozen = snapshot.section.values.get('--intro-actor-y');
-  f.at(1200);
+  f.at(2200);
   assert.equal(snapshot.section.values.get('--intro-actor-y'), frozen);
   f.at(INTRO_ENTRANCE_TIMING.total); assert.equal(await done, true);
   f.controller.destroy();
@@ -202,6 +217,7 @@ test('reduced motion, disabled model, interruption and keyboard escape leave rea
     assert.deepEqual(f.circles.map(radius), [10, 4, 4, 10], kind);
     assert.equal(value(f.section, '--intro-actor-alpha'), 1, kind);
     assert.equal(value(f.section, '--intro-line-progress'), 1, kind);
+    assert.equal(value(f.section, '--intro-geometry-alpha'), 1, kind);
     assert.equal(f.stage.inert, false, kind); assert.equal(f.footer.inert, false, kind);
     assert.equal(f.frames.size, 0, kind);
     f.controller.destroy();

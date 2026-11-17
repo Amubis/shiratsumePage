@@ -38,8 +38,8 @@ Both files are the exact WOFF2 bytes served by Google Fonts. Their glyphs,
 character mappings, internal names and outlines have not been edited. The two
 actual character maps together cover `超级相册`, `日々のアルバム`,
 `日期待补充`, `0123456789`, `年` and `月`. They remain small title subsets;
-newly configured characters outside these maps use the existing system-font
-fallback rather than being replaced with another character.
+newly configured characters outside these maps use the broader self-hosted
+text-font pack below; only rare unsupported characters keep a system fallback.
 
 The main title and date can use these CSS aliases without altering either font:
 
@@ -82,3 +82,71 @@ Keep these aliases scoped to the album so the first two pages remain unchanged.
 - FontTools WOFF2 decoding verified both actual `cmap` tables and the 400/900 source weight metadata. `fc-scan` independently recognized Dela's family and character coverage. In particular, verification checks the downloaded font data rather than trusting Google's CSS `unicode-range`, which can list a requested character absent from the actual Dela font.
 - Dela's existing [SIL OFL license](./OFL-DelaGothicOne.txt) also covers the new subset.
 - Noto is distributed under SIL OFL 1.1, with its complete license in [OFL-NotoSansSC.txt](./OFL-NotoSansSC.txt), obtained from the [Google Fonts source](https://github.com/google/fonts/blob/main/ofl/notosanssc/OFL.txt). No font files require a runtime connection to Google Fonts.
+
+
+## Broad self-hosted body font — 2026-11-17
+
+The small display subsets above are intentionally retained. Ordinary Chinese and
+Japanese text, captions, names and future CMS content now have a separate broad
+web font: **Noto Sans SC**, exposed through the CSS alias **Shiratsume Text**.
+Link `./assets/fonts/text-fonts.css` directly from the HTML. Every URL inside that
+stylesheet is relative to the same directory, so source preview, GitHub project
+Pages and another domain use identical files without rewriting URLs. It contains
+no `local()` lookups and no runtime Google Fonts requests.
+
+This is the source font's entire actual Unicode character map, split into nine
+non-overlapping WOFF2 packages with exact `unicode-range` declarations. It is not
+a subset of just the current website text. The browser fetches packages only when
+it encounters one of their characters and then caches the fingerprinted files.
+The current Chinese and Japanese interface normally uses the core and common
+packages, approximately **1.51 MiB** in total, rather than downloading all packs.
+
+| Pack | Code points | WOFF2 bytes |
+| --- | ---: | ---: |
+| Core: Latin, punctuation, kana and other source symbols | 3,332 | 554,504 |
+| Common: GB2312 level one and the current interface | 3,800 | 1,024,412 |
+| Additional GB2312 / JIS common characters | 5,988 | 1,836,056 |
+| Extended basic Han 1 | 2,797 | 785,212 |
+| Extended basic Han 2 | 2,797 | 854,704 |
+| Extended basic Han 3 | 2,797 | 897,544 |
+| Extended basic Han 4 | 2,797 | 921,324 |
+| CJK Extension A 1 | 3,291 | 993,800 |
+| CJK Extension A 2 | 3,291 | 1,106,536 |
+| **Total** | **30,890** | **8,974,092** |
+
+The actual WOFF2 `cmap` of every package was decoded with FontTools. Their union
+matches the original font's 30,890 mapped characters exactly, and no code point
+belongs to two packages. All packages retain the real variable `wght` axis from
+100 through 900, layout/vertical features and required glyph closures. No glyph
+outlines, characters or character substitutions were drawn or replaced.
+
+The package does not cover all Unicode. The source's rare missing characters
+(such as the Japanese name variant `𠮷`, U+20BB7) and emoji can still use an
+appropriate final system fallback. Common simplified and traditional Chinese,
+modern Japanese kana and the site's Japanese text were checked explicitly. This
+is the SC regional design, so it provides readable Japanese text with Chinese
+regional glyph forms rather than pretending to be a separate JP regional face.
+
+### Pinned source, license and reproduction
+
+- Source: [Google Fonts Noto Sans SC variable TTF at commit
+  `2894aab31764f10f29c421bdfd2340d3b382d384`](https://raw.githubusercontent.com/google/fonts/2894aab31764f10f29c421bdfd2340d3b382d384/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf).
+- Upstream source size: **17,772,300 bytes**.
+- Source SHA-256: `a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da`.
+- Source Git blob: `fb0637bafbcd804fe32152370a1225990745b4bc`, also verified against the pinned GitHub tree.
+- License: the existing complete [SIL OFL 1.1 license](./OFL-NotoSansSC.txt)
+  travels with all generated Noto packages. The original Noto names and copyright
+  remain in the font metadata; the reserved name `Source` is not used as a new
+  font family name.
+- Machine-readable hashes, filenames, exact Unicode ranges, sizes, axis details
+  and verified sample strings: [text-fonts-manifest.json](./text-fonts-manifest.json).
+- Offline rebuild helper: [rebuild-text-fonts.py](./rebuild-text-fonts.py).
+  Use **FontTools 4.61.1** and **Brotli 1.2.1** with the pinned source file:
+
+  ```sh
+  python assets/fonts/rebuild-text-fonts.py /path/to/NotoSansSC-variable.ttf --output /tmp/rebuilt-fonts
+  ```
+
+  Font timestamps are preserved. The helper refuses a different source hash,
+  verifies each rebuilt WOFF2 hash and actual character map, and never downloads
+  resources. Normal `npm run build` only copies the already committed assets.

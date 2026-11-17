@@ -499,6 +499,8 @@ test('the indicator replaces the visible caption with one small clover and influ
   assert.ok(geometry.dots[1].influence > 0);
   assert.equal(geometry.dots[2].influence, 0, 'influence extends slightly beyond one gap');
   assert.ok(geometry.dots[1].x - geometry.dots[0].x > geometry.dots[3].x - geometry.dots[2].x, 'far circles are more tightly packed');
+  assert.equal(Number(f.dots[0].children[0].style.opacity), 0, 'the circle under the active clover stays hidden');
+  assert.ok(f.dots.slice(1).every(button => Number(button.children[0].style.opacity) >= .7), 'passive markers keep readable ink on both paper and the floor plane');
   assert.equal(f.dots[0].getAttribute('aria-pressed'), 'true');
   assert.ok(f.dots[0].getAttribute('aria-label').includes(OUTFITS[0].label.zh));
 });

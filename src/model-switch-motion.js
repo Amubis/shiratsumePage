@@ -4,8 +4,22 @@ const smooth = value => { const t = clamp(value); return t * t * (3 - 2 * t); };
 const mix = (a, b, amount) => a + (b - a) * amount;
 let switchSerial = 0;
 
-export const MODEL_SWITCH_TIMING = Object.freeze({ duration: 760 });
+export const MODEL_SWITCH_TIMING = Object.freeze({ duration: 1900, slide: 640, cover: 640, hold: 620, reveal: 640 });
 export const MODEL_SWITCH_THEMES = Object.freeze({ left: '#B7BB5A', right: '#B8A0C2' });
+
+/** One clock covers the old space, holds the new color, then reveals its content. */
+export function modelSpacePose(progress) {
+  const amount=clamp(progress),timing=MODEL_SWITCH_TIMING;
+  const elapsed=amount*timing.duration;
+  if(amount===1)return {stage:'complete',position:1,loaderAlpha:0,covered:true};
+  if(elapsed<timing.cover){
+    const local=elapsed/timing.cover;
+    return {stage:'enter',position:-1+smooth(local),loaderAlpha:smooth((local-.55)/.45),covered:false};
+  }
+  if(elapsed<timing.cover+timing.hold)return {stage:'loading',position:0,loaderAlpha:1,covered:true};
+  const local=(elapsed-timing.cover-timing.hold)/timing.reveal;
+  return {stage:'reveal',position:smooth(local),loaderAlpha:1-smooth(local/.45),covered:true};
+}
 
 export function modelSwitchRestPose(selection = 'left') {
   return { center: selection === 'right' ? .75 : .25, width: .455, height: .84, shellX: 1, shellY: 1 };
@@ -50,6 +64,7 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
   const previousClip = color.style.clipPath, previousWebkitClip = color.style.webkitClipPath;
   const previousAccent = root.style.getPropertyValue('--model-accent');
   const previousHoverSide=root.dataset.hoverSide;
+  const previousCoveredWork=root.dataset.modelCoveredWorkMs;
   let pointerInside=false;
   color.style.clipPath = `url("#${id}")`; color.style.webkitClipPath = `url("#${id}")`;
   root.classList.add('has-model-switch-motion');
@@ -59,6 +74,8 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     typeof themes?.[side] === 'string' && /^#(?:[\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i.test(themes[side]) ? themes[side] : MODEL_SWITCH_THEMES[side],
   ]));
   let pose = modelSwitchRestPose(selection), startingPose = pose, startedAt = 0, frame = null, destroyed = false;
+  let animationSerial=0,logicalElapsed=0,coveredMeasured=false,coveredWorkMs=0;
+  root.dataset.modelCoveredWorkMs='0';
   const now = () => win.performance?.now() ?? Date.now();
   const reduce = () => typeof reducedMotion === 'function' ? Boolean(reducedMotion()) : Boolean(reducedMotion);
   const bind = (target, event, handler) => { target.addEventListener(event, handler); listeners.push(() => target.removeEventListener(event, handler)); };
@@ -76,14 +93,34 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     root.style.setProperty('--model-shell-y', next.shellY.toFixed(5));
   }
   function stop() { if (frame !== null) win.cancelAnimationFrame(frame); frame = null; }
-  function settle() {stop();paintAccent(true);paint(modelSwitchRestPose(selection));onFrame({selection,progress:1,travel:1});}
+  function settle() {animationSerial++;stop();paintAccent(true);paint(modelSwitchRestPose(selection));onFrame({selection,progress:1,travel:1});}
   function tick(time) {
     frame = null;
     if (destroyed) return;
     if (reduce() || doc.hidden) { settle(); return; }
-    const progress = clamp((time - startedAt) / MODEL_SWITCH_TIMING.duration);
-    paint(modelSwitchJellyPose(progress, { from: startingPose, selection }));
-    onFrame({selection,progress,travel:modelSwitchTravel(progress)});
+    const serial=animationSerial,origin=startedAt,choice=selection;
+    // RAF timestamps can slightly precede performance.now after synchronous
+    // work. The logical clock must not rewind when that work is subtracted.
+    const elapsed=Math.max(logicalElapsed,0,time-startedAt);
+    logicalElapsed=elapsed;
+    const progress = clamp(elapsed / MODEL_SWITCH_TIMING.duration);
+    const slideProgress=clamp(elapsed/MODEL_SWITCH_TIMING.slide);
+    paint(modelSwitchJellyPose(slideProgress, { from: startingPose, selection }));
+    const measureCovered=!coveredMeasured&&elapsed>=MODEL_SWITCH_TIMING.cover;
+    if(measureCovered)coveredMeasured=true;
+    const workStarted=measureCovered?now():0;
+    onFrame({selection,progress,travel:modelSwitchTravel(slideProgress)});
+    // A callback may select another model, settle, or destroy this controller.
+    // Its obsolete tick must not alter the new origin or queue a second loop.
+    if(destroyed||serial!==animationSerial||origin!==startedAt||choice!==selection)return;
+    if(measureCovered){
+      const measured=now()-workStarted;
+      coveredWorkMs=Number.isFinite(measured)?Math.max(0,measured):0;
+      root.dataset.modelCoveredWorkMs=String(Number(coveredWorkMs.toFixed(3)));
+      // Only measured content-update work is excluded, once. Normal frames
+      // retain the real clock and no artificial per-frame time cap is applied.
+      if(progress<1)startedAt+=coveredWorkMs;
+    }
     if (progress < 1) frame = win.requestAnimationFrame(tick);
     else paint(modelSwitchRestPose(selection));
   }
@@ -91,10 +128,16 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     if (destroyed) return false;
     const target = next === 'right' ? 'right' : 'left';
     if (selection === target) return false;
+    animationSerial++;
     stop(); selection = target; root.dataset.selection = target; startingPose = { ...pose };
+    logicalElapsed=0;coveredMeasured=false;coveredWorkMs=0;root.dataset.modelCoveredWorkMs='0';
     if (!animate || reduce() || doc.hidden || typeof win.requestAnimationFrame !== 'function') { settle();return true; }
     paintAccent();
-    startedAt = now();onFrame({selection,progress:0,travel:0});frame = win.requestAnimationFrame(tick); return true;
+    startedAt = now();
+    const serial=animationSerial;
+    onFrame({selection,progress:0,travel:0});
+    if(!destroyed&&serial===animationSerial)frame = win.requestAnimationFrame(tick);
+    return true;
   }
   const syncSelection = () => setSelection(root.dataset.selection);
   const Observer = win.MutationObserver;
@@ -118,12 +161,15 @@ export function createModelSwitchMotion({ root, reducedMotion = () => false, the
     refresh() { if (!destroyed) { syncSelection(); if (reduce() || doc.hidden) settle(); else { paintAccent(); paint(pose); } } },
     get pose() { return { ...pose }; },
     get animating() { return frame !== null; },
+    get coveredWorkMs() { return coveredWorkMs; },
     destroy() {
       if (destroyed) return;
+      animationSerial++;
       stop(); destroyed = true; observer?.disconnect(); listeners.splice(0).forEach(dispose => dispose());
       definitions.remove(); outline.remove(); root.classList.remove('has-model-switch-motion');
       root.classList.remove('is-model-switch-still');
       if(previousHoverSide===undefined)delete root.dataset.hoverSide;else root.dataset.hoverSide=previousHoverSide;
+      if(previousCoveredWork===undefined)delete root.dataset.modelCoveredWorkMs;else root.dataset.modelCoveredWorkMs=previousCoveredWork;
       root.style.removeProperty('--model-shell-x'); root.style.removeProperty('--model-shell-y');
       if (previousAccent) root.style.setProperty('--model-accent', previousAccent);
       else root.style.removeProperty('--model-accent');

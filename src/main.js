@@ -23,7 +23,7 @@ import { COMMENTS_COPY, createCommentService } from './comments.js';
 import { normalizeGardenContent, resolveGardenMedia } from './garden-content.js';
 import { FIXED_COPY, readGardenData, setGardenText, loadPublishedGarden, acceptGardenPreview } from './garden-runtime.js';
 import { createWaterFooter } from './water-footer.js';
-import { createModelSwitchMotion } from './model-switch-motion.js';
+import { createModelSwitchMotion, modelSpacePose } from './model-switch-motion.js';
 import { createOutfitPhotoNotes } from './outfit-photo-notes.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -547,13 +547,16 @@ document.addEventListener('click', (event) => {
   if(!$('.side-nav').contains(event.target)) { $('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false'); }
 });
 
-function paintModelChange({progress,travel}){
+function paintModelChange({progress}){
   const change=pendingModelChange;
   if(!change)return;
   const curtain=$('.theme-curtain');
-  const amount=Math.max(0,Math.min(1,travel));
-  curtain.style.transform=`translateX(${change.direction*(2*amount-1)*105}%) skewX(-11deg)`;
-  if(!change.committed && (amount>=.5 || progress===1)){
+  const space=modelSpacePose(progress);
+  const position=space.stage==='enter'?change.startPosition*(-space.position):change.direction*105*space.position;
+  if(curtain.dataset.modelSpaceStage!==space.stage)curtain.dataset.modelSpaceStage=space.stage;
+  curtain.style.setProperty('--model-loader-alpha',String(change.startedCovered && space.stage==='enter'?1:space.loaderAlpha));
+  curtain.style.transform=`translateX(${position}%) skewX(-11deg)`;
+  if(!change.committed && space.covered){
     change.committed=true;modelId=change.nextId;
     applyTheme();
     player.setPlaylist(MODELS[modelId].playlist,MODELS[modelId].poster);
@@ -571,9 +574,16 @@ function switchModel(nextId){
   const token=++modelGeneration;
   finishIntro();setWatching(false);sidebar?.setCurrent(currentIndex);
   const selection=nextId==='preview'?'right':'left';
-  pendingModelChange={token,nextId,committed:false,direction:selection==='right'?1:-1};
-  const curtain=$('.theme-curtain');curtain.style.background=MODELS[nextId].theme;
-  curtain.style.transform=`translateX(${pendingModelChange.direction*-105}%) skewX(-11deg)`;
+  const curtain=$('.theme-curtain'),direction=selection==='right'?1:-1;
+  const visible=curtain.classList.contains('is-visible');
+  const previousPosition=Number(curtain.style.transform.match(/translateX\(([-.\d]+)%\)/)?.[1]);
+  const startPosition=visible&&Number.isFinite(previousPosition)?previousPosition:direction*-105;
+  pendingModelChange={token,nextId,committed:false,direction,startPosition,startedCovered:visible&&Math.abs(startPosition)<5};
+  curtain.style.backgroundColor=MODELS[nextId].theme;
+  root.style.setProperty('--model-space-fill',MODELS[nextId].theme);
+  curtain.style.setProperty('--model-loading-ink',MODELS[nextId].dark);
+  curtain.style.transform=`translateX(${startPosition}%) skewX(-11deg)`;
+  notify(language==='ja'?'モデルを切り替えています…':'正在切换模型…');
   curtain.classList.add('is-visible');markModelSwitch(nextId,true);
   const changed=modelSwitchMotion?.setSelection(selection);
   if(!changed)paintModelChange({progress:1,travel:1});

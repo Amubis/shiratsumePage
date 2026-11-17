@@ -22,12 +22,13 @@
   <meta name="theme-color" content="#B7BB5A">
 
   <style>@font-face{font-family:"Shiratsume Album Display";src:url("./assets/fonts/dela-gothic-one-album.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}@font-face{font-family:"Shiratsume Album CJK";src:url("./assets/fonts/noto-sans-sc-album-black.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
-  <meta name="demo-version" content="0.13.1">
+  <meta name="demo-version" content="0.14.0">
   <meta name="description" content="しらつめ的模型展示与日常影像。">
   <title>しらつめ · Avatar Portfolio</title>
   <style>@font-face{font-family:"Shiratsume Display";src:url("./assets/fonts/dela-gothic-one-display.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
   <link rel="preload" as="image" href="./assets/poster.jpg">
+  <link rel="stylesheet" href="./assets/fonts/text-fonts.css">
   <link rel="stylesheet" href="./src/styles.css">
   <link rel="stylesheet" href="./src/refinements.css">
   <link rel="stylesheet" href="./src/owner-profile.css">
@@ -48,6 +49,7 @@
   <link rel="stylesheet" href="./src/art-direction.css">
   <link rel="stylesheet" href="./src/outfit-photo-notes.css">
   <link rel="stylesheet" href="./src/outfit-rail-feedback.css">
+  <link rel="stylesheet" href="./src/model-space-transition.css">
   <script id="owner-profile-data" type="application/json">null</script>
   <script id="garden-data" type="application/json">null</script>
   <script type="module" src="./src/main.js"></script>
@@ -191,7 +193,7 @@
   <div id="theme-status" class="theme-status" hidden data-i18n="previewNotice">第二主题预览 · 等待新的模型素材</div>
 
   <div class="transition-wipe" aria-hidden="true"><div class="wipe-flower" data-clover data-clover-variant="large"></div></div>
-  <div class="theme-curtain" aria-hidden="true"></div>
+  <div class="theme-curtain" aria-hidden="true"><span class="model-space-loader"><span data-clover data-clover-variant="small"></span></span></div>
   <dialog id="lightbox" class="lightbox"><button id="lightbox-close" aria-label="关闭大图"><svg class="icon"><use href="#icon-close"/></svg></button><img alt=""><p data-i18n="frameLabel">影像摘帧</p></dialog>
   <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
   <noscript><p class="noscript-note">请启用 JavaScript 体验视频、模型切换与动画。页面内容仍可向下浏览。</p></noscript>

@@ -479,7 +479,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
       circle.style.left = `${dot.x - dot.index * 44}px`;
       circle.style.width = `${dot.size}px`;
       circle.style.height = `${dot.size}px`;
-      circle.style.opacity = String(dot.opacity);
+      circle.style.opacity = String((.72 + .25 * dot.influence) * Math.min(1, Math.abs(dot.index - geometry.position) / .24));
       circle.style.setProperty('--dot-influence', String(dot.influence));
     });
     railClover.style.left = `${geometry.cloverX}px`;
