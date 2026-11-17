@@ -2,7 +2,7 @@
 
 这份指南把网站静态文件、管理 API 和图片存储部署到同一个 Cloudflare Worker，并用 D1 保存评论。网站仍可保留在 GitHub Pages，通过公开 API 读取已经发布的内容；管理页则始终在 Worker 的 `/admin/` 地址登录。
 
-下列步骤需要你自己的 Cloudflare 账号和 R2 开通权限；绑定自有域名时还需要该域名的管理权限。项目代码与这份指南不会替你开通账号、订阅或云端资源。示例中的域名、账号名和桶名请换成自己的值。
+下列步骤需要你自己的 Cloudflare 账号和已开通的 R2；绑定自有域名时还需要该域名的管理权限。示例中的域名、账号名和桶名请换成自己的值。下方的 GitHub Actions 快速入口可以代建私人桶、D1 并部署，无需本地安装或预览；账号、R2 订阅与一次性的 workers.dev 子域激活仍在你的 Cloudflare 控制台完成。
 
 首次配置可以先使用 Cloudflare 提供的 `workers.dev` 地址，无需续费域名。各部分的用途如下：
 
@@ -13,7 +13,44 @@
 | 私人 R2 桶 | 图片、私有原图、内容草稿与已发布内容 |
 | D1 数据库 | 匿名留言、审核状态、管理员回复、未读状态 |
 
-## 1. 先在本地预览
+## 快速入口：把部署交给 GitHub Actions
+
+适合已经开通 R2、希望直接使用线上管理页的情况。本流程不需要 R2 Access Key、Secret Access Key、Cloudflare 全局 API Key，也不用先购买域名。
+
+1. 在 Cloudflare **Workers & Pages** 确认账号已经启用一个 `你的子域.workers.dev` 地址；如果是第一次使用 Workers，按控制台提示选择一次。自动脚本只读取它，不会替你修改账号级子域。
+2. 这个仓库的运行表单已预填你提供的公开 **Account ID `1625a67d00c90d31ecaa89f00063e83d`** 和已有私人 **R2 桶 `shiratsume-page`**，无需重复填写。两项都是公开配置；换账号或桶时才调整表单。指定桶尚不存在时，部署会创建一个 Standard 私人桶。
+3. 打开 Cloudflare **My Profile → API Tokens → Create Token → Create Custom Token**。此快速入口使用个人资料页的兼容权限令牌；只选择以下账号权限，并将 **Account Resources** 限定为自己的目标账号：
+
+   | 权限类别 | 项目 | 级别 |
+   | --- | --- | --- |
+   | Account | Workers Scripts | Edit |
+   | Account | Workers R2 Storage | Edit |
+   | Account | D1 | Edit |
+
+   `Workers Scripts` 在新界面可能标为“旧”或 `Legacy`，本流程仍选择它的 **Edit**。Cloudflare 说明此权限目前继续有效，尚无停用日期；此处无需改成新账号级令牌或额外申请 Admin 权限。[官方兼容权限说明](https://developers.cloudflare.com/workers/authorization/workers/#legacy-workers-permissions)。
+
+   官方 API 权限名也可能显示为 `Workers Scripts Write`、`Workers R2 Storage Write` 和 `D1 Write`，含义对应以上三个写权限。不需要 Zone、DNS、KV 或 Billing 权限。[官方权限表](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)、[R2 创建权限](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create/)、[D1 创建权限](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/create/)。
+
+4. 打开仓库 [Settings → Secrets and variables → Actions](https://github.com/Amubis/shiratsumePage/settings/secrets/actions)，在 **Secrets** 添加两项：
+
+   | Secret 名称 | 内容 |
+   | --- | --- |
+   | `CLOUDFLARE_API_TOKEN` | 上一步刚创建的令牌 |
+   | `ADMIN_PASSWORD` | 你为线上内容管理设置的独立密码 |
+
+   **不要在对话里发送令牌或密码，也不要把它们写进仓库文件。** 无需手动生成会话密钥：首次部署会生成随机 `SESSION_SECRET`，直接存入 Worker Secret；后续运行保留已有值。密码通过 JSON 标准输入传给 Wrangler，不写入配置文件或命令参数，也不输出到日志。
+
+5. 到仓库 **Actions → Cloudflare content management → Run workflow**，选择 `main`，确认预填的 Account ID 和私人 R2 桶名，运行即可。同一页面的 **Variables** 也可设置 `CLOUDFLARE_ACCOUNT_ID`，之后在运行表单清空 Account ID 时使用该变量。这个工作流只有手动触发，不会因普通页面修改自动创建云端资源；同一时间只运行一个生产部署。
+
+运行会依次检查输入、测试和构建网站、确认 R2 没有公共域名、按名称复用或创建 D1、执行尚未应用的迁移、部署网站及 `/admin/`、设置管理员密码并检查登录服务就绪。随后 Runner 会用 Secrets 做一次真实登录与登录会话检查，再尝试退出并丢弃临时 Cookie；不读取私有草稿，密码、Cookie 和 CSRF 凭证均不输出到日志。已有桶和数据库不会被删除，已有草稿、发布内容、图片、评论不会用仓库初始数据覆盖；首次内容仍由现有的条件写入逻辑初始化。若桶开启了 `r2.dev` 或公共自定义域名，会停止并提示你关闭或换桶，不自动改变其访问规则。
+
+成功后，Actions 的 **Summary** 会显示网站和管理地址，例如 `https://shiratsume-page.你的子域.workers.dev/admin/`。默认账号为 **Amubis**，密码为上面设置的 `ADMIN_PASSWORD`。需要其他公开名称时，可在 Actions **Variables** 设置 `CLOUDFLARE_WORKER_NAME`（默认 `shiratsume-page`）、`CLOUDFLARE_D1_NAME`（默认 `shiratsume-comments`）、`ADMIN_USERNAME`（默认 `Amubis`）。`PUBLIC_SITE_ORIGINS` 默认允许 `https://amubis.github.io` 提交访客评论；增加域名时填逗号分隔的 HTTPS origin。
+
+**连接现有 GitHub Pages：** 云端成功后，将返回的 Worker 根地址填到 `data/runtime.json` 的 `apiBaseUrl`，其 `/admin/` 填到 `adminUrl`，提交后让 Pages 正常部署。管理页由 Worker 同源提供，GitHub Pages 则读取这个中央 API；之后换个人域名时更新中央连接地址即可，保留原来的 Worker/R2/D1 就不需要重新上传图片或逐张修改链接。这个手动工作流不会自行修改仓库内容。
+
+工作流使用固定 Wrangler 4 版本，配置临时生成在 `worker/` 并自动清除；原有 `worker/wrangler.jsonc` 保留给手动部署使用。所有必要参数未设置之前不能执行真实部署。若失败，根据日志的权限或资源提示修正后重新运行，正常重跑会复用已有云端资源。
+
+## 1. 可选：在本地预览
 
 安装 Node.js 22 或更新版本，在项目根目录打开终端：
 

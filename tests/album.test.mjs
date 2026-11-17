@@ -150,9 +150,22 @@ test('month boundaries never mix short months and overflow continues the same ca
 });
 test('heading uses the other language, page count and truthful large calendar labels',t=>{
  const f=fixture(t,{media:[sample('a','2026-11-03')]});
- assert.equal(f.find('album-cover-note').textContent,'日々のアルバム');
+ assert.equal(f.find('album-cover-note').textContent,'超アルバム');
  assert.equal(f.find('album-page-status').textContent,'01 / 01');
  assert.equal(f.find('album-date-year').textContent,'2026');assert.equal(f.find('album-date-month').textContent,'11');
  f.api.setView('month');assert.equal(f.find('album-date-month').hidden,true);
  f.api.setLanguage('ja');assert.equal(f.find('album-cover-note').textContent,'超级相册');
+ assert.equal(f.find('album-title').textContent,'超アルバム');
+});
+
+test('missing and empty capture dates use None without inventing a calendar label', t => {
+ const f = fixture(t);
+ assert.equal(f.find('album-date-year').textContent, 'None');
+ assert.equal(f.find('album-date-month').hidden, true);
+ assert.equal(f.find('album-date-mark').getAttribute('aria-label'), '日期待补充');
+ f.api.setLanguage('ja');
+ assert.equal(f.find('album-date-year').textContent, 'None');
+ f.api.setModel('unknown');
+ assert.equal(f.find('album-date-year').textContent, 'None');
+ assert.equal(f.find('album-date-mark').getAttribute('aria-label'), '表示する写真がありません');
 });

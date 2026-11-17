@@ -9,3 +9,4 @@ node_modules/
 .wrangler/
 .dev.vars
 .dev.vars.*
+worker/.cloudflare-deploy.*.json

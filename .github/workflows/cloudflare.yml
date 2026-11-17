@@ -1,0 +1,55 @@
+name: Cloudflare content management
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_id:
+        description: 'Cloudflare Account ID (or set CLOUDFLARE_ACCOUNT_ID in Actions variables)'
+        required: false
+        default: '1625a67d00c90d31ecaa89f00063e83d'
+        type: string
+      r2_bucket:
+        description: 'Private R2 bucket name; created if missing'
+        required: true
+        default: shiratsume-page
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account_id || vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_R2_BUCKET: ${{ inputs.r2_bucket }}
+      CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME || 'shiratsume-page' }}
+      CLOUDFLARE_D1_NAME: ${{ vars.CLOUDFLARE_D1_NAME || 'shiratsume-comments' }}
+      ADMIN_USERNAME: ${{ vars.ADMIN_USERNAME || 'Amubis' }}
+      PUBLIC_SITE_ORIGINS: ${{ vars.PUBLIC_SITE_ORIGINS || 'https://amubis.github.io' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate configuration without connecting
+        run: node scripts/cloudflare-setup.mjs --check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      - name: Verify source
+        run: npm run test
+      - name: Build website and content manager
+        run: npm run build
+      - name: Provision private storage and deploy
+        id: cloudflare
+        run: node scripts/cloudflare-setup.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

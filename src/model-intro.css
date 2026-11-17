@@ -25,12 +25,17 @@ body:not(.on-home) .language-dock .language-control button {
   grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
   gap: clamp(24px, 2.8vw, 46px);
   width: min(1420px, 82vw);
-  margin-left: max(14vw, calc((100vw - 1420px) / 2));
+  /* Reserve the left navigation lane without pulling both columns to the
+     right. Wide displays still use the centered maximum-width composition. */
+  margin-left: max(12vw, calc((100vw - 1420px) / 2));
   margin-right: 0;
   align-items: center;
   min-height: 100svh;
   padding-block: 34px 42px;
 }
+/* The portrait and its controls share the column's center. An extra desktop
+   offset made the preview compete with the copy for the right-hand space. */
+.model-intro-inner > .outfit-showcase { translate: none; }
 .intro-geometry {
   position: absolute;
   inset: 0;
