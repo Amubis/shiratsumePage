@@ -53,7 +53,8 @@ export function createD1CommentsStore(db) {
         if (!STATUSES.has(status)) throw new Error('Unsupported comment status.');
         fields.push('status = ?'); values.push(status);
       }
-      if (read === true) { fields.push('read_at = COALESCE(read_at, ?)'); values.push(updatedAt); }
+      // Reviewing a message implies reading it, in the same SQL update.
+      if (read === true || status !== undefined && status !== 'pending') { fields.push('read_at = COALESCE(read_at, ?)'); values.push(updatedAt); }
       values.push(id);
       return commentFromRow(await db.prepare(`UPDATE garden_comments SET ${fields.join(', ')} WHERE id = ? RETURNING ${COLUMNS}`).bind(...values).first());
     },

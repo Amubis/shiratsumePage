@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAlbumPageMotion,albumPagePhotoDelay,albumPagePhotoFrames,albumPageDateFrames} from '../src/album-page-motion.js';
+import {createAlbumPageMotion,albumPagePhotoDelay,albumPagePhotoFrames,albumPageDateFrames,albumPhotoEntryFrames,ALBUM_PHOTO_ENTRY_EASING} from '../src/album-page-motion.js';
 function fixture(t,{withDate=false}={}){
  const handlers=new Map(),attrs=new Map(),animations=[],frames=new Map();let serial=0,reduced=false,active=true,commits=0;
  const target=()=>({addEventListener(k,f){if(!handlers.has(this))handlers.set(this,new Map());handlers.get(this).set(k,f);},removeEventListener(k){handlers.get(this)?.delete(k);}});
@@ -16,11 +16,15 @@ const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 test('page-turn timing remains bounded and frames peel and stick from the top edge',()=>{
  assert.ok(albumPagePhotoDelay(11,12)<=90);assert.ok(albumPagePhotoDelay(1,12)>0);
  const peel=albumPagePhotoFrames('peel'),stick=albumPagePhotoFrames('stick');
- assert.equal(peel.at(-1).opacity,0);assert.equal(stick[0].opacity,0);assert.equal(stick.at(-1).opacity,1);assert.match(peel.at(-1).transform,/rotateX/);assert.equal(stick[0].transformOrigin,'50% 0%');
+ assert.equal(peel.at(-1).opacity,0);assert.equal(stick[0].opacity,0);assert.equal(stick.at(-1).opacity,1);assert.match(peel.at(-1).transform,/rotateX/);assert.equal(stick[0].transformOrigin,'50% 6%');
+ assert.deepEqual(stick,albumPhotoEntryFrames());
+ const scales=stick.flatMap(frame=>[...frame.transform.matchAll(/scale\(([\d.]+)\)/g)].map(match=>Number(match[1])));
+ assert.ok(scales.every(scale=>scale<=1.004),'page changes never magnify beyond the chapter entrance settle');
 });
 test('old prints peel before the next DOM commits and new prints stick afterwards',async t=>{
  const f=fixture(t),p=f.api.run(f.commit);assert.equal(f.api.state,'peeling');assert.equal(f.commits,0);
  f.animations.slice().forEach(a=>a.finish());await tick();assert.equal(f.commits,1);assert.equal(f.api.state,'sticking');
+ assert.deepEqual(f.animations[3].keyframes,albumPhotoEntryFrames());assert.equal(f.animations[3].options.easing,ALBUM_PHOTO_ENTRY_EASING);
  f.animations.slice(3).forEach(a=>a.finish());await tick();assert.equal(await p,true);assert.equal(f.api.state,'idle');assert.equal(f.frames.size,0);
 });
 test('dates move left to right on the same page clock and release their fills after sticking',async t=>{

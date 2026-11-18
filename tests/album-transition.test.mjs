@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAlbumCircleGrid, albumRowProgress, albumCircleScale, createAlbumEnterPlan, createAlbumExitPlan, createAlbumTransition, ALBUM_STATIC_RADIUS_RATIO, ALBUM_BOUNDARY_HANDOFF } from '../src/album-transition.js';
+import { albumPhotoEntryFrames, ALBUM_PHOTO_ENTRY_EASING } from '../src/album-page-motion.js';
 
 test('wave circles cover every square center before handing off to the solid background', () => {
   for (const [width, height] of [[1899, 973], [1440, 900], [390, 844], [320, 568]]) {
@@ -168,6 +169,9 @@ test('paper entrance hands off the cover and leave/reveal release all hidden act
   assert.equal(f.animations.length, createAlbumEnterPlan(4).length);
   assert.equal(f.animations[0].options.duration, 380);
   assert.match(f.animations[0].keyframes[0].transform, /translateX\(1152px\)/);
+  const photo=f.animations.find(animation=>animation.node===f.section.querySelectorAll('.album-photo')[0]);
+  assert.deepEqual(photo.keyframes,albumPhotoEntryFrames());
+  assert.equal(photo.options.easing,ALBUM_PHOTO_ENTRY_EASING);
   f.step(2000); await Promise.resolve();
   assert.equal(await enter, true);
   assert.equal(f.controller.phase, 'active');

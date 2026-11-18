@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -222,6 +222,45 @@ test('HTTP moderation filters, notifications and batch read actions preserve the
   assert.deepEqual((await json(await publicComments(context))).comments, []);
   await json(await admin(context, 'notifications/read', 'POST', {}), 422);
   await json(await admin(context, 'notifications/read', 'POST', { all: true }, { 'X-Garden-CSRF': '' }), 403);
+});
+
+test('reviewing a message marks it read immediately and keeps the first read time after restart', async t => {
+  const context = await local(t);
+  const first = await createComment(context, 'Approve this message');
+  const second = await createComment(context, 'Reject this message');
+  const approved = await moderate(context, first.id, { status: 'approved' });
+  assert.ok(approved.comment.readAt);
+  assert.equal(approved.unreadCount, 1);
+  assert.equal(approved.pendingCount, 1);
+  const rejected = await moderate(context, second.id, { status: 'rejected' });
+  assert.ok(rejected.comment.readAt);
+  assert.equal(rejected.unreadCount, 0);
+  assert.equal(rejected.pendingCount, 0);
+  const again = await moderate(context, first.id, { status: 'approved' });
+  assert.equal(again.comment.readAt, approved.comment.readAt);
+  await context.restart();
+  const notifications = await json(await admin(context, 'notifications'));
+  assert.equal(notifications.unreadCount, 0);
+  assert.deepEqual(notifications.notifications, []);
+});
+
+test('local storage repairs previously reviewed unread messages without marking pending messages read', async t => {
+  const context = await local(t);
+  const reviewed = await createComment(context, 'Previously approved');
+  const pending = await createComment(context, 'Still pending');
+  const file = join(context.dataDir, 'comments.json');
+  const state = JSON.parse(await readFile(file, 'utf8'));
+  const old = state.comments.find(comment => comment.id === reviewed.id);
+  old.status = 'approved';
+  old.updatedAt = '2026-01-02T01:00:00.000Z';
+  old.readAt = null;
+  await writeFile(file, JSON.stringify(state));
+  await context.restart();
+  const notifications = await json(await admin(context, 'notifications'));
+  assert.equal(notifications.unreadCount, 1);
+  assert.deepEqual(notifications.notifications.map(comment => comment.id), [pending.id]);
+  const approved = await json(await admin(context, 'comments?status=approved'));
+  assert.equal(approved.comments[0].readAt, old.updatedAt);
 });
 
 test('HTTP honeypot submission is silent and concurrent anonymous submissions are limited atomically', async t => {

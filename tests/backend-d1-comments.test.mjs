@@ -87,6 +87,35 @@ test('D1 public lists hide unapproved comments and replies without an approved m
   assert.deepEqual(await store.list({ publicOnly: true, before: createdAt }), []);
 });
 
+test('D1 moderation marks messages read atomically without overwriting their first read time', options, async t => {
+  const { store, insert } = await fixture(t);
+  for (const status of ['approved', 'rejected', 'spam', 'deleted']) await insert(status);
+  assert.equal(await store.unreadCount(), 4);
+  for (const [index, status] of ['approved', 'rejected', 'spam', 'deleted'].entries()) {
+    const reviewed = await store.moderate(status, { status }, updatedAt);
+    assert.equal(reviewed.status, status);
+    assert.equal(reviewed.readAt, updatedAt);
+    assert.equal(await store.unreadCount(), 3 - index);
+    const again = await store.moderate(status, { status }, '2026-11-16T00:00:00.000Z');
+    assert.equal(again.readAt, updatedAt);
+  }
+});
+
+test('reviewed-comment migration backfills old reviews but leaves pending and previously read messages alone', options, async t => {
+  const { sqlite, store, insert } = await fixture(t);
+  await insert('pending');
+  for (const status of ['approved', 'rejected', 'spam', 'deleted']) await insert(status, { status, updatedAt });
+  await insert('already-read', { status: 'approved', readAt: createdAt, updatedAt });
+  const migration = await readFile(new URL('../worker/migrations/0002_reviewed_comments_read.sql', import.meta.url), 'utf8');
+  sqlite.exec(migration);
+  assert.equal(await store.unreadCount(), 1);
+  for (const status of ['approved', 'rejected', 'spam', 'deleted']) assert.equal((await store.get(status)).readAt, updatedAt);
+  assert.equal((await store.get('already-read')).readAt, createdAt);
+  assert.equal((await store.get('pending')).readAt, null);
+  sqlite.exec(migration);
+  assert.equal(await store.unreadCount(), 1);
+});
+
 test('D1 marks selected or all notifications read and chunks large ID batches within D1 limits', options, async t => {
   const { store, insert } = await fixture(t);
   const ids = Array.from({ length: 105 }, (_, index) => `comment-${index}`);

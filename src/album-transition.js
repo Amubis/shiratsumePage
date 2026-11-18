@@ -1,3 +1,5 @@
+import { albumPhotoEntryFrames, ALBUM_PHOTO_ENTRY_EASING } from './album-page-motion.js';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(minimum, Number(value) || 0));
 const smooth = (value) => { const t = clamp(value); return t * t * (3 - 2 * t); };
@@ -329,12 +331,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       { transform: `translateY(-3px) rotate(-.5deg) ${base}`, opacity: 1, offset: .86 },
       { transform: rest, opacity: 1 },
     ] : [{ transform: rest, opacity: 1 }, { transform: `translate(-28px,-140px) rotate(-6deg) ${base}`, opacity: 0 }];
-    if (kind === 'photo') return entering ? [
-      { transform: `perspective(900px) translate(6px,-30px) rotateX(21deg) rotateZ(1.4deg) scale(.97) ${base}`, opacity: 0 },
-      { transform: `perspective(900px) translate(2px,-8px) rotateX(9deg) ${base}`, opacity: 1, offset: .34 },
-      { transform: `perspective(900px) translateY(2px) rotateX(-2deg) scale(1.004) ${base}`, opacity: 1, offset: .74 },
-      { transform: rest, opacity: 1 },
-    ] : [
+    if (kind === 'photo') return entering ? albumPhotoEntryFrames(rest) : [
       { transform: rest, opacity: 1 },
       { transform: `perspective(900px) translate(2px,-4px) rotateX(12deg) ${base}`, opacity: 1, offset: .3 },
       { transform: `perspective(900px) translate(-8px,-35px) rotateX(37deg) rotateZ(-3deg) scale(.98) ${base}`, opacity: 0 },
@@ -375,7 +372,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
             continue;
           }
           const animation = node.animate(keyframes, { duration: plan.duration, delay: plan.delay,
-            easing: plan.kind.startsWith('paper') ? 'cubic-bezier(.12,.78,.18,1)' : 'cubic-bezier(.2,.65,.3,1)', fill: 'both' });
+            easing: plan.kind.startsWith('paper') ? 'cubic-bezier(.12,.78,.18,1)' : ALBUM_PHOTO_ENTRY_EASING, fill: 'both' });
           // A paused WAAPI timeline renders exactly the input position; its
           // clock never progresses while the visitor stops scrolling.
           animation.finished.catch(() => {});
@@ -521,7 +518,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       for (const node of nodes) {
         if (instant() || typeof node.animate !== 'function') continue;
         const animation = node.animate(actorFrames(node, plan.kind, entering), { duration: plan.duration, delay: plan.delay,
-          easing: plan.kind.startsWith('paper') ? 'cubic-bezier(.12,.78,.18,1)' : 'cubic-bezier(.2,.65,.3,1)', fill: 'both' });
+          easing: plan.kind.startsWith('paper') ? 'cubic-bezier(.12,.78,.18,1)' : ALBUM_PHOTO_ENTRY_EASING, fill: 'both' });
         current.animations.push(animation);
       }
     }

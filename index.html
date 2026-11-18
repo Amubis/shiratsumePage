@@ -5,6 +5,9 @@
   <style>
     html.is-booting { background: #000; }
     html.is-booting body { visibility: hidden; }
+    html.is-booting body > .content-availability { visibility: visible; }
+    body[data-content-connection="loading"] > :not(.content-availability):not(script),
+    body[data-content-connection="offline"] > :not(.content-availability):not(script) { visibility: hidden !important; }
   </style>
   <script>
     // Hide the first paint before deferred scripts or external styles arrive.
@@ -12,7 +15,7 @@
     document.documentElement.dataset.phase = 'video';
     window.setTimeout(() => {
       const page = document.documentElement;
-      if (page.classList.contains('is-booting')) {
+      if (page.classList.contains('is-booting') && !['loading','offline'].includes(document.body?.dataset.contentConnection)) {
         page.dataset.phase = 'ready';
         page.classList.remove('is-booting');
       }
@@ -22,7 +25,7 @@
   <meta name="theme-color" content="#B7BB5A">
 
   <style>@font-face{font-family:"Shiratsume Album Display";src:url("./assets/fonts/dela-gothic-one-album.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}@font-face{font-family:"Shiratsume Album CJK";src:url("./assets/fonts/noto-sans-sc-album-black.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
-  <meta name="demo-version" content="0.15.1">
+  <meta name="demo-version" content="0.16.0">
   <meta name="description" content="しらつめ的模型展示与日常影像。">
   <title>しらつめ · Avatar Portfolio</title>
   <style>@font-face{font-family:"Shiratsume Display";src:url("./assets/fonts/dela-gothic-one-display.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
@@ -51,11 +54,21 @@
   <link rel="stylesheet" href="./src/model-space-transition.css">
   <link rel="stylesheet" href="./src/language-transition.css">
   <link rel="stylesheet" href="./src/owner-tools.css">
+  <link rel="stylesheet" href="./src/content-availability.css">
   <script id="owner-profile-data" type="application/json">null</script>
   <script id="garden-data" type="application/json">null</script>
   <script type="module" src="./src/main.js"></script>
 </head>
-<body class="on-home">
+<body class="on-home" data-content-connection="loading">
+  <section id="content-availability" class="content-availability" role="status" aria-live="polite" aria-busy="true">
+    <div class="content-availability-card">
+      <span class="content-availability-mark" data-clover aria-hidden="true"></span>
+      <h1 class="content-availability-title">正在读取网站内容</h1>
+      <p class="content-availability-description">请稍候。</p>
+      <button class="content-availability-retry" type="button" hidden disabled>重试</button>
+      <noscript><p>请启用 JavaScript 后重试。 / JavaScript を有効にしてください。</p></noscript>
+    </div>
+  </section>
   <a class="skip-link" href="#hello" data-i18n="skip">跳过开场，开始探索</a>
   <svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
     <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>

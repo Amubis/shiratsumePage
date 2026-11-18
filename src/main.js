@@ -26,6 +26,7 @@ import { createWaterFooter } from './water-footer.js';
 import { createModelSwitchMotion, modelSpacePose } from './model-switch-motion.js';
 import { createLanguageTransition, languageTextTargets } from './language-transition.js';
 import { createOwnerTools } from './owner-tools.js';
+import { createContentAvailability } from './content-availability.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -38,6 +39,7 @@ let activeGarden = resolveGardenMedia(gardenDefaults);
 for (const locale of ['zh','ja']) Object.assign(COPY[locale],activeGarden.texts.site[locale]);
 const previewToken = new URLSearchParams(location.search).get('editor-preview');
 let previewReceived = false;
+let publicSceneStarted = false;
 const commentsService = createCommentService({baseUrl:null});
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = () => motionPreference.matches;
@@ -52,6 +54,7 @@ let sidebar;
 let contrastLayer;
 let ownerProfile;
 let ownerTools;
+let contentAvailability;
 let personalPage;
 let personalEntrance;
 let topbarDock;
@@ -192,6 +195,7 @@ function applyLanguage() {
   sidebar?.refresh();
   contrastLayer?.refresh();
   ownerTools?.setLanguage(language);
+  contentAvailability?.setLanguage();
 }
 
 function applyFixedText() {
@@ -399,6 +403,7 @@ function enterAlbum() {
 }
 
 function syncPersonalEntrance() {
+  if (!publicSceneStarted) return;
   if (!personalEntrance) return;
   if (MODELS[modelId].preview) { personalEntrance.finish(); return; }
   if (currentIndex !== 3) { personalEntrance.prepare(); return; }
@@ -420,7 +425,8 @@ navigator = createSectionNavigator({
   onActive(index,{source,atStart=true,programmatic=false}) {
     const previousIndex = currentIndex;
     currentIndex = index;
-    const nativeInterior=!atStart&&!programmatic&&!pendingAlbumNavigation&&!albumScroll?.busy;
+    const canEnter=publicSceneStarted&&!initialRoutePending;
+    const nativeInterior=canEnter&&!atStart&&!programmatic&&!pendingAlbumNavigation&&!albumScroll?.busy;
     if(previousIndex!==index || atStart)pendingNativeEntry=null;
     if(nativeInterior&&!MODELS[modelId].preview){
       if($('#'+SECTION_IDS[index]).getBoundingClientRect().top>8)pendingNativeEntry=index;
@@ -431,13 +437,13 @@ navigator = createSectionNavigator({
         if(index===3)personalEntrance?.finish();
       }
     }
-    if (index !== 1 && previousIndex === 1) introEntrance?.finish();
-    else if (atStart && index === 1 && previousIndex !== 1 && !introInWipe && !albumScroll?.busy && !MODELS[modelId].preview) {
+    if (canEnter && index !== 1 && previousIndex === 1) introEntrance?.finish();
+    else if (canEnter && atStart && index === 1 && previousIndex !== 1 && !introInWipe && !albumScroll?.busy && !MODELS[modelId].preview) {
       introEntrance?.prepare(); void introEntrance?.enter();
     }
     // Native touch scrolling has no intercepted navigation preparation. It
     // starts the same paper choreography after the chapter becomes current.
-    if (!MODELS[modelId].preview && !pendingAlbumNavigation && !albumScroll?.busy) {
+    if (canEnter && !MODELS[modelId].preview && !pendingAlbumNavigation && !albumScroll?.busy) {
       if (atStart && index === 2 && previousIndex !== 2) enterAlbum();
       else if (previousIndex === 2 && index !== 2) albumTransition?.reset({prepare:true});
     }
@@ -454,16 +460,18 @@ navigator = createSectionNavigator({
     $('.topbar').inert = index !== 0 || watching;
     $('.side-nav').inert = index === 0;
     $('.video-controls').inert = index !== 0;
-    if (index !== 0) { finishIntro(); player.pause(); } else if (!userPaused) void player.resume();
+    if (index !== 0) { if(publicSceneStarted)finishIntro(); player.pause(); } else if (publicSceneStarted&&!userPaused) void player.resume();
     sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
     if(!nativeInterior || pendingNativeEntry!==index)syncPersonalEntrance();
   },
   onProgress(progress) {
+    if(!publicSceneStarted)return;
     if(progress !== 0)finishIntro();
     root.style.setProperty('--resistance',reducedMotion() ? '0' : String(progress));
     if (currentIndex === 1 && !MODELS[modelId].preview && !albumScroll?.busy) albumTransition?.setProgress(Math.max(0,progress) * .3);
   },
   onChapterWheel(details,{allowStart=true}={}) {
+    if(!publicSceneStarted)return false;
     if (MODELS[modelId].preview) return false;
     if(!allowStart && !albumScroll?.busy)return false;
     const wasBusy = albumScroll?.busy;
@@ -476,6 +484,7 @@ navigator = createSectionNavigator({
     syncPersonalEntrance();
   },
   async onBeforeNavigate(index,{source,from,signal}) {
+    if(!publicSceneStarted)return {animate:false};
     languageTransition?.finish();
     pendingNativeEntry=null;
     if(source==='album-scroll')return {animate:false};
@@ -511,6 +520,7 @@ navigator = createSectionNavigator({
     if(source === 'explore') await runExploreWipe(signal);
   },
   onSettled(index,{source}) {
+    if(!publicSceneStarted || (initialRoutePending&&source==='history'))return;
     if(source==='album-scroll')return;
     finishWipe();
     if (index !== 1 && !MODELS[modelId].preview) introEntrance?.prepare();
@@ -686,6 +696,7 @@ function startDeferredNativeEntry(){
   else if(index===3)syncPersonalEntrance();
 }
 window.addEventListener('scroll',()=>{
+  if(!publicSceneStarted)return;
   if(pendingNativeEntry!==null)requestAnimationFrame(startDeferredNativeEntry);
   if(root.dataset.phase!=='ready')finishIntro();
   if(introEntrance?.state==='complete')prepareIntroOffscreen();
@@ -802,23 +813,27 @@ window.addEventListener('message',event=>{
   }
 });
 let publishedGardenRequest=null,publishedGardenConnected=false,lastPublishedAttempt=0;
+contentAvailability=createContentAvailability({root:document.body,getLanguage:()=>language,onRetry:()=>void refreshPublishedGarden()});
 function updateGardenRuntime(runtime){
   ownerProfile?.setAdminUrl(runtime.adminUrl);
   ownerTools?.setRuntime(runtime);
 }
 function refreshPublishedGarden(){
-  if(location.protocol==='file:' || previewReceived)return Promise.resolve();
+  if(location.protocol==='file:' || previewToken || previewReceived)return Promise.resolve();
   if(publishedGardenRequest)return publishedGardenRequest;
   lastPublishedAttempt=Date.now();
-  publishedGardenRequest=loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href,onRuntime:updateGardenRuntime,onCached(content){
-    if(previewToken || previewReceived)return;
-    document.body.dataset.contentConnection='cache';applyGardenContent(content);
-  }}).then(({content,runtime,connected,source})=>{
+  contentAvailability.loading();
+  publishedGardenRequest=loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href,onRuntime:updateGardenRuntime}).then(({content,runtime,connected})=>{
     publishedGardenConnected=connected;
     if(previewReceived)return;
-    document.body.dataset.contentConnection=connected?'online':source==='cache'?'cache':'offline';
-    if(!previewToken)commentsService.setBaseUrl(runtime.apiBaseUrl || (connected?new URL('/',location.href).href:null));
+    if(!connected){contentAvailability.error();return;}
+    commentsService.setBaseUrl(runtime.apiBaseUrl || new URL('/',location.href).href);
     applyGardenContent(content);
+    contentAvailability.ready();
+    beginPublicScene();
+  }).catch(()=>{
+    publishedGardenConnected=false;
+    if(!previewReceived)contentAvailability.error();
   }).finally(()=>{publishedGardenRequest=null;});
   return publishedGardenRequest;
 }
@@ -827,22 +842,34 @@ function retryPublishedGarden(){
 }
 window.addEventListener('online',retryPublishedGarden);
 window.addEventListener('focus',retryPublishedGarden);
-void refreshPublishedGarden();
 applyTheme();
-if(requestedSection>0) {
-  finishIntro();
-  // Keep the original fragment while the browser and the navigator settle
-  // their initial position. An interim home hash can retarget a late anchor.
-  const releaseInitialRoute=()=>{initialRoutePending=false;applyURL();};
-  void navigator.goTo(requestedSection,{animate:false,source:'history'}).then(releaseInitialRoute,releaseInitialRoute);
-} else {
-  if(reducedMotion() || !root.classList.contains('is-booting'))finishIntro();
-  else if(MODELS[modelId].preview)startIntro();
-  else {
-    root.dataset.phase='video';introWaiting=true;
-    introFallbackTimer=setTimeout(()=>{if(introWaiting)startIntro();},2000);
+function beginPublicScene(){
+  if(publicSceneStarted)return;
+  publicSceneStarted=true;
+  if(requestedSection>0) {
+    finishIntro();
+    // Keep the original fragment until the first verified chapter settles.
+    const releaseInitialRoute=()=>{
+      initialRoutePending=false;applyURL();
+      if(MODELS[modelId].preview)return;
+      if(requestedSection===1){introEntrance?.prepare();void introEntrance?.enter();}
+      else if(requestedSection===2)void enterAlbum();
+      else if(requestedSection===3){personalEntrance?.prepare();syncPersonalEntrance();}
+    };
+    void navigator.goTo(requestedSection,{animate:false,source:'history'}).then(releaseInitialRoute,releaseInitialRoute);
+  } else {
+    if(reducedMotion() || !root.classList.contains('is-booting'))finishIntro();
+    else if(MODELS[modelId].preview)startIntro();
+    else {
+      root.dataset.phase='video';root.classList.remove('is-booting');introWaiting=true;
+      introFallbackTimer=setTimeout(()=>{if(introWaiting)startIntro();},2000);
+    }
+    void player.start();
   }
-  void player.start();
 }
+if(previewToken || location.protocol==='file:'){
+  contentAvailability.ready(previewToken?'preview':'static');
+  beginPublicScene();
+} else void refreshPublishedGarden();
 window.addEventListener('load', () => navigator.refresh(), {once:true});
 document.fonts?.ready.then(()=>{navigator.refresh();sidebar?.refresh();contrastLayer?.refresh();});

@@ -29,17 +29,21 @@ const text = node => node.children.map(child => typeof child === 'object' ? text
 const photo = (id, enabled, name = id) => ({ id, name, enabled, modelIds: [], alt: '', worldId: '', url: `media/${id}.jpg`, takenAt: null });
 function fixture(media, { filter = 'published', search = '' } = {}) {
   const state = { content: { media }, selectedPhoto: null, photoFilter: filter, photoSearch: search, photoEditSequence: [], selectedPhotos: new Set(), dirty: false };
-  let renders = 0, changes = 0;
+  let renders = 0, changes = 0, modalSyncs = 0, outerScrolls = 0;
   const names = ['cohortIds', 'matchesCohort', 'cohortBadge', 'filteredPhotos', 'photoCategoryTabs', 'openPhotoEditor', 'photoEditItems', 'movePhotoEditor', 'photoDetailNavigation', 'renderPhotoGrid'];
-  const controls = runInNewContext(`${names.map(handler).join('\n')}\n({${names.join(',')}})`, {
+  const controls = runInNewContext(`let photoEditorOpener=null;\n${names.map(handler).join('\n')}\n({${names.join(',')}})`, {
     state, node: element,
     button: (label, action, kind = 'secondary', attributes = {}) => element('button', { class: `button ${kind}`, onclick: action, ...attributes }, label),
     photoName: item => item.name, localizedValue: value => value || '',
     image: reference => element('img', { src: reference }), empty: (title, description) => element('section', { class: 'empty' }, title, description),
-    render() { renders++; }, changed() { changes++; }, $: () => null,
+    render() { renders++; }, changed() { changes++; },
+    syncPhotoEditorModal() { modalSyncs++; },
+    document: { activeElement: { focus() {} } },
+    window: { scrollY: 450, scrollX: 0, scrollTo() { outerScrolls++; } },
+    $: selector => selector === '#editor' ? { scrollIntoView() { outerScrolls++; } } : null,
     api() { throw new Error('Navigation must never save or publish content'); },
   });
-  return { state, controls, get renders() { return renders; }, get changes() { return changes; } };
+  return { state, controls, get renders() { return renders; }, get changes() { return changes; }, get modalSyncs() { return modalSyncs; }, get outerScrolls() { return outerScrolls; } };
 }
 
 test('photo categories expose separate counted lists and changing category never edits content', () => {
@@ -74,6 +78,11 @@ test('detail previous and next retain the opening filter sequence and unsaved ed
   assert.equal(a.enabled, false);
   assert.equal(f.state.dirty, true);
   assert.equal(f.changes, 0, 'moving between items must not mark a fresh mutation or invoke publication');
+  assert.equal(f.modalSyncs, 3, 'opening and valid moves refresh the floating editor only');
+  assert.equal(f.renders, 0, 'the filtered photo grid remains mounted beneath the editor');
+  assert.equal(f.outerScrolls, 0, 'stepping through photos never moves the underlying page');
+  assert.equal(f.state.photoFilter, 'published');
+  assert.equal(f.state.photoSearch, 'match');
 });
 
 test('detail navigation follows reordered references and skips deleted photos', () => {
@@ -87,6 +96,8 @@ test('detail navigation follows reordered references and skips deleted photos', 
   assert.equal(f.state.selectedPhoto, 'a', 'a removed photo cannot remain a destination');
   const nav = f.controls.photoDetailNavigation(a), buttons = all(nav).filter(node => node.tag === 'button');
   assert.equal(buttons[0].disabled, false); assert.equal(buttons[1].disabled, true);
+  assert.match(buttons[0].class, /photo-detail-previous/);
+  assert.match(buttons[1].class, /photo-detail-next/);
   assert.match(text(nav), /2 \/ 2/);
   assert.equal(f.controls.openPhotoEditor('missing'), false);
 });

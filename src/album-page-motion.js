@@ -1,4 +1,16 @@
 export const ALBUM_PAGE_MOTION_TIMING = Object.freeze({ peel: 200, stick: 260, stagger: 20, spread: 90 });
+export const ALBUM_PHOTO_ENTRY_EASING = 'cubic-bezier(.2,.65,.3,1)';
+
+/** Chapter entrance and page changes share the same restrained sticking pose. */
+export function albumPhotoEntryFrames(rest = 'none') {
+  const base = rest && rest !== 'none' ? rest : '';
+  return [
+    { transform: `perspective(900px) translate(6px,-30px) rotateX(21deg) rotateZ(1.4deg) scale(.97) ${base}`, opacity: 0, transformOrigin: '50% 6%' },
+    { transform: `perspective(900px) translate(2px,-8px) rotateX(9deg) ${base}`, opacity: 1, offset: .34, transformOrigin: '50% 6%' },
+    { transform: `perspective(900px) translateY(2px) rotateX(-2deg) scale(1.004) ${base}`, opacity: 1, offset: .74, transformOrigin: '50% 6%' },
+    { transform: rest, opacity: 1, transformOrigin: '50% 6%' },
+  ];
+}
 
 /** A print peels from its top edge; the inner card keeps its inspection pose. */
 export function albumPagePhotoFrames(kind = 'stick', rest = 'none') {
@@ -9,12 +21,7 @@ export function albumPagePhotoFrames(kind = 'stick', rest = 'none') {
     at('translateY(-2px) rotateX(12deg) rotateZ(-1deg)', 1, .26),
     at('translateY(-14px) rotateX(28deg) rotateY(-7deg) rotateZ(-2deg)', 1, .68),
     at('translate(-4px,-48px) rotateX(52deg) rotateY(-12deg) scale(.96)', 0, 1),
-  ] : [
-    at('translateY(-18px) rotateX(-28deg) scale(1.04)', 0, 0),
-    at('translateY(3px) rotateX(5deg) scale(.99)', 1, .48),
-    at('translateY(-1px) rotateX(-2deg) scale(1.006)', 1, .78),
-    at('', 1, 1),
-  ];
+  ] : albumPhotoEntryFrames(rest);
 }
 
 /** Dates travel left to right while their stationary CSS rotation stays intact. */
@@ -85,7 +92,7 @@ export function createAlbumPageMotion({ root, reducedMotion = () => false, isAct
       const rest = win?.getComputedStyle?.(node)?.transform || 'none';
       const animation = node.animate(albumPagePhotoFrames(kind, rest), {
         duration: ALBUM_PAGE_MOTION_TIMING[kind], delay: albumPagePhotoDelay(index, nodes.length),
-        easing: kind === 'peel' ? 'cubic-bezier(.4,0,.62,1)' : 'cubic-bezier(.2,.7,.3,1)', fill: 'both',
+        easing: kind === 'peel' ? 'cubic-bezier(.4,0,.62,1)' : ALBUM_PHOTO_ENTRY_EASING, fill: 'both',
       });
       current.animations.push(animation);
       return animation.finished.catch(() => false);

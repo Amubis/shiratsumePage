@@ -12,6 +12,9 @@ export function createLocalCommentsStore(dataDir) {
     try {
       const state = JSON.parse(await readFile(path, 'utf8'));
       if (state.schemaVersion !== 1 || !Array.isArray(state.comments) || !state.rates || typeof state.rates !== 'object') throw new Error('Invalid comments state file.');
+      // Older versions could leave reviewed messages unread. Match the D1
+      // migration, preserving when the review actually happened.
+      for (const comment of state.comments) if (comment.readAt == null && comment.status !== 'pending') comment.readAt = comment.updatedAt || comment.createdAt;
       return state;
     } catch (error) { if (error.code === 'ENOENT') return empty(); throw error; }
   };
@@ -53,7 +56,7 @@ export function createLocalCommentsStore(dataDir) {
       const comment = state.comments.find(item => item.id === id);
       if (!comment) return null;
       if (status) comment.status = status;
-      if (markRead && !comment.readAt) comment.readAt = updatedAt;
+      if ((markRead || status && status !== 'pending') && !comment.readAt) comment.readAt = updatedAt;
       comment.updatedAt = updatedAt;
       return comment;
     }),
