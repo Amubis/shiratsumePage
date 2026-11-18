@@ -7,7 +7,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
  * The outer envelope reserves the existing ten-percent scale, tilt and jitter;
  * the returned item boxes are the untransformed paper rectangles.
  */
-export function planAlbumLayout({ aspects = [], width = 1000, height = 600, mobile = false, view = 'day', paper = {} } = {}) {
+export function planAlbumLayout({ aspects = [], width = 1000, height = 600, mobile = false, view = 'month', paper = {} } = {}) {
   const ratios = (Array.isArray(aspects) ? aspects : []).map(value => {
     const ratio = finite(value, 16 / 9);
     return ratio > 0 ? ratio : 16 / 9;
@@ -80,7 +80,7 @@ export function planAlbumLayout({ aspects = [], width = 1000, height = 600, mobi
     // Narrow pages may grow vertically. Start with readable prints and compare
     // the useful two-print row breakpoints, rather than squeezing into a fixed
     // desktop height or always forcing two landscapes into tiny cells.
-    const target = clamp(stageWidth * .48, 105, 210) * (view === 'year' ? .86 : view === 'month' ? .93 : 1);
+    const target = clamp(stageWidth * .48, 105, 210) * (view === 'year' ? .86 : 1);
     const candidates = new Set([target]);
     for (let start = 0; start < ratios.length; start++) for (let end = start + 1; end <= Math.min(ratios.length, start + 2); end++) {
       let low = 0, high = target;

@@ -801,13 +801,33 @@ window.addEventListener('message',event=>{
     if(languageChanged){applyLanguage();applyURL();}
   }
 });
-if(location.protocol!=='file:')void loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href}).then(({content,runtime,connected})=>{
+let publishedGardenRequest=null,publishedGardenConnected=false,lastPublishedAttempt=0;
+function updateGardenRuntime(runtime){
   ownerProfile?.setAdminUrl(runtime.adminUrl);
   ownerTools?.setRuntime(runtime);
-  if(previewReceived)return;
-  if(!previewToken)commentsService.setBaseUrl(runtime.apiBaseUrl || (connected?new URL('/',location.href).href:null));
-  applyGardenContent(content);
-});
+}
+function refreshPublishedGarden(){
+  if(location.protocol==='file:' || previewReceived)return Promise.resolve();
+  if(publishedGardenRequest)return publishedGardenRequest;
+  lastPublishedAttempt=Date.now();
+  publishedGardenRequest=loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href,onRuntime:updateGardenRuntime,onCached(content){
+    if(previewToken || previewReceived)return;
+    document.body.dataset.contentConnection='cache';applyGardenContent(content);
+  }}).then(({content,runtime,connected,source})=>{
+    publishedGardenConnected=connected;
+    if(previewReceived)return;
+    document.body.dataset.contentConnection=connected?'online':source==='cache'?'cache':'offline';
+    if(!previewToken)commentsService.setBaseUrl(runtime.apiBaseUrl || (connected?new URL('/',location.href).href:null));
+    applyGardenContent(content);
+  }).finally(()=>{publishedGardenRequest=null;});
+  return publishedGardenRequest;
+}
+function retryPublishedGarden(){
+  if(!previewToken&&!publishedGardenConnected&&Date.now()-lastPublishedAttempt>=5000)void refreshPublishedGarden();
+}
+window.addEventListener('online',retryPublishedGarden);
+window.addEventListener('focus',retryPublishedGarden);
+void refreshPublishedGarden();
 applyTheme();
 if(requestedSection>0) {
   finishIntro();

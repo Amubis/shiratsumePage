@@ -13,12 +13,12 @@ export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) =>
   modelIds: Object.freeze(['shiratsume']), takenAt: null, sourceKind: 'video-still',
 })));
 
-export const ALBUM_VIEWS = Object.freeze(['day', 'month', 'year']);
+export const ALBUM_VIEWS = Object.freeze(['month', 'year']);
 export const ALBUM_ORDERS = Object.freeze(['desc', 'asc']);
-const PAGE_SIZES = Object.freeze({ day: 8, month: 9, year: 12 });
+const PAGE_SIZES = Object.freeze({ month: 8, year: 12 });
 export const ALBUM_COPY = Object.freeze({
-  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', day: '按日', month: '按月', year: '按年', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片', pagePosition: '相册页位置', dateOrder: '拍摄时间排序', newestFirst: '由新到旧', oldestFirst: '由旧到新' },
-  ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', day: '日ごと', month: '月ごと', year: '年ごと', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません', pagePosition: 'アルバムのページ位置', dateOrder: '撮影日時の並び順', newestFirst: '新しい順', oldestFirst: '古い順' },
+  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', month: '按月', year: '按年', largerView: '更大视图', smallerView: '更小视图', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片', pagePosition: '相册页位置', dateOrder: '拍摄时间排序', newestFirst: '由新到旧', oldestFirst: '由旧到新' },
+  ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', month: '月ごと', year: '年ごと', largerView: '大きく表示', smallerView: '小さく表示', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません', pagePosition: 'アルバムのページ位置', dateOrder: '撮影日時の並び順', newestFirst: '新しい順', oldestFirst: '古い順' },
 });
 const albumCopyDictionary = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(ALBUM_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
@@ -51,15 +51,14 @@ export function normalizeAlbumMedia(media) {
   });
 }
 
-export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'all', view = 'day', order = 'desc' } = {}) {
-  const mode = ALBUM_VIEWS.includes(view) ? view : 'day';
+export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'all', view = 'month', order = 'desc' } = {}) {
+  const mode = ALBUM_VIEWS.includes(view) ? view : 'month';
   const direction = order === 'asc' ? 1 : -1;
   const filtered = normalizeAlbumMedia(media).filter((item) => filter === 'all' || item.modelIds.includes(modelId));
   const groups = new Map();
   for (const item of filtered) {
-    // The density label describes the visible photos. Page boundaries remain
-    // complete calendar groups: individual photos by month, denser modes by year.
-    const key = dateKey(item.takenAt, mode === 'day' ? 'month' : 'year');
+    // A page belongs to one month or year; short groups never share a sheet.
+    const key = dateKey(item.takenAt, mode);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
@@ -90,7 +89,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let dictionary = albumCopyDictionary(copy);
   let records = normalizeAlbumMedia(media);
   let filter = 'all';
-  let view = 'day';
+  let view = 'month';
   let order = 'desc';
   let pageIndex = 0;
   let pages = [];
@@ -133,13 +132,9 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   titleClover.setAttribute('aria-hidden', 'true');
   titleClover.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'large' });
   albumHeading.append(titleClover, title, coverSmall);
-  const filterButton = button('album-filter-tab');
+  const filterButton = button('album-cover-tab album-filter-tab');
   const groupCount = element('span', 'album-group-count');
-  const orderSelect = element('select', 'album-sort');
-  const newestOption = element('option'); newestOption.value = 'desc';
-  const oldestOption = element('option'); oldestOption.value = 'asc';
-  orderSelect.append(newestOption, oldestOption);
-  const orderTab = element('label', 'album-sort-tab'); orderTab.append(orderSelect);
+  const orderButton = button('album-cover-tab album-sort-tab album-sort');
   const grid = element('div', 'album-photo-grid');
   const empty = element('p', 'album-empty');
   const footer = element('div', 'album-paper-footer');
@@ -162,7 +157,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   for (const classes of ['album-rule album-art-line rule-bottom line-bottom', 'album-angle album-art-line', 'album-dot-accent album-art-dots dot-top dots-top', 'album-dot-accent album-art-dots dot-bottom dots-bottom']) composition.append(element('span', classes));
   front.append(composition, albumHeading, grid, empty, dateMark, footer);
   const tabs = element('div', 'album-tabs'); const previous = button('album-tab album-previous'); const mode = button('album-tab album-view'); const next = button('album-tab album-next');
-  const coverControls = element('div', 'album-cover-controls'); coverControls.append(filterButton, orderTab);
+  const coverControls = element('div', 'album-cover-controls'); coverControls.append(filterButton, orderButton);
   const coverUnit=element('div','album-cover-unit');coverUnit.append(cover,coverControls);
   tabs.append(previous, mode, next); root.append(back, middle, front, coverUnit, tabs); container.replaceChildren(root); container.classList.add('album-showcase');
 
@@ -333,15 +328,16 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const page = pages[pageIndex]; const total = pages.reduce((sum, page) => sum + page.items.length, 0);
     root.setAttribute('data-photo-count', String(page?.items.length || 0));
     root.style.setProperty('--album-photo-count', String(page?.items.length || 0));
-    root.classList.remove('view-day', 'view-month', 'view-year'); root.classList.add(`view-${view}`);
+    root.classList.remove('view-month', 'view-year'); root.classList.add(`view-${view}`);
     title.textContent = text().title; coverSmall.textContent = dictionary[locale === 'zh' ? 'ja' : 'zh'].title; filterButton.textContent = filter === 'all' ? text().all : text().current;
     coverSmall.setAttribute('lang', locale === 'zh' ? 'ja' : 'zh-CN');
     filterButton.setAttribute('aria-label', `${text().toggle} · ${filterButton.textContent}`); filterButton.setAttribute('aria-pressed', String(filter === 'all'));
-    previous.textContent = `↑ ${text().previous}`; next.textContent = `${text().next} ↓`; mode.textContent = `◌ ${text()[view]}`;
-    previous.setAttribute('aria-label', text().previous); next.setAttribute('aria-label', text().next); mode.setAttribute('aria-label', `${text().view} · ${text()[view]}`);
-    previous.disabled = !enabled || pageIndex <= 0; next.disabled = !enabled || pageIndex >= pages.length - 1; mode.disabled = filterButton.disabled = orderSelect.disabled = !enabled;
-    orderSelect.setAttribute('aria-label', text().dateOrder);
-    newestOption.textContent = text().newestFirst; oldestOption.textContent = text().oldestFirst; orderSelect.value = order;
+    previous.textContent = `↑ ${text().previous}`; next.textContent = `${text().next} ↓`; mode.textContent = view === 'month' ? text().smallerView : text().largerView;
+    previous.setAttribute('aria-label', text().previous); next.setAttribute('aria-label', text().next); mode.setAttribute('aria-label', `${text().view} · ${mode.textContent}`);
+    previous.disabled = !enabled || pageIndex <= 0; next.disabled = !enabled || pageIndex >= pages.length - 1; mode.disabled = filterButton.disabled = orderButton.disabled = !enabled;
+    orderButton.textContent = order === 'desc' ? text().newestFirst : text().oldestFirst;
+    orderButton.setAttribute('aria-label', `${text().dateOrder} · ${orderButton.textContent}`);
+    orderButton.setAttribute('aria-pressed', String(order === 'asc'));
     groupCount.textContent = `${total} ${text().photoCount}`;
     pageStatus.textContent = pages.length ? `${String(pageIndex + 1).padStart(2, '0')} / ${String(pages.length).padStart(2, '0')}` : '00 / 00';
     pagePosition.max = String(Math.max(1, pages.length)); pagePosition.value = String(pageIndex + 1);
@@ -352,7 +348,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     dateMark.classList.toggle('is-undated', !dated);
     dateMark.setAttribute('aria-label', page ? groupLabel(page.key) : text().noPhoto);
     dateYear.textContent = dated ? page.key.slice(0, 4) : 'None';
-    dateMonth.textContent = dated && view === 'day' ? page.key.slice(5, 7) : '';
+    dateMonth.textContent = dated && view === 'month' ? page.key.slice(5, 7) : '';
     dateMonth.hidden = !dateMonth.textContent;
     sourceNote.textContent = records.every((item) => item.sourceKind === 'video-still' && !item.takenAt) ? text().source : text().mixedSource;
     empty.hidden = Boolean(page?.items.length); empty.textContent = text().empty;
@@ -404,7 +400,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   bind(previous, 'click', () => goToPage(pageIndex - 1)); bind(next, 'click', () => goToPage(pageIndex + 1));
   bind(mode, 'click', () => { view = ALBUM_VIEWS[(ALBUM_VIEWS.indexOf(view) + 1) % ALBUM_VIEWS.length]; pageIndex = 0; void pageMotion.run(()=>render('view')); });
   bind(filterButton, 'click', () => { filter = filter === 'model' ? 'all' : 'model'; pageIndex = 0; void pageMotion.run(()=>render('filter')); });
-  bind(orderSelect, 'change', () => { if (enabled) setOrder(orderSelect.value); });
+  bind(orderButton, 'click', () => { if (enabled) setOrder(order === 'desc' ? 'asc' : 'desc'); });
   bind(pagePosition, 'input', () => {
     const index = Math.max(0, Math.min(pages.length - 1, Math.round(Number(pagePosition.value)) - 1));
     if (!Number.isFinite(index)) return;

@@ -15,7 +15,7 @@ function assertContained(plan) {
 
 test('four or five portrait prints share a compact desktop row instead of empty landscape cells', () => {
   for (const count of [4, 5]) {
-    const plan = planAlbumLayout({ aspects: Array(count).fill(9 / 16), width: 1000, height: 580 });
+    const plan = planAlbumLayout({ aspects: Array(count).fill(9 / 16), width: 1000, height: 580, view: 'month' });
     assert.equal(plan.rowCount, 1);
     assert.deepEqual(plan.rows[0].indices, Array.from({ length: count }, (_, index) => index));
     assert.ok(plan.photoHeight > 290, 'portraits should remain prominent');
@@ -37,7 +37,7 @@ test('mixed orientations retain their proportions at one shared image height', (
 });
 
 test('dense pages can overlap their paper edges while preserving every ordered photograph', () => {
-  const plan = planAlbumLayout({ aspects: Array(12).fill(16 / 9), width: 1000, height: 580 });
+  const plan = planAlbumLayout({ aspects: Array(12).fill(16 / 9), width: 1000, height: 580, view: 'year' });
   assert.deepEqual(plan.items.map(item => item.index), Array.from({ length: 12 }, (_, index) => index));
   assert.ok(plan.gapX < 0 && plan.gapY < 0);
   assert.ok(plan.photoHeight > 140);
@@ -75,7 +75,7 @@ test('layout is deterministic and stays within compact, wide and tall presentati
   for (const [width, height, mobile] of [[1000, 580, false], [720, 420, false], [340, 300, true]]) {
     for (const count of [1, 3, 5, 8, 12]) {
       const aspects = Array.from({ length: count }, (_, index) => [9 / 16, 16 / 9, 1, 3][index % 4]);
-      const options = { aspects, width, height, mobile };
+      const options = { aspects, width, height, mobile, view: count > 8 ? 'year' : 'month' };
       const plan = planAlbumLayout(options);
       assert.deepEqual(planAlbumLayout(options), plan);
       assert.equal(plan.items.length, count);
