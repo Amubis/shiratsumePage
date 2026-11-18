@@ -57,11 +57,8 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
 .personal-journal-more { margin-top: 7px; min-height: 44px; max-width: 100%; padding: 10px 22px; border: 1px solid color-mix(in srgb, var(--theme-dark) 18%, transparent); border-radius: 999px; color: var(--theme-dark); background: color-mix(in srgb, var(--theme) 15%, var(--paper)); font-size: 11px; line-height: 1.7; }
 .personal-journal-more:disabled { opacity: .65; }
 .personal-journal-more[hidden] { display: none; }
-.personal-post-comments { margin-top: 17px; }
-.personal-post-comments-summary { width: fit-content; min-height: 40px; padding-block: 8px; color: var(--theme-dark); font-size: 11px; cursor: pointer; }
-.personal-post-comments-summary[aria-disabled="true"] { color: var(--muted); cursor: default; }
-.personal-post-comments-summary:focus-visible { outline: 2px solid var(--theme-dark); outline-offset: 3px; }
-.personal-post-comments-content { margin-top: 10px; padding: 17px 18px 20px; border: 1px solid color-mix(in srgb, var(--theme-dark) 14%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--theme) 6%, var(--paper)); }
+.personal-post-comments { margin-top: 22px; padding-top: 17px; border-top: 1px solid color-mix(in srgb, var(--theme-dark) 13%, transparent); }
+.personal-post-comments-content { min-width: 0; }
 .personal-image-viewer { position: fixed; inset: 0; width: min(1080px, calc(100vw - 48px)); max-width: none; max-height: calc(100svh - 48px); margin: auto; padding: 48px 18px 18px; border: 1px solid color-mix(in srgb, var(--theme-dark) 15%, transparent); border-radius: 20px; color: var(--theme-dark); background: var(--paper); box-shadow: 0 22px 90px #27292338; overscroll-behavior: contain; }
 .personal-image-viewer::backdrop { background: #272923b8; }
 .personal-image-full { display: block; width: 100%; height: auto; max-height: calc(100svh - 140px); object-fit: contain; }

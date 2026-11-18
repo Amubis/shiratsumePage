@@ -73,11 +73,14 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
   let commentDictionary = normalizeCommentsCopy(commentsCopy);
   const commentSections = new Set();
   const commentDrafts = new Map();
-  const openComments = new Set();
+  const expandedComments = new Set();
   function disposeComments() {
     for (const section of commentSections) {
-      if (section.id && section.panel) commentDrafts.set(section.id, section.panel.draft);
-      section.unsubscribe(); section.panel?.destroy();
+      if (section.id && section.panel) {
+        commentDrafts.set(section.id, section.panel.draft);
+        if (section.panel.expanded) expandedComments.add(section.id); else expandedComments.delete(section.id);
+      }
+      section.panel?.destroy();
     }
     commentSections.clear();
   }
@@ -182,35 +185,12 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
         }
         article.append(gallery);
       }
-      const details = element('details', 'personal-post-comments');
-      const summary = element('summary', 'personal-post-comments-summary');
+      const commentsSection = element('section', 'personal-post-comments');
       const commentRoot = element('div', 'personal-post-comments-content');
-      const section = { id: post.id, panel: null, unsubscribe: () => {} };
-      const updateSummary = () => {
-        const enabled = Boolean(commentService?.enabled && post.id);
-        summary.textContent = commentDictionary[locale][enabled ? 'open' : 'unavailable'];
-        summary.setAttribute('aria-disabled', String(!enabled));
-      };
-      const setService = next => {
-        section.unsubscribe(); section.panel?.setService(next);
-        section.unsubscribe = typeof next?.subscribe === 'function' ? next.subscribe(updateSummary) : () => {};
-        updateSummary();
-      };
-      section.setService = setService;
-      section.updateCopy = () => { updateSummary(); section.panel?.setCopy(commentDictionary); };
-      const ensurePanel = () => {
-        if (!section.panel) {
-          section.panel = createAnonymousComments({ container: commentRoot, service: commentService, targetType: 'note', targetId: post.id, language: locale, copy: commentDictionary });
-          if (post.id) section.panel.setDraft(commentDrafts.get(post.id));
-        } else section.panel.setActive(true);
-      };
-      summary.addEventListener('click', event => { if (!details.open && (!commentService?.enabled || !post.id)) event.preventDefault?.(); });
-      details.addEventListener('toggle', () => {
-        if (details.open) { if (post.id) openComments.add(post.id); ensurePanel(); }
-        else { if (post.id) openComments.delete(post.id); section.panel?.setActive(false); }
-      });
-      details.append(summary, commentRoot); article.append(details); commentSections.add(section); setService(commentService);
-      if (post.id && openComments.has(post.id)) { details.open = true; ensurePanel(); }
+      const panel = createAnonymousComments({ container: commentRoot, service: commentService, targetType: 'note', targetId: post.id, language: locale, copy: commentDictionary, previewLimit: 3 });
+      if (post.id) { panel.setDraft(commentDrafts.get(post.id)); panel.setExpanded(expandedComments.has(post.id)); }
+      const section = { id: post.id, panel, setService: next => panel.setService(next), updateCopy: () => panel.setCopy(commentDictionary) };
+      commentsSection.append(commentRoot); article.append(commentsSection); commentSections.add(section);
       return article;
     };
     const appendEntries = () => {
@@ -279,6 +259,6 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     setCommentsCopy(next) { if (destroyed) return; commentDictionary = normalizeCommentsCopy(next); commentSections.forEach(section => section.updateCopy()); },
     setPosts(next) { if (destroyed) return; entries = publishedPosts(next); visibleCount = JOURNAL_PAGE_SIZE; render(); },
     update(next) { if (destroyed) return; data = normalizePersonalProfile(next); render(); },
-    destroy() { if (destroyed) return; closeViewer(); disposeComments(); commentDrafts.clear(); openComments.clear(); destroyed = true; root.replaceChildren(); root.classList.remove('personal-page'); },
+    destroy() { if (destroyed) return; closeViewer(); disposeComments(); commentDrafts.clear(); expandedComments.clear(); destroyed = true; root.replaceChildren(); root.classList.remove('personal-page'); },
   };
 }

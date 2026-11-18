@@ -6,7 +6,7 @@ class Element {
   constructor(tag, doc) {
     this.localName = tag; this.ownerDocument = doc; this.children = []; this.classes = new Set(); this.attributes = new Map(); this.listeners = new Map(); this.parentElement = null;
     this.style = { setProperty(name, value) { this[name] = value; } };
-    this.classList = { add: name => this.classes.add(name), remove: name => this.classes.delete(name), contains: name => this.classes.has(name) };
+    this.classList = { add: name => this.classes.add(name), remove: name => this.classes.delete(name), contains: name => this.classes.has(name), toggle: (name, on) => (on ?? !this.classes.has(name)) ? this.classes.add(name) : this.classes.delete(name) };
   }
   set className(value) { this.classes = new Set(value.split(/\s+/).filter(Boolean)); }
   get className() { return [...this.classes].join(' '); }

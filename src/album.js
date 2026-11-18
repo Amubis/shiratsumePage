@@ -203,6 +203,13 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       if (!wrapper) continue;
       for (const [name, value] of Object.entries({ left: item.x, top: item.y, width: item.width, height: item.height })) wrapper.style.setProperty(name, `${value.toFixed(3)}px`);
     }
+    if (grid.classList.contains('is-layout-initializing')) {
+      // New absolute wrappers inherit 100% of an already packed grid. Commit
+      // their real rectangles before enabling resize transitions or entrance
+      // would visibly shrink each print from the size of the entire sheet.
+      grid.getBoundingClientRect?.();
+      grid.classList.remove('is-layout-initializing');
+    }
   }
   function queueLayout() {
     if (destroyed || layoutFrame !== null) return;
@@ -380,6 +387,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       bind(card, 'blur', clearInspection, cardBindings);
       bind(card, 'click', () => openPlayer(item.id), cardBindings);
     }
+    grid.classList.add('is-layout-initializing');
     grid.replaceChildren(...nodes);
     layoutPhotos();
     dialog.setAttribute('aria-label', text().player); playerClose.textContent = '×'; playerClose.setAttribute('aria-label', text().close);

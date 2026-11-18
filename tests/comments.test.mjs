@@ -170,18 +170,18 @@ test('a removed reply parent never silently converts the saved reply into a top 
   assert.equal(f.find('.comments-body').value, '回复草稿');
 });
 
-test('journal lazily opens comments for six visible published posts and preserves drafts across language updates', async t => {
+test('journal comments are visible for six published posts and preserve drafts across language updates', async t => {
   const f = documentFixture(); const client = serviceStub();
   const page = createPersonalPage({ root: f.container, commentsService: client, posts: Array.from({ length: 8 }, (_, index) => ({ id: `note-${index}`, body: `正文 ${index}`, published: true })) }); t.after(() => page.destroy());
-  assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 6); assert.equal(client.calls.length, 0);
-  const details = f.find('.personal-post-comments'); details.open = true; details.emit('toggle'); await tick();
-  assert.equal(client.calls.length, 1); assert.equal(client.calls[0].targetType, 'note'); assert.equal(client.calls[0].targetId, 'note-0');
+  assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 6); assert.equal(client.calls.length, 6);
+  assert.equal(f.find('.personal-post-comments').localName, 'section'); await tick();
+  assert.equal(f.find('.comments-form').hidden, false); assert.equal(client.calls[0].targetType, 'note'); assert.equal(client.calls[0].targetId, 'note-0');
   f.find('.comments-body').value = '切语言时保留'; page.setLanguage('ja'); await tick();
   assert.equal(f.find('.comments-body').value, '切语言时保留'); assert.equal(f.find('.comments-submit').textContent, COMMENTS_COPY.ja.submit);
   f.find('.personal-journal-more').emit('click'); assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 8);
-  page.setCommentsService(null); assert.equal(f.find('.personal-post-comments-summary').getAttribute('aria-disabled'), 'true');
-  const stillOpenSummary = f.find('.personal-post-comments-summary');
-  assert.equal(stillOpenSummary.emit('click').event.prevented, undefined, 'open comments can be collapsed after disabling the service');
+  page.setCommentsService(null); assert.equal(f.find('.comments-form').hidden, true);
+  assert.equal(f.find('.comments-load-state').textContent, COMMENTS_COPY.ja.unavailable);
+  assert.equal(f.find('.personal-post-comments-summary'), null);
 });
 
 test('localized note titles, body and image descriptions switch language without changing the comment target', async t => {
@@ -190,8 +190,42 @@ test('localized note titles, body and image descriptions switch language without
   assert.equal(f.find('.personal-journal-title').textContent, '标题');
   page.setLanguage('ja');
   assert.equal(f.find('.personal-journal-title').textContent, '題名'); assert.equal(f.find('.personal-journal-body').textContent, '本文'); assert.equal(f.find('.personal-journal-image').alt, '写真');
-  const details = f.find('.personal-post-comments'); details.open = true; details.emit('toggle'); await tick();
+  await tick();
   assert.equal(client.calls[0].targetId, 'localized-note');
+});
+
+test('journal previews three top-level comments with their replies and expands without limiting photo threads', async t => {
+  const records = [comment('a'), comment('a-child', { parentId: 'a', verified: true }), comment('b'), comment('c'), comment('d'), comment('d-child', { parentId: 'd', verified: true }), comment('e')];
+  const f = documentFixture(), panel = createAnonymousComments({ container: f.container, service: serviceStub(records), targetType: 'note', targetId: 'note', previewLimit: 3 }); t.after(() => panel.destroy()); await tick();
+  assert.deepEqual(f.container.querySelectorAll('.comment-body').map(node => node.textContent), ['留言 a', '留言 a-child', '留言 b', '留言 c']);
+  assert.equal(f.find('.comments-more').textContent, '展开其余 2 条留言');
+  assert.equal(f.find('.comments-form').hidden, false);
+  f.find('.comments-more').emit('click'); assert.equal(panel.expanded, true);
+  assert.equal(f.container.querySelectorAll('.comment-reply-button').length, 5);
+  assert.equal(f.container.querySelectorAll('.comment-body').length, 7);
+  panel.setLanguage('ja'); assert.equal(f.find('.comments-more').textContent, 'コメントを折りたたむ');
+  f.find('.comments-more').emit('click'); assert.equal(panel.expanded, false);
+  assert.equal(f.container.querySelectorAll('.comment-reply-button').length, 3);
+  const photo = documentFixture(), photoPanel = createAnonymousComments({ container: photo.container, service: serviceStub(records), targetId: 'photo' }); t.after(() => photoPanel.destroy()); await tick();
+  assert.equal(photo.container.querySelectorAll('.comment-reply-button').length, 5);
+  assert.equal(photo.find('.comments-more').hidden, true);
+});
+
+test('expanded journal threads and owner reply drafts survive language rendering and reveal saved hidden targets', async t => {
+  const f = documentFixture(), client = serviceStub(['a', 'b', 'c', 'd', 'e'].map(id => comment(id, { nickname: id })));
+  client.ownerSession = { authenticated: true, username: 'Amubis' };
+  const page = createPersonalPage({ root: f.container, commentsService: client, posts: [{ id: 'note', body: '正文', published: true }] }); t.after(() => page.destroy()); await tick();
+  f.find('.comments-more').emit('click');
+  f.container.querySelectorAll('.comment-reply-button')[3].emit('click'); f.find('.comments-body').value = '回复草稿';
+  page.setLanguage('ja'); await tick();
+  assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
+  assert.equal(f.find('.comments-body').value, '回复草稿');
+  assert.match(f.find('.comments-reply-target').textContent, /d/);
+  assert.equal(f.find('.comments-submit').disabled, false);
+  const g = documentFixture(), panel = createAnonymousComments({ container: g.container, service: client, targetType: 'note', targetId: 'restored', previewLimit: 3 }); t.after(() => panel.destroy());
+  panel.setDraft({ body: '已保存回复', replyId: 'e' }); await tick();
+  assert.equal(panel.expanded, true); assert.equal(g.container.querySelectorAll('.comment-reply-button').length, 5);
+  assert.equal(g.find('.comments-submit').disabled, false);
 });
 
 test('editable album captions, world and small cover labels reach the visitor in both languages', t => {

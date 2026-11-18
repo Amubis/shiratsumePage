@@ -168,6 +168,8 @@
   transition: opacity .28s var(--water-easing, cubic-bezier(.22,.68,.24,1));
 }
 
+.owner-admin-link[hidden], .owner-card.has-owner-session .owner-admin-link { display: none; }
+
 .owner-admin-link .clover-svg {
   width: 21px;
   height: 21px;

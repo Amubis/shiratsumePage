@@ -33,8 +33,8 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   if (!root?.ownerDocument) throw new TypeError('An owner tools root is required.');
   const doc = root.ownerDocument, win = doc.defaultView;
   const url = pageURL || win.location?.href || globalThis.location?.href;
-  const bindings = [], buttons = new Set();
-  let api = null, base = null, session = { authenticated: false }, editing = true, destroyed = false, authBusy = false, dialogBusy = false;
+  const bindings = [], buttons = new Set(), entryVisibility = new Map();
+  let api = null, base = null, session = { authenticated: false }, destroyed = false, authBusy = false, dialogBusy = false;
   let observer = null, scheduled = false, refreshSequence = 0, lastFocusRefresh = 0, opener = null;
   const zh = () => getLanguage() !== 'ja';
   const text = (chinese, japanese) => zh() ? chinese : japanese;
@@ -43,13 +43,11 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   const bind = (node, type, handler, options) => { if (!node?.addEventListener) return; node.addEventListener(type, handler, options); bindings.push(() => node.removeEventListener(type, handler, options)); };
   const button = (className, value) => { const node = create('button', className, value); node.type = 'button'; return node; };
   const name = () => localized(getContent()?.owner?.name, getLanguage()).trim().slice(0, 40) || 'Amubis';
-  const bar = create('aside', 'owner-tools-bar owner-tools-ui'); bar.hidden = true;
-  const badge = create('span', 'owner-tools-badge');
-  const toggle = button('owner-tools-toggle');
+  const actions = create('div', 'owner-profile-actions owner-tools-ui'); actions.hidden = true;
   const manage = create('a', 'owner-tools-manage'); manage.href = './admin/'; manage.target = '_blank'; manage.rel = 'noopener';
   const logout = button('owner-tools-logout');
-  const notice = create('span', 'owner-tools-notice'); notice.setAttribute('role', 'status');
-  bar.append(badge, toggle, manage, logout, notice); root.append(bar);
+  const notice = create('span', 'owner-tools-notice owner-tools-ui'); notice.setAttribute('role', 'status');
+  actions.append(manage, logout); root.append(notice);
   const dialog = create('dialog', 'owner-tools-dialog owner-tools-ui');
   const close = button('owner-tools-close', '×');
   const heading = create('h2', 'owner-tools-heading');
@@ -67,9 +65,24 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   function update() {
     if (destroyed) return;
     for (const entry of buttons) if (entry.isConnected === false) buttons.delete(entry);
-    bar.hidden = !session.authenticated;
-    write(badge, text('站长模式', '管理者モード')); write(toggle, editing ? text('隐藏编辑', '編集を隠す') : text('显示编辑', '編集する'));
-    toggle.setAttribute('aria-pressed', String(editing)); write(manage, text('内容管理', 'コンテンツ管理')); write(logout, text('退出', 'ログアウト'));
+    const card = root.querySelector('.owner-card'), entry = card?.querySelector('.owner-admin-link');
+    if (card && actions.parentElement !== card) card.append(actions);
+    const authenticated = Boolean(api && session.authenticated);
+    if (card && card.classList.contains('has-owner-session') !== authenticated) card.classList.toggle('has-owner-session', authenticated);
+    actions.hidden = !authenticated;
+    write(manage, text('管理页', '管理ページ')); write(logout, text('退出登录', 'ログアウト'));
+    manage.href = entry?.href || new URL('./admin/', url).href;
+    if (entry) {
+      if (api) {
+        if (!entryVisibility.has(entry)) entryVisibility.set(entry, Boolean(entry.hidden));
+        entry.hidden = authenticated;
+        entry.setAttribute('role', 'button');
+        const label = text('站长登录', '管理者ログイン'); entry.setAttribute('aria-label', label); entry.title = label;
+      } else {
+        if (entryVisibility.has(entry)) { entry.hidden = entryVisibility.get(entry); entryVisibility.delete(entry); }
+        entry.removeAttribute('role');
+      }
+    }
     close.setAttribute('aria-label', text('关闭', '閉じる'));
     for (const node of doc.querySelectorAll('.album-player[data-photo-id], .personal-journal-post[data-journal-id]')) {
       const photo = node.classList.contains('album-player'), id = node.getAttribute(photo ? 'data-photo-id' : 'data-journal-id');
@@ -78,14 +91,16 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
       let edit = target.querySelector(photo ? '.owner-photo-edit' : '.owner-note-edit');
       if (!edit) {
         edit = button(`owner-inline-edit owner-tools-ui ${photo ? 'owner-photo-edit' : 'owner-note-edit'}`);
+        edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15.6 3.8 4.6 4.6-1.4 1.4-4.6-4.6Zm-2.8 2.8 4.6 4.6-9 9H3.8v-4.6Z"/></svg>';
         edit.addEventListener('click', () => openEditor(edit.dataset.ownerType, edit.dataset.ownerId, edit));
         target.append(edit); buttons.add(edit);
       }
-      edit.hidden = !session.authenticated || !editing || !id;
+      edit.hidden = !session.authenticated || !id;
       const type = photo ? 'photo' : 'journal';
       if (edit.dataset.ownerType !== type) edit.dataset.ownerType = type;
       if (edit.dataset.ownerId !== id) edit.dataset.ownerId = id;
-      write(edit, photo ? text('编辑说明', '説明を編集') : text('编辑碎碎念', 'ひとりごとを編集'));
+      const label = photo ? text('编辑照片说明', '写真の説明を編集') : text('编辑碎碎念', 'ひとりごとを編集');
+      edit.setAttribute('aria-label', label); edit.title = label;
       if (!photo && node.classList.contains('owner-editable-note') !== !edit.hidden) node.classList.toggle('owner-editable-note', !edit.hidden);
     }
   }
@@ -103,7 +118,11 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   function closeDialog(immediate = false) {
     if (dialogBusy && !immediate) return;
     if (!dialog.open) return;
-    const finish = () => { if (dialog.open) dialog.close(); doc.body.classList.remove('owner-dialog-open'); opener?.focus?.({ preventScroll: true }); opener = null; };
+    const finish = () => {
+      if (dialog.open) dialog.close(); doc.body.classList.remove('owner-dialog-open');
+      const target = opener && opener.isConnected !== false && !opener.hidden ? opener : session.authenticated && !actions.hidden ? manage : root.querySelector('.owner-admin-link') || root.querySelector('.owner-avatar');
+      target?.focus?.({ preventScroll: true }); opener = null;
+    };
     if (immediate || !dialog.animate || win.matchMedia?.('(prefers-reduced-motion: reduce)').matches) finish();
     else dialog.animate([{ opacity: 1, scale: '1' }, { opacity: 0, scale: '.97' }], { duration: 160, easing: 'cubic-bezier(.4,0,.6,1)' }).finished.then(finish, finish);
   }
@@ -158,7 +177,10 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     const entry = event.target.closest?.('.owner-admin-link');
     if (entry && api && !session.authenticated) { event.preventDefault(); openLogin(entry); }
   });
-  bind(toggle, 'click', () => { editing = !editing; update(); });
+  bind(root, 'keydown', event => {
+    const entry = event.target.closest?.('.owner-admin-link');
+    if (event.key === ' ' && entry && api && !session.authenticated) { event.preventDefault(); openLogin(entry); }
+  });
   bind(logout, 'click', async () => {
     if (!api || authBusy) return; authBusy = true; ++refreshSequence;
     try { await api.logout(session.csrfToken); setSession(null); notice.textContent = ''; closeDialog(true); }
@@ -175,6 +197,6 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     setRuntime(runtime) { const next = sameOriginOwnerApi(runtime, url); if (next === base) return; base = next; api = base ? createOwnerApi({ baseUrl: base, fetchImpl }) : null; ++refreshSequence; setSession(null); if (api) void refresh(); },
     refresh, setLanguage() { update(); },
     get session() { return { ...session }; },
-    destroy() { if (destroyed) return; destroyed = true; ++refreshSequence; observer?.disconnect(); bindings.splice(0).forEach(remove => remove()); closeDialog(true); buttons.forEach(node => node.remove()); bar.remove(); dialog.remove(); doc.body.classList.remove('owner-dialog-open'); onSession({ authenticated: false }); },
+    destroy() { if (destroyed) return; destroyed = true; ++refreshSequence; observer?.disconnect(); bindings.splice(0).forEach(remove => remove()); closeDialog(true); buttons.forEach(node => node.remove()); for (const [entry, hidden] of entryVisibility) { entry.hidden = hidden; entry.removeAttribute('role'); } entryVisibility.clear(); root.querySelectorAll('.owner-card').forEach(card => card.classList.remove('has-owner-session')); actions.remove(); notice.remove(); dialog.remove(); doc.body.classList.remove('owner-dialog-open'); onSession({ authenticated: false }); },
   };
 }

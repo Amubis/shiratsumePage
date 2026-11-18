@@ -110,6 +110,23 @@ test('loaded portrait dimensions repack one shared row and pending layout work i
   assert.equal(f.frames.size, 0);
 });
 
+test('new page rectangles settle before entrance while later image-driven resizing remains animated', t => {
+  const f = fixture(t, { media: Array.from({ length: 9 }, (_, index) => sample(`layout-${index}`, null)) });
+  const grid = f.find('album-photo-grid'), measure = grid.getBoundingClientRect.bind(grid), measurements = [];
+  grid.getBoundingClientRect = () => {
+    measurements.push({ initial: grid.classList.contains('is-layout-initializing'), widths: grid.findAll('album-photo').map(node => node.style.getPropertyValue('width')) });
+    return measure();
+  };
+  f.api.goToPage(1);
+  assert.equal(measurements.length, 2, 'read the stage, then commit its new print rectangles before enabling transitions');
+  assert.ok(measurements.every(entry => entry.initial), 'new nodes cannot animate from the full-sheet fallback dimensions');
+  assert.ok(measurements.at(-1).widths.every(value => parseFloat(value) > 0));
+  assert.equal(grid.classList.contains('is-layout-initializing'), false);
+  measurements.length = 0;
+  const image = f.find('album-photo-image'); image.naturalWidth = 9; image.naturalHeight = 16; image.emit('load'); f.flush();
+  assert.ok(measurements.length > 0 && measurements.every(entry => !entry.initial), 'ordinary later repacking keeps its existing resize transition');
+});
+
 test('model tags control filtering and pages never silently wrap or duplicate photos', () => {
   const media = Array.from({ length: 13 }, (_, index) => sample(String(index), null)); media.push(sample('another', null, ['another-model']));
   const pages = buildAlbumPages(media, { filter: 'model' }); assert.deepEqual(pages.map((page) => page.items.length), [8, 5]);

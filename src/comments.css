@@ -44,5 +44,22 @@
 .comments-reply-target { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; font-size: 10px; color: var(--theme-dark, #52603e); overflow-wrap: anywhere; }
 .comments-honeypot { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
 .anonymous-comments :is(button, input, textarea):focus-visible { outline: 2px solid var(--theme-dark, #52603e); outline-offset: 3px; }
+/* Notes show a short conversation immediately, with a compact composer below. */
+.comments-preview .comments-heading { font-size: 13px; font-weight: 650; letter-spacing: .04em; }
+.comments-preview .comments-note, .comments-preview .comments-load-state { margin-bottom: 10px; }
+.comments-preview .comments-list { margin-bottom: 6px; }
+.comments-preview .comment { padding-block: 12px; border-bottom-color: color-mix(in srgb, var(--theme-dark, #52603e) 11%, transparent); }
+.comments-preview .comment:first-child { padding-top: 7px; }
+.comments-preview .comment-author { font-size: 12px; font-weight: 650; }
+.comments-preview .comment-body { margin-top: 5px; line-height: 1.85; }
+.comments-preview .comment-replies { margin-top: 5px; padding-left: 11px; }
+.comments-preview .comment-reply { padding-block: 8px 2px; }
+.comments-preview .comments-form { gap: 10px; margin-top: 12px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--theme-dark, #52603e) 11%, transparent); }
+.comments-preview .comments-nickname-label { max-width: 320px; }
+.comments-preview .comments-body { min-height: 96px; }
+.comments-more { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; max-width: 100%; margin: 4px 0 0; padding: 7px 12px; border: 1px solid color-mix(in srgb, var(--theme-dark, #52603e) 16%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--theme, #c9ce9c) 14%, var(--paper, #fffdf7)); color: var(--theme-dark, #52603e); font: inherit; font-size: 11px; line-height: 1.6; cursor: pointer; transition: scale .3s cubic-bezier(.2,.75,.3,1.2),background .24s cubic-bezier(.4,0,.2,1); }
+.comments-more:hover { scale: 1.025; background: color-mix(in srgb, var(--theme, #c9ce9c) 26%, var(--paper, #fffdf7)); }
+.comments-more:active { scale: .96; }
 @media (max-width: 760px) { .comments-nickname, .comments-body { font-size: 16px; } .comments-nickname { min-height: 48px; } .comments-nickname-label::after { bottom: 14px; } .comment-reply-button, .comments-cancel-reply { min-height: 40px; } }
-@media (prefers-reduced-motion: reduce) { .comments-nickname, .comments-body, .comments-nickname-label::after { transition: none; } }
+@media (max-width: 760px) { .comments-more { min-height: 42px; }.comments-preview .comment-meta { gap: 4px 7px; }.comments-preview .comment-date { font-size: 9px; } }
+@media (prefers-reduced-motion: reduce) { .comments-nickname, .comments-body, .comments-nickname-label::after, .comments-more { transition: none; } }

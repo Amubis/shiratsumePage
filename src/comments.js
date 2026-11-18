@@ -84,7 +84,7 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
 }
 
 /** One panel owns a single visible thread; changing its target aborts stale work. */
-export function createAnonymousComments({ container, service = null, targetType = 'photo', targetId = null, language = 'zh', copy, active = true } = {}) {
+export function createAnonymousComments({ container, service = null, targetType = 'photo', targetId = null, language = 'zh', copy, active = true, previewLimit = 0 } = {}) {
   if (!container?.ownerDocument) throw new TypeError('A comments container is required.');
   const doc = container.ownerDocument;
   let locale = language === 'ja' ? 'ja' : 'zh';
@@ -104,6 +104,8 @@ export function createAnonymousComments({ container, service = null, targetType 
   let submitting = false;
   let replyId = null;
   let wasOwner = false, anonymousNickname = '';
+  const limit = Number.isFinite(Number(previewLimit)) ? Math.max(0, Math.floor(Number(previewLimit))) : 0;
+  let expanded = false, listAnimation = null;
   const ownerMode = () => client?.ownerSession?.authenticated === true;
   const drafts = new Map();
   const bindings = [];
@@ -113,11 +115,13 @@ export function createAnonymousComments({ container, service = null, targetType 
   const bind = (node, event, fn) => { node.addEventListener(event, fn); bindings.push(() => node.removeEventListener(event, fn)); };
   const button = className => { const node = element('button', className); node.type = 'button'; return node; };
   const root = element('section', 'anonymous-comments');
+  if (limit) root.classList.add('comments-preview');
   const heading = element('h3', 'comments-heading');
   const note = element('p', 'comments-note');
   const loadMessage = element('p', 'comments-load-state'); loadMessage.setAttribute('role', 'status');
   const retry = button('comments-retry');
   const list = element('div', 'comments-list');
+  const more = button('comments-more'); more.hidden = true;
   const form = element('form', 'comments-form');
   const nicknameLabel = element('label', 'comments-label comments-nickname-label'); const nicknameText = element('span', 'comments-label-text');
   const nickname = element('input', 'comments-nickname'); nickname.type = 'text'; nickname.name = 'nickname'; nickname.autocomplete = 'nickname';
@@ -131,7 +135,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   const footer = element('div', 'comments-form-footer'); const count = element('span', 'comments-count'); const submit = element('button', 'comments-submit'); submit.type = 'submit'; footer.append(count, submit);
   const status = element('p', 'comments-submit-state'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   form.append(nicknameLabel, reply, bodyLabel, trap, footer, status);
-  root.append(heading, note, loadMessage, retry, list, form); container.replaceChildren(root);
+  root.append(heading, note, loadMessage, retry, list, more, form); container.replaceChildren(root);
 
   const draftKey = () => `${type}:${id}`;
   function saveDraft() { if (id) drafts.set(draftKey(), { body: body.value || '', nickname: ownerMode() ? anonymousNickname : nickname.value || '', website: website.value || '', replyId }); }
@@ -144,6 +148,7 @@ export function createAnonymousComments({ container, service = null, targetType 
     loadController?.abort(); submitController?.abort(); loadController = submitController = null; submitting = false;
   }
   function renderComments() {
+    listAnimation?.cancel(); listAnimation = null;
     const topLevel = comments.filter(comment => !comment.parentId);
     const createComment = comment => {
       const article = element('article', `comment${comment.parentId ? ' comment-reply' : ''}`);
@@ -164,7 +169,27 @@ export function createAnonymousComments({ container, service = null, targetType 
       }
       return article;
     };
-    list.replaceChildren(...topLevel.map(createComment));
+    list.replaceChildren(...(limit && !expanded ? topLevel.slice(0, limit) : topLevel).map(createComment));
+    const remainder = Math.max(0, topLevel.length - limit);
+    more.hidden = !available() || !limit || !remainder;
+    more.textContent = expanded ? (locale === 'ja' ? 'コメントを折りたたむ' : '收起留言') : (locale === 'ja' ? `残り${remainder}件のコメントを見る` : `展开其余 ${remainder} 条留言`);
+    more.setAttribute('aria-expanded', String(expanded));
+    root.classList.toggle('comments-expanded', expanded);
+  }
+  function revealReply() {
+    if (limit && comments.filter(comment => !comment.parentId).findIndex(comment => comment.id === replyId) >= limit) expanded = true;
+  }
+  function setExpanded(next, animate = false) {
+    const value = Boolean(next);
+    if (destroyed || value === expanded) return;
+    const previousHeight = list.getBoundingClientRect?.().height;
+    listAnimation?.cancel(); listAnimation = null;
+    expanded = value; renderComments(); update();
+    const nextHeight = list.getBoundingClientRect?.().height;
+    if (!animate || !list.animate || doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches || !previousHeight || previousHeight === nextHeight) return;
+    const animation = list.animate([{ height: `${previousHeight}px`, overflow: 'hidden' }, { height: `${nextHeight}px`, overflow: 'hidden' }], { duration: 280, easing: 'cubic-bezier(.2,.7,.3,1)' });
+    listAnimation = animation;
+    animation.finished.then(() => { if (listAnimation === animation) listAnimation = null; }, () => {});
   }
   function update() {
     if (destroyed) return;
@@ -198,7 +223,7 @@ export function createAnonymousComments({ container, service = null, targetType 
     try {
       const result = await client.getComments({ targetType: type, targetId: id, signal: loadController.signal });
       if (destroyed || current !== generation) return;
-      comments = normalizeComments(result); loadState = 'loaded'; renderComments();
+      comments = normalizeComments(result); loadState = 'loaded'; revealReply(); renderComments();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
       loadState = error?.code === 'comments_unavailable' ? 'unavailable' : 'error';
@@ -235,21 +260,24 @@ export function createAnonymousComments({ container, service = null, targetType 
   bind(body, 'input', () => { saveDraft(); update(); }); bind(nickname, 'input', saveDraft);
   bind(cancelReply, 'click', () => { replyId = null; saveDraft(); update(); });
   bind(retry, 'click', () => { void load(); });
+  bind(more, 'click', () => setExpanded(!expanded, true));
   setService(service);
   return {
     get draft() { return { body: body.value || '', nickname: nickname.value || '', website: website.value || '', replyId }; },
-    setDraft(next) { if (destroyed || !next) return; body.value = typeof next.body === 'string' ? next.body : ''; nickname.value = typeof next.nickname === 'string' ? next.nickname : ''; website.value = typeof next.website === 'string' ? next.website : ''; replyId = typeof next.replyId === 'string' ? next.replyId : null; saveDraft(); update(); },
+    setDraft(next) { if (destroyed || !next) return; body.value = typeof next.body === 'string' ? next.body : ''; nickname.value = typeof next.nickname === 'string' ? next.nickname : ''; website.value = typeof next.website === 'string' ? next.website : ''; replyId = typeof next.replyId === 'string' ? next.replyId : null; revealReply(); saveDraft(); renderComments(); update(); },
+    get expanded() { return expanded; },
+    setExpanded(next) { setExpanded(next); },
     setTarget(nextType, nextId) {
       if (destroyed) return;
       if (nextType && typeof nextType === 'object') { nextId = nextType.targetId; nextType = nextType.targetType; }
       const next = nextId === null || nextId === undefined ? null : String(nextId);
       if (nextType === type && next === id) return;
-      saveDraft(); type = nextType; id = next; restoreDraft(); void load();
+      saveDraft(); type = nextType; id = next; expanded = false; restoreDraft(); void load();
     },
     setLanguage(next) { if (destroyed) return; locale = next === 'ja' ? 'ja' : 'zh'; renderComments(); update(); },
     setCopy(next) { if (destroyed) return; dictionary = normalizeCommentsCopy(next); renderComments(); update(); },
     setService(next) { if (!destroyed) setService(next); },
     setActive(next) { if (destroyed || Boolean(next) === isActive) return; saveDraft(); isActive = Boolean(next); if (isActive) void load(); else { abort(); loadState = 'idle'; update(); } },
-    destroy() { if (destroyed) return; destroyed = true; abort(); unsubscribe(); bindings.splice(0).forEach(remove => remove()); drafts.clear(); container.replaceChildren(); },
+    destroy() { if (destroyed) return; destroyed = true; listAnimation?.cancel(); abort(); unsubscribe(); bindings.splice(0).forEach(remove => remove()); drafts.clear(); container.replaceChildren(); },
   };
 }

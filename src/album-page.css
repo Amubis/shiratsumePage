@@ -156,6 +156,7 @@ html[lang="zh-CN"] .primary-album .album-title { font-family:"Shiratsume Text",s
 /* Real photograph widths replace empty grid cells; the inner print keeps its tilt. */
 .primary-album .album-desk .album-photo-grid.is-packed { display:block;position:relative;flex:1 1 0;min-height:0;padding:0;margin:0;gap:0;overflow:visible; }
 .primary-album .album-desk .album-photo-grid.is-packed .album-photo { position:absolute;display:block;translate:none;transition:left .42s var(--water-settle,var(--easing)),top .42s var(--water-settle,var(--easing)),width .42s var(--water-settle,var(--easing)),height .42s var(--water-settle,var(--easing)); }
+.primary-album .album-desk .album-photo-grid.is-packed.is-layout-initializing .album-photo { transition:none; }
 .primary-album .album-photo-grid.is-packed .album-photo-card { display:block;width:100%;height:100%;max-width:none;max-height:none;aspect-ratio:auto; }
 .primary-album .album-photo-grid.is-packed .album-photo-image { width:100%;height:auto;aspect-ratio:var(--photo-aspect,1.7778);object-fit:contain; }
 @media(max-width:760px) {
