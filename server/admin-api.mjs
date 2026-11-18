@@ -101,6 +101,26 @@ function assertRevision(actual, expected) {
   if (actual !== expected) throw new HttpError(409, 'The draft changed in another session. Reload before saving.', { revision: actual });
 }
 
+function liveContentPatch(body) {
+  const allowed = body.targetType === 'photo' ? { caption: 5000 } : body.targetType === 'journal' ? { title: 500, body: 50000 } : null;
+  if (!allowed || typeof body.targetId !== 'string' || !body.targetId.trim() || body.targetId.length > 120 || !['zh', 'ja'].includes(body.locale)) throw new HttpError(422, 'Choose a published photo or journal entry and its language.');
+  const patch = body.patch;
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch) || !Object.keys(patch).length || Object.keys(patch).some(key => !Object.hasOwn(allowed, key))) throw new HttpError(422, 'Only the displayed text fields can be changed here.');
+  const fields = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (typeof value !== 'string' || value.length > allowed[key]) throw new HttpError(422, `${key} must be text of no more than ${allowed[key]} characters.`);
+    fields[key] = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+  }
+  return { targetType: body.targetType, targetId: body.targetId.trim(), locale: body.locale, fields };
+}
+
+function applyLiveText(record, locale, fields) {
+  for (const [key, value] of Object.entries(fields)) {
+    const previous = record[key];
+    record[key] = { ...(typeof previous === 'string' ? { zh: previous, ja: previous } : previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : { zh: '', ja: '' }), [locale]: value };
+  }
+}
+
 /** Portable Fetch API handler. Storage adapters implement conditional state writes and immutable objects. */
 export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cloud', adminUsername = 'Amubis', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onError = () => {} }) {
   if (!storage || !seed) throw new Error('Storage and seed content are required.');
@@ -250,6 +270,30 @@ export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cl
         const draft = { content, revision: await nextRevision(content) };
         await writeState({ ...state, draft }, version);
         return json(draft, 200, { ETag: `"${draft.revision}"` });
+      }
+      if (path === '/api/admin/live-content' && request.method === 'PATCH') {
+        await requireWrite(request);
+        const { targetType, targetId, locale, fields } = liveContentPatch(await readJson(request));
+        const { state, version } = await readState();
+        const collection = targetType === 'photo' ? 'media' : 'journal';
+        if (!publicGardenContent(state.published.content)[collection].some(item => item.id === targetId)) throw new HttpError(404, 'This published photo or journal entry could not be found.');
+        const content = structuredClone(state.published.content);
+        const target = content[collection].find(item => item.id === targetId);
+        applyLiveText(target, locale, fields);
+        if (targetType === 'journal' && !publicGardenContent(content).journal.some(item => item.id === targetId)) throw new HttpError(422, 'A published journal entry needs text or an image.');
+        const revision = await nextRevision(content);
+        const publication = { content, revision, publishedAt: new Date(now()).toISOString() };
+        // A live text edit is deliberately narrower than publishing the draft.
+        // In-progress uploads, exclusions and unrelated edits stay private.
+        const draftContent = structuredClone(state.draft.content);
+        const draftTarget = draftContent[collection].find(item => item.id === targetId);
+        let draft = state.draft;
+        if (draftTarget) {
+          applyLiveText(draftTarget, locale, fields);
+          draft = { ...state.draft, content: draftContent, revision: JSON.stringify(draftContent) === JSON.stringify(content) ? revision : await nextRevision(draftContent) };
+        }
+        await writeState({ ...state, draft, published: publication, previousPublished: state.published }, version);
+        return json({ published: true, revision, content: publicGardenContent(content, { mediaBaseUrl: baseUrl(request, content) }) });
       }
       if (path === '/api/admin/publish' && request.method === 'POST') {
         await requireWrite(request);

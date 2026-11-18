@@ -67,6 +67,48 @@ test('day month and year group existing dates while unknown dates stay explicitl
   assert.deepEqual(buildAlbumPages(media, { view: 'year' }).map((page) => [page.key, page.items.length]), [['2026', 2], ['2025', 1], ['undated', 1]]);
 });
 
+test('an inline description edit keeps the open photograph, page and ordering in place', t => {
+  const media = Array.from({ length: 17 }, (_, index) => ({ ...sample(`inline-${index}`, null), caption: { zh: `说明 ${index}` } }));
+  const f = fixture(t, { media });
+  f.api.setOrder('asc'); f.api.goToPage(1); f.api.openPlayer('inline-9');
+  const dialog = f.dialog, focus = f.doc.activeElement;
+  f.api.setMedia(media.map(item => item.id === 'inline-9' ? { ...item, caption: { zh: '修改后的照片说明' } } : item), { preservePlayer: true });
+  assert.equal(f.dialog, dialog);
+  assert.equal(f.api.state.playerOpen, true);
+  assert.equal(f.api.state.pageIndex, 1);
+  assert.equal(f.api.state.order, 'asc');
+  assert.equal(f.doc.activeElement, focus, 'saving a field does not steal focus from the editor');
+  assert.equal(dialog.getAttribute('data-photo-id'), 'inline-9');
+  assert.equal(dialog.find('album-player-description').textContent, '修改后的照片说明');
+  assert.equal(f.ready.at(-1).reason, 'inline-edit');
+});
+
+test('an inline refresh safely closes a photograph that is no longer in the selected album', t => {
+  const f = fixture(t, { media: [sample('kept', null), sample('removed', null)] });
+  f.api.openPlayer('removed');
+  f.api.setMedia([sample('kept', null)], { preservePlayer: true });
+  assert.equal(f.api.state.playerOpen, false);
+  assert.equal(f.api.state.count, 1);
+  assert.equal(f.api.state.pageIndex, 0);
+});
+
+test('loaded portrait dimensions repack one shared row and pending layout work is released on destruction', t => {
+  const f = fixture(t, { media: Array.from({ length: 5 }, (_, index) => sample(`portrait-${index}`, null)) });
+  f.doc.defaultView.innerWidth = 1440;
+  const grid = f.find('album-photo-grid'); grid.clientWidth = 1000; grid.clientHeight = 580;
+  const images = f.container.findAll('album-photo-image');
+  for (const image of images) { image.naturalWidth = 576; image.naturalHeight = 1024; image.emit('load'); }
+  assert.equal(f.frames.size, 1, 'multiple completed images should share one layout update');
+  f.flush();
+  assert.equal(grid.getAttribute('data-layout-rows'), '1');
+  assert.equal(new Set(f.container.findAll('album-photo').map(node => node.style.getPropertyValue('top'))).size, 1);
+  for (const photo of f.container.findAll('album-photo')) assert.ok(parseFloat(photo.style.getPropertyValue('height')) > 290);
+  images[0].naturalHeight = 2048; images[0].emit('load');
+  assert.equal(f.frames.size, 1);
+  f.api.destroy();
+  assert.equal(f.frames.size, 0);
+});
+
 test('model tags control filtering and pages never silently wrap or duplicate photos', () => {
   const media = Array.from({ length: 13 }, (_, index) => sample(String(index), null)); media.push(sample('another', null, ['another-model']));
   const pages = buildAlbumPages(media, { filter: 'model' }); assert.deepEqual(pages.map((page) => page.items.length), [8, 5]);
@@ -85,10 +127,11 @@ test('paper placement is stable and stays within the requested ten-percent jitte
 
 test('album creates three entry-safe papers, truthful labels and disabled empty pagination', (t) => {
   const f = fixture(t); assert.equal(f.container.findAll('album-paper').length, 3); assert.equal(f.container.findAll('album-photo').length, 4);
-  assert.equal(f.find('album-group-title').textContent, '日期待补充'); assert.match(f.find('album-source-note').textContent, /视频摘帧/);
+  assert.equal(f.find('album-group-title'), undefined); assert.match(f.find('album-source-note').textContent, /视频摘帧/);
   assert.equal(f.find('album-previous').disabled, true); assert.equal(f.find('album-next').disabled, true);
   assert.equal(f.find('album-photo').children[0].classList.contains('album-photo-card'), true);
-  assert.equal(f.find('album-cover').parentElement,f.find('album-filter-tab').parentElement);
+  assert.equal(f.find('album-cover').parentElement,f.find('album-cover-controls').parentElement);
+  assert.equal(f.find('album-filter-tab').parentElement,f.find('album-sort-tab').parentElement);
   assert.equal(f.find('album-cover-unit').classList.contains('album-cover-unit'),true);
   assert.equal(f.find('rule-top'),undefined);
   assert.deepEqual(f.api.state, { pageIndex: 0, pageCount: 1, view: 'day', filter: 'all', order: 'desc', count: 4, playerOpen: false });
@@ -98,7 +141,7 @@ test('tabs switch scope and density, and locale updates keep content selection',
   const f = fixture(t); f.find('album-filter-tab').emit('click'); assert.equal(f.api.state.filter, 'model'); assert.equal(f.api.state.count, 4);
   f.find('album-view').emit('click'); assert.equal(f.api.state.view, 'month'); assert.equal(f.find('album-desk').classList.contains('view-month'), true);
   const poses = f.container.findAll('album-photo-card').map((card) => card.style.getPropertyValue('--jitter-x'));
-  f.api.setLanguage('ja'); assert.equal(f.find('album-group-title').textContent, '日付未設定'); assert.equal(f.find('album-filter-tab').textContent, 'このモデル');
+  f.api.setLanguage('ja'); assert.equal(f.find('album-date-mark').getAttribute('aria-label'), '日付未設定'); assert.equal(f.find('album-filter-tab').textContent, 'このモデル');
   assert.deepEqual(f.container.findAll('album-photo-card').map((card) => card.style.getPropertyValue('--jitter-x')), poses);
 });
 
@@ -202,6 +245,8 @@ test('position rail changes pages on release, clamps its target and stays in syn
  rail.value = '3'; rail.emit('input');
  assert.equal(f.api.state.pageIndex, 0, 'dragging previews the rail without repeatedly replacing photos');
  assert.equal(rail.getAttribute('aria-valuetext'), '03 / 03');
+ assert.equal(f.find('album-page-rail').style.getPropertyValue('--album-page-position'), '100%');
+ assert.equal(f.find('album-page-rail').style.getPropertyValue('--album-page-offset'), '26px');
  rail.emit('change'); assert.equal(f.api.state.pageIndex, 2); assert.equal(f.find('album-date-year').textContent, 'None');
  rail.value = '99'; rail.emit('change'); assert.equal(f.api.state.pageIndex, 2);
  sort.value = 'asc'; sort.emit('change');

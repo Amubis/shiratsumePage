@@ -123,7 +123,7 @@ function fixture(t, { reduced = false } = {}) {
     };
     return node;
   };
-  for (const selector of ['.album-paper.layer-back', '.album-paper.layer-middle', '.album-paper.layer-front', '.album-cover', '.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-page-status', '.album-source-note', '.album-art-line', '.album-art-dots', '.album-title-clover', '.album-date-mark']) {
+  for (const selector of ['.album-paper.layer-back', '.album-paper.layer-middle', '.album-paper.layer-front', '.album-cover', '.album-heading', '.album-tabs', '.album-cover-controls', '.album-page-status', '.album-source-note', '.album-art-line', '.album-art-dots', '.album-title-clover', '.album-date-mark']) {
     const node = make(); section.queries.set(selector, [node]);
     if (selector.startsWith('.album-paper.')) section.queries.set('.album-paper', [...(section.queries.get('.album-paper') || []), node]);
   }

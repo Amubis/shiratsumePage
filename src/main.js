@@ -24,7 +24,8 @@ import { normalizeGardenContent, resolveGardenMedia } from './garden-content.js'
 import { FIXED_COPY, readGardenData, setGardenText, loadPublishedGarden, acceptGardenPreview } from './garden-runtime.js';
 import { createWaterFooter } from './water-footer.js';
 import { createModelSwitchMotion, modelSpacePose } from './model-switch-motion.js';
-import { createOutfitPhotoNotes } from './outfit-photo-notes.js';
+import { createLanguageTransition, languageTextTargets } from './language-transition.js';
+import { createOwnerTools } from './owner-tools.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -41,6 +42,7 @@ const commentsService = createCommentService({baseUrl:null});
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = () => motionPreference.matches;
 let { model: modelId, language } = getSelection(location.search);
+let requestedLanguage = language;
 const requestedSection = SECTION_IDS.indexOf(location.hash.slice(1));
 let initialRoutePending = requestedSection > 0;
 let currentIndex = 0;
@@ -49,6 +51,7 @@ let watching = false;
 let sidebar;
 let contrastLayer;
 let ownerProfile;
+let ownerTools;
 let personalPage;
 let personalEntrance;
 let topbarDock;
@@ -66,7 +69,7 @@ let wipeFade;
 let wipeSerial = 0;
 let pageReveal;
 let outfitShowcase;
-let outfitPhotoNotes;
+let languageTransition;
 let modelSwitchMotion;
 let outfitGroundObserver;
 let heroInteractions;
@@ -78,6 +81,7 @@ let detachIntroSnapshot;
 let introInWipe = false;
 let pendingAlbumNavigation = null;
 let pendingAlbumMedia;
+let pendingNativeEntry = null;
 const languageControl = $('.language-control');
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
@@ -134,15 +138,9 @@ function syncOutfitGround(outfit=selectedOutfit()){
   container.style.setProperty('--outfit-ground-y',`${(pair.offsetTop+pair.offsetHeight*2500/2560).toFixed(3)}px`);
 }
 
-function syncOutfitDecoration(outfit=selectedOutfit()){
-  void outfitPhotoNotes?.setOutfit(outfit);
-  syncOutfitGround(outfit);
-}
-
 function ensureOutfitShowcase(){
   if(!outfitShowcase){
-    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits,onChange(_index,outfit){syncOutfitDecoration(outfit);}});
-    outfitPhotoNotes=createOutfitPhotoNotes({container:$('.intro-photo-notes'),reducedMotion,initialOutfit:selectedOutfit(),active:false});
+    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits,onChange(_index,outfit){syncOutfitGround(outfit);}});
     syncOutfitGround();
     if(typeof ResizeObserver==='function'){
       outfitGroundObserver=new ResizeObserver(()=>syncOutfitGround());
@@ -193,6 +191,7 @@ function applyLanguage() {
   prepareIntroOffscreen();
   sidebar?.refresh();
   contrastLayer?.refresh();
+  ownerTools?.setLanguage(language);
 }
 
 function applyFixedText() {
@@ -403,6 +402,7 @@ function syncPersonalEntrance() {
   if (!personalEntrance) return;
   if (MODELS[modelId].preview) { personalEntrance.finish(); return; }
   if (currentIndex !== 3) { personalEntrance.prepare(); return; }
+  if (pendingNativeEntry === 3) return;
   if (pendingAlbumNavigation || albumScroll?.busy || albumTransition?.busy || navigator?.transitioning) return;
   void personalEntrance.enter();
 }
@@ -417,18 +417,28 @@ function prepareIntroOffscreen() {
 let navigator;
 navigator = createSectionNavigator({
   sections: $$('.page-section'), reducedMotion,
-  onActive(index,{source}) {
+  onActive(index,{source,atStart=true,programmatic=false}) {
     const previousIndex = currentIndex;
     currentIndex = index;
-    outfitPhotoNotes?.setActive(index===1 && !MODELS[modelId].preview);
+    const nativeInterior=!atStart&&!programmatic&&!pendingAlbumNavigation&&!albumScroll?.busy;
+    if(previousIndex!==index || atStart)pendingNativeEntry=null;
+    if(nativeInterior&&!MODELS[modelId].preview){
+      if($('#'+SECTION_IDS[index]).getBoundingClientRect().top>8)pendingNativeEntry=index;
+      else{
+        pendingNativeEntry=null;
+        if(index===1)introEntrance?.finish();
+        if(index===2){albumTransition?.reset({prepare:false});flushAlbumMedia();}
+        if(index===3)personalEntrance?.finish();
+      }
+    }
     if (index !== 1 && previousIndex === 1) introEntrance?.finish();
-    else if (index === 1 && previousIndex !== 1 && !introInWipe && !albumScroll?.busy && !MODELS[modelId].preview) {
+    else if (atStart && index === 1 && previousIndex !== 1 && !introInWipe && !albumScroll?.busy && !MODELS[modelId].preview) {
       introEntrance?.prepare(); void introEntrance?.enter();
     }
     // Native touch scrolling has no intercepted navigation preparation. It
     // starts the same paper choreography after the chapter becomes current.
     if (!MODELS[modelId].preview && !pendingAlbumNavigation && !albumScroll?.busy) {
-      if (index === 2 && previousIndex !== 2) enterAlbum();
+      if (atStart && index === 2 && previousIndex !== 2) enterAlbum();
       else if (previousIndex === 2 && index !== 2) albumTransition?.reset({prepare:true});
     }
     heroInteractions?.refresh();
@@ -446,7 +456,7 @@ navigator = createSectionNavigator({
     $('.video-controls').inert = index !== 0;
     if (index !== 0) { finishIntro(); player.pause(); } else if (!userPaused) void player.resume();
     sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
-    syncPersonalEntrance();
+    if(!nativeInterior || pendingNativeEntry!==index)syncPersonalEntrance();
   },
   onProgress(progress) {
     if(progress !== 0)finishIntro();
@@ -466,6 +476,8 @@ navigator = createSectionNavigator({
     syncPersonalEntrance();
   },
   async onBeforeNavigate(index,{source,from,signal}) {
+    languageTransition?.finish();
+    pendingNativeEntry=null;
     if(source==='album-scroll')return {animate:false};
     if(source==='model'){pendingAlbumNavigation=null;albumTransition?.reset({prepare:true});return {animate:false};}
     if(albumScroll?.busy)albumScroll.cancel();
@@ -502,6 +514,7 @@ navigator = createSectionNavigator({
     if(source==='album-scroll')return;
     finishWipe();
     if (index !== 1 && !MODELS[modelId].preview) introEntrance?.prepare();
+    else if(index===1&&!MODELS[modelId].preview&&!introInWipe&&['idle','prepared'].includes(introEntrance?.state))void introEntrance.enter();
     const pending = pendingAlbumNavigation;
     pendingAlbumNavigation = null;
     if (pending?.index === index) {
@@ -569,6 +582,7 @@ function paintModelChange({progress}){
   }
 }
 function switchModel(nextId){
+  languageTransition?.finish();
   if(!Object.hasOwn(MODELS,nextId))return;
   if(nextId===pendingModelChange?.nextId || (!pendingModelChange && nextId===modelId))return;
   const token=++modelGeneration;
@@ -604,7 +618,6 @@ function applyTheme() {
   $('#hello').setAttribute('aria-labelledby',model.preview?'preview-hello-heading':'hello-heading');
   if(!model.preview)ensureOutfitShowcase();
   outfitShowcase?.setEnabled(!model.preview);
-  outfitPhotoNotes?.setActive(currentIndex===1 && !model.preview);
   $('.primary-album').hidden=model.preview;
   $('.preview-album').hidden=!model.preview;
   $('#moments').setAttribute('aria-labelledby',model.preview?'moments-heading':'album-heading');
@@ -635,7 +648,11 @@ function applyTheme() {
 }
 
 $('#language-toggle').addEventListener('click', () => {
-  finishIntro();introEntrance?.finish();if(albumScroll?.busy)albumScroll.cancel();language=language==='zh'?'ja':'zh';applyLanguage();applyURL();navigator.refresh();syncPersonalEntrance();
+  finishIntro();introEntrance?.finish();if(albumScroll?.busy)albumScroll.cancel();
+  requestedLanguage=(languageTransition?.busy?requestedLanguage:language)==='zh'?'ja':'zh';
+  const nextLanguage=requestedLanguage;
+  const commit=()=>{language=nextLanguage;applyLanguage();applyURL();navigator.refresh();syncPersonalEntrance();};
+  if(languageTransition)void languageTransition.run(commit);else commit();
 });
 $$('[data-lightbox]').forEach((button) => button.addEventListener('click', () => {
   finishIntro();
@@ -653,11 +670,23 @@ window.addEventListener('keydown', (event) => {
   if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
 document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();personalEntrance?.refresh();if(!document.hidden)syncPersonalEntrance();queueMicrotask(prepareIntroOffscreen);});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();modelSwitchMotion?.refresh();outfitPhotoNotes?.refresh();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();modelSwitchMotion?.refresh();languageTransition?.finish();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
+function startDeferredNativeEntry(){
+  const index=pendingNativeEntry;
+  if(index===null || index!==currentIndex || navigator?.transitioning || albumScroll?.busy)return;
+  const rect=$('#'+SECTION_IDS[index]).getBoundingClientRect();
+  if(rect.top>8)return;
+  pendingNativeEntry=null;
+  if(rect.bottom<=0 || MODELS[modelId].preview)return;
+  if(index===1){introEntrance?.prepare();void introEntrance?.enter();}
+  else if(index===2)void enterAlbum();
+  else if(index===3)syncPersonalEntrance();
+}
 window.addEventListener('scroll',()=>{
+  if(pendingNativeEntry!==null)requestAnimationFrame(startDeferredNativeEntry);
   if(root.dataset.phase!=='ready')finishIntro();
   if(introEntrance?.state==='complete')prepareIntroOffscreen();
 },{passive:true});
@@ -684,7 +713,7 @@ outfitHintObserver.observe(outfitHintSection,{attributes:true,attributeFilter:['
 refreshOutfitHint();
 album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,reducedMotion,onReady({reason}){
   $('.album-title').id='album-heading';
-  if (albumTransition && !['page','view','filter','order','language','copy','player-return'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
+  if (albumTransition && !['page','view','filter','order','language','copy','player-return','inline-edit'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
 }});
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
 albumScroll=createAlbumScroll({
@@ -739,7 +768,9 @@ personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,
 waterFooter=createWaterFooter({container:$('.personal-water-footer'),reducedMotion});
 modelSwitchMotion=createModelSwitchMotion({root:$('#model-toggle'),reducedMotion,themes:{left:MODELS.shiratsume.theme,right:MODELS.preview.theme},onFrame:paintModelChange});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
-function applyGardenContent(next) {
+languageTransition=createLanguageTransition({root:document.body,reducedMotion:()=>reducedMotion()||Boolean(pendingModelChange),getTargets:()=>languageTextTargets(document.body)});
+if(!previewToken)ownerTools=createOwnerTools({root:document.body,getContent:()=>activeGarden,getLanguage:()=>language,onPublished:content=>applyGardenContent(content,{inline:true}),onSession:session=>commentsService.setOwnerSession(session)});
+function applyGardenContent(next,{inline=false}={}) {
   const previous=activeGarden;
   activeGarden=resolveGardenMedia(normalizeGardenContent(next,gardenDefaults));
   const changed=key=>JSON.stringify(previous[key])!==JSON.stringify(activeGarden[key]);
@@ -748,10 +779,10 @@ function applyGardenContent(next) {
   if(changedCopy('owner'))ownerProfile.setCopy(activeGarden.texts.owner);
   if(changedCopy('personal'))personalPage.setCopy(activeGarden.texts.personal);
   if(changed('journal'))personalPage.setPosts(activeGarden.journal);
-  if(changed('outfits') && outfitShowcase?.setOutfits(activeGarden.outfits)){syncOutfitDecoration();introEntrance.refresh();}
+  if(changed('outfits') && outfitShowcase?.setOutfits(activeGarden.outfits)){syncOutfitGround();introEntrance.refresh();}
   if(changedCopy('outfits'))outfitShowcase?.setCopy(activeGarden.texts.outfits);
   if(changedCopy('album'))album.setCopy(activeGarden.texts.album);
-  if(changed('media')){pendingAlbumMedia=activeGarden.media;flushAlbumMedia();}
+  if(changed('media')){if(inline)album.setMedia(activeGarden.media,{preservePlayer:true});else{pendingAlbumMedia=activeGarden.media;flushAlbumMedia();}}
   if(changedCopy('comments')){album.setCommentsCopy(activeGarden.texts.comments);personalPage.setCommentsCopy(activeGarden.texts.comments);}
   if(changedCopy('site') || changedCopy('fixed') || changed('modelProfile')) {
     for(const locale of ['zh','ja'])Object.assign(COPY[locale],activeGarden.texts.site[locale]);
@@ -765,13 +796,14 @@ window.addEventListener('message',event=>{
     previewReceived=true;commentsService.setBaseUrl(null);
     const nextLanguage=event.data.language;
     const languageChanged=['zh','ja'].includes(nextLanguage)&&nextLanguage!==language;
-    if(languageChanged)language=nextLanguage;
+    if(languageChanged){languageTransition?.cancel();language=nextLanguage;requestedLanguage=language;}
     applyGardenContent(content);
     if(languageChanged){applyLanguage();applyURL();}
   }
 });
 if(location.protocol!=='file:')void loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href}).then(({content,runtime,connected})=>{
   ownerProfile?.setAdminUrl(runtime.adminUrl);
+  ownerTools?.setRuntime(runtime);
   if(previewReceived)return;
   if(!previewToken)commentsService.setBaseUrl(runtime.apiBaseUrl || (connected?new URL('/',location.href).href:null));
   applyGardenContent(content);

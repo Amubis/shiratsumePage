@@ -78,7 +78,14 @@ export function createSectionNavigator({
     if (force || !hasActiveNotification || index !== activeIndex) {
       activeIndex = index;
       hasActiveNotification = true;
-      onActive(index, { source });
+      onActive(index, {
+        source,
+        // The scroll spy may highlight a section before its first viewport is
+        // aligned. Decorative entrances must not use that early highlight as
+        // an arrival, especially when scrolling up through a tall section.
+        atStart: Math.abs(scrollY() - positions[index]) <= 8,
+        programmatic: operation !== null,
+      });
     }
   };
   const spy = (source = 'scroll', force = false) => {
@@ -108,7 +115,8 @@ export function createSectionNavigator({
     }
     cancelOperation();
     clearResistance();
-    const from = activeIndex;
+    measure();
+    const from = currentGeometry().index;
     const controller = new AbortController();
     return new Promise((resolve, reject) => {
       const current = { index, source, frame: null, controller, resolve };
@@ -239,11 +247,19 @@ export function createSectionNavigator({
     if (!Number.isFinite(delta) || !delta || Math.abs(horizontal) > Math.abs(delta)) return;
     if (event.cancelable === false) { interrupt(); return; }
     if (!desktopInput() || nativeWheelTarget(event.target)) { interrupt(); return; }
+    // Fonts, published copy and adaptive galleries can change chapter height
+    // between scroll-spy frames. Read the real boundaries before routing any
+    // new album gesture, rather than trusting the highlighted chapter.
+    measure();
+    const geometry = currentGeometry();
+    const destination = wheelDestination(Math.sign(delta));
+    const readingEdge = readingBoundary(delta);
     const intentTime = now();
     const allowStart = !(operation && operation.source !== 'album-scroll')
-      && !(gestureLocked && intentTime - lastWheelAt <= gestureGap);
+      && !(gestureLocked && intentTime - lastWheelAt <= gestureGap)
+      && destination !== null && readingEdge === null;
     const inputTime = Number.isFinite(event.timeStamp) ? { timeStamp: event.timeStamp } : {};
-    if (onChapterWheel({delta,from:activeIndex,destination:wheelDestination(Math.sign(delta)),...inputTime},{allowStart})) {
+    if (onChapterWheel({delta,from:geometry.index,destination,...inputTime},{allowStart})) {
       event.preventDefault();
       return;
     }
@@ -258,7 +274,7 @@ export function createSectionNavigator({
       event.preventDefault();
       return;
     }
-    const boundary = readingBoundary(delta);
+    const boundary = readingEdge;
     if (boundary !== null) {
       event.preventDefault();
       clearResistance();
@@ -269,7 +285,6 @@ export function createSectionNavigator({
       return;
     }
     const direction = Math.sign(delta);
-    const destination = wheelDestination(direction);
     if (destination === null) { clearResistance(); return; }
     event.preventDefault();
     beginResistance(direction, delta, destination);
@@ -278,6 +293,7 @@ export function createSectionNavigator({
     if (destroyed || event.defaultPrevented || yieldToModal()) return;
     if (event.key === 'Escape') { interrupt(); return; }
     if (!desktopInput() || event.ctrlKey || event.metaKey || event.altKey || interactiveTarget(event.target)) return;
+    measure();
     const down = ['ArrowDown', 'PageDown', ' '].includes(event.key) && !(event.key === ' ' && event.shiftKey);
     const up = ['ArrowUp', 'PageUp'].includes(event.key) || (event.key === ' ' && event.shiftKey);
     let destination = down || up ? wheelDestination(down ? 1 : -1) : null;

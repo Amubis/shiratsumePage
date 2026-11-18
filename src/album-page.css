@@ -107,19 +107,22 @@ html[lang="zh-CN"] .primary-album .album-title { font-family:"Shiratsume Text",s
 .primary-album .album-page-meta { display:flex;flex-direction:column;align-items:stretch;flex:0 0 auto;width:clamp(96px,8vw,138px);margin-left:auto;text-align:right; }
 .primary-album .album-page-status { flex:0 0 auto;min-width:0;margin:0;padding:0;border-bottom:0;line-height:1.3; }
 .primary-album .album-page-meta .album-group-count { font-size:8px;font-weight:500;letter-spacing:.08em;line-height:1.3; }
-/* A thin visible rail retains the larger native keyboard and pointer target. */
-.primary-album .album-page-position { appearance:none;-webkit-appearance:none;display:block;width:100%;height:24px;margin:0;padding:0;background:transparent;cursor:ew-resize;accent-color:var(--theme-dark);touch-action:pan-y; }
-.primary-album .album-page-position::-webkit-slider-runnable-track { height:3px;border-radius:3px;background:color-mix(in srgb,var(--theme-dark) 24%,transparent); }
-.primary-album .album-page-position::-webkit-slider-thumb { appearance:none;-webkit-appearance:none;width:26px;height:7px;margin-top:-2px;border:0;border-radius:5px;background:var(--theme-dark);transition:box-shadow .22s var(--easing); }
-.primary-album .album-page-position::-moz-range-track { height:3px;border-radius:3px;background:color-mix(in srgb,var(--theme-dark) 24%,transparent); }
-.primary-album .album-page-position::-moz-range-thumb { width:26px;height:7px;border:0;border-radius:5px;background:var(--theme-dark);transition:box-shadow .22s var(--easing); }
-.primary-album .album-page-position:hover:not(:disabled)::-webkit-slider-thumb { box-shadow:0 0 0 3px color-mix(in srgb,var(--theme) 24%,transparent); }
-.primary-album .album-page-position:hover:not(:disabled)::-moz-range-thumb { box-shadow:0 0 0 3px color-mix(in srgb,var(--theme) 24%,transparent); }
-.primary-album .album-page-position:disabled { opacity:.45;cursor:default; }
-.primary-album .album-page-position:focus-visible { outline:2px solid var(--theme-dark);outline-offset:2px;border-radius:4px; }
-.primary-album .album-group-heading { justify-content:flex-start;align-items:center;gap:18px; }
-.primary-album .album-sort-label { display:inline-flex;align-items:center;gap:8px;font-size:10px;color:var(--muted); }
-.primary-album .album-sort { max-width:180px;min-height:30px;padding:3px 23px 3px 5px;border:0;border-bottom:1px solid color-mix(in srgb,var(--theme-dark) 35%,transparent);border-radius:0;background:transparent;color:var(--ink);font-size:10px;line-height:1.5;cursor:pointer; }
+/* The accessible range is an invisible target; its visual float eases independently. */
+.primary-album .album-page-rail { position:relative;width:100%;height:24px;transition:opacity .24s var(--water-easing,var(--easing)); }
+.primary-album .album-page-track { position:absolute;inset:11px 0 auto;height:3px;border-radius:3px;background:color-mix(in srgb,var(--theme-dark) 24%,transparent);pointer-events:none; }
+.primary-album .album-page-thumb { position:absolute;left:calc(var(--album-page-position,0%) - var(--album-page-offset,0px));top:9px;width:26px;height:7px;border-radius:5px;background:var(--theme-dark);pointer-events:none;transition:left .52s cubic-bezier(.2,.82,.22,1.08),scale .32s cubic-bezier(.2,.75,.3,1.2),box-shadow .24s var(--easing); }
+.primary-album .album-page-rail > .album-page-position { position:absolute;inset:0;display:block;width:100%;height:24px;margin:0;padding:0;opacity:0;cursor:ew-resize;touch-action:pan-y; }
+.primary-album .album-page-rail:hover:not(.is-disabled) .album-page-thumb { box-shadow:0 0 0 3px color-mix(in srgb,var(--theme) 24%,transparent); }
+.primary-album .album-page-rail:active:not(.is-disabled) .album-page-thumb { scale:1.08 .9; }
+.primary-album .album-page-rail:active:not(.is-disabled) .album-page-thumb { transition-duration:.14s,.2s,.24s; }
+.primary-album .album-page-rail.is-disabled { opacity:.45; }
+.primary-album .album-page-rail.is-disabled > .album-page-position { cursor:default; }
+.primary-album .album-page-rail:focus-within { outline:2px solid var(--theme-dark);outline-offset:2px;border-radius:4px; }
+/* Sorting belongs to the same paper edge as the scope sticker. */
+.primary-album .album-cover-controls { position:absolute;top:calc(100% - 10px);left:calc(19vw - 116px);display:flex;align-items:center;gap:14px;z-index:3;pointer-events:auto; }
+.primary-album .album-cover-unit .album-cover-controls .album-filter-tab { position:relative;top:0;left:0;flex:none;transform:none; }
+.primary-album .album-sort-tab { display:block;width:134px;margin-top:0;padding:4px 8px;background:var(--paper);border:1px solid color-mix(in srgb,var(--theme-dark) 22%,transparent);border-radius:2px;box-shadow:0 2px 5px #00000015; }
+.primary-album .album-sort { display:block;width:100%;min-height:28px;padding:3px 17px 3px 3px;border:0;border-radius:0;background:transparent;color:var(--ink);font-family:var(--body);font-size:10px;line-height:1.5;cursor:pointer; }
 .primary-album .album-sort:focus-visible { outline:2px solid var(--theme-dark);outline-offset:3px; }
 /* Ordinary labels use the same bundled sans face in both languages. */
 .primary-album :is(.album-cover-note,.album-page-status,.album-filter-tab,.album-tab,.album-group-title,.album-group-count,.album-photo-label,.album-source-note,.album-sort-label,.album-sort) { font-family:var(--body);font-variation-settings:normal;font-synthesis:none; }
@@ -147,3 +150,19 @@ html[lang="zh-CN"] .primary-album .album-title { font-family:"Shiratsume Text",s
 }
 
 @media(max-width:760px){html[lang="ja"] .primary-album .album-title{font-size:clamp(32px,10.2vw,52px);}}
+
+/* Real photograph widths replace empty grid cells; the inner print keeps its tilt. */
+.primary-album .album-desk .album-photo-grid.is-packed { display:block;position:relative;flex:1 1 0;min-height:0;padding:0;margin:0;gap:0;overflow:visible; }
+.primary-album .album-desk .album-photo-grid.is-packed .album-photo { position:absolute;display:block;translate:none;transition:left .42s var(--water-settle,var(--easing)),top .42s var(--water-settle,var(--easing)),width .42s var(--water-settle,var(--easing)),height .42s var(--water-settle,var(--easing)); }
+.primary-album .album-photo-grid.is-packed .album-photo-card { display:block;width:100%;height:100%;max-width:none;max-height:none;aspect-ratio:auto; }
+.primary-album .album-photo-grid.is-packed .album-photo-image { width:100%;height:auto;aspect-ratio:var(--photo-aspect,1.7778);object-fit:contain; }
+@media(max-width:760px) {
+ .primary-album .album-cover-controls { left:68px;gap:10px; }
+ .primary-album .album-cover-unit .album-cover-controls .album-filter-tab { left:0; }
+ .primary-album .album-sort-tab { width:118px;margin-top:0;padding:4px 7px; }
+ .primary-album .album-sort { font-size:9px; }
+ .primary-album .album-desk .album-photo-grid.is-packed { flex:none;height:var(--album-packed-height,350px);min-height:0;padding:0;margin:12px 0 35px; }
+}
+@media(prefers-reduced-motion:reduce) {
+ .primary-album .album-page-thumb,.primary-album .album-desk .album-photo-grid.is-packed .album-photo { transition:none; }
+}

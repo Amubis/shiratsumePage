@@ -1,0 +1,6 @@
+/* Individual scale leaves the title's skew and each navigation pose intact. */
+.language-text-motion { will-change: scale, opacity; }
+.language-text-motion-inline, .language-text-fragment { display: inline-block; }
+@media (prefers-reduced-motion: reduce) {
+  .language-text-motion { will-change: auto; }
+}

@@ -2,6 +2,7 @@ import { cloverSVG, seededRandom } from './scene.js';
 import { createAlbumPlayerMotion } from './album-player-motion.js';
 import { createAlbumPageMotion } from './album-page-motion.js';
 import { createAnonymousComments } from './comments.js';
+import { planAlbumLayout } from './album-layout.js';
 
 /** Public content records; a future CMS can replace this array through setMedia(). */
 export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) => Object.freeze({
@@ -104,6 +105,9 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let playerItems = [];
   let playerIndex = 0;
   let returnFocus = null;
+  let photoAspects = [];
+  let layoutFrame = null;
+  let layoutObserver = null;
 
   const element = (tag, className = '') => { const node = doc.createElement(tag); node.className = className; return node; };
   const bind = (node, name, handler, list = bindings) => {
@@ -130,13 +134,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   titleClover.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'large' });
   albumHeading.append(titleClover, title, coverSmall);
   const filterButton = button('album-filter-tab');
-  const heading = element('div', 'album-group-heading');
-  const groupTitle = element('p', 'album-group-title'); const groupCount = element('span', 'album-group-count');
+  const groupCount = element('span', 'album-group-count');
   const orderSelect = element('select', 'album-sort');
   const newestOption = element('option'); newestOption.value = 'desc';
   const oldestOption = element('option'); oldestOption.value = 'asc';
   orderSelect.append(newestOption, oldestOption);
-  heading.append(groupTitle, orderSelect);
+  const orderTab = element('label', 'album-sort-tab'); orderTab.append(orderSelect);
   const grid = element('div', 'album-photo-grid');
   const empty = element('p', 'album-empty');
   const footer = element('div', 'album-paper-footer');
@@ -145,7 +148,11 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const pageMeta = element('div', 'album-page-meta');
   const pagePosition = element('input', 'album-page-position');
   pagePosition.type = 'range'; pagePosition.min = '1'; pagePosition.max = '1'; pagePosition.step = '1';
-  pageMeta.append(pageStatus, pagePosition, groupCount);
+  const pageRail = element('div', 'album-page-rail');
+  const pageTrack = element('span', 'album-page-track'); const pageThumb = element('span', 'album-page-thumb');
+  pageTrack.setAttribute('aria-hidden', 'true'); pageThumb.setAttribute('aria-hidden', 'true');
+  pageRail.append(pageTrack, pageThumb, pagePosition);
+  pageMeta.append(pageStatus, pageRail, groupCount);
   const sourceNote = element('span', 'album-source-note'); footer.append(sourceNote);
   albumHeading.append(pageMeta);
   const dateMark = element('div', 'album-date-mark');
@@ -153,9 +160,10 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   dateMark.append(dateYear, dateMonth);
   const composition = element('div', 'album-composition'); composition.setAttribute('aria-hidden', 'true');
   for (const classes of ['album-rule album-art-line rule-bottom line-bottom', 'album-angle album-art-line', 'album-dot-accent album-art-dots dot-top dots-top', 'album-dot-accent album-art-dots dot-bottom dots-bottom']) composition.append(element('span', classes));
-  front.append(composition, albumHeading, heading, grid, empty, dateMark, footer);
+  front.append(composition, albumHeading, grid, empty, dateMark, footer);
   const tabs = element('div', 'album-tabs'); const previous = button('album-tab album-previous'); const mode = button('album-tab album-view'); const next = button('album-tab album-next');
-  const coverUnit=element('div','album-cover-unit');coverUnit.append(cover,filterButton);
+  const coverControls = element('div', 'album-cover-controls'); coverControls.append(filterButton, orderTab);
+  const coverUnit=element('div','album-cover-unit');coverUnit.append(cover,coverControls);
   tabs.append(previous, mode, next); root.append(back, middle, front, coverUnit, tabs); container.replaceChildren(root); container.classList.add('album-showcase');
 
   const dialog = element('dialog', 'album-player');
@@ -170,6 +178,43 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     return Boolean(section?.classList.contains('is-current') && !['album-entry-prepared','album-entry-playing','album-exit-playing','album-boundary-seeking'].some(name=>section.classList.contains(name)));
   }});
 
+  function updatePageRail(index, count) {
+    const progress = count > 1 ? Math.max(0, Math.min(1, index / (count - 1))) : 0;
+    const position = `${progress * 100}%`;
+    pagePosition.style.setProperty('--album-page-position', position);
+    pageRail.style.setProperty('--album-page-position', position);
+    pageRail.style.setProperty('--album-page-offset', `${progress * 26}px`);
+    pageRail.classList.toggle('is-disabled', !enabled || count <= 1);
+  }
+  function layoutPhotos() {
+    if (destroyed || !wrappers.length) return;
+    const bounds = grid.getBoundingClientRect?.();
+    const width = grid.clientWidth || bounds?.width || 0;
+    const height = grid.clientHeight || bounds?.height || 0;
+    if (!(width > 0 && height > 0)) return;
+    const mobile = Number.isFinite(win.innerWidth) && win.innerWidth <= 760;
+    const style = win.getComputedStyle?.(cards[0]) || {};
+    const edge = (padding, border, fallback) => {
+      const value = parseFloat(style[padding]), line = parseFloat(style[border]);
+      return Number.isFinite(value) ? value + (Number.isFinite(line) ? line : 0) : fallback;
+    };
+    const paper = { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', mobile ? 21 : 26) };
+    const plan = planAlbumLayout({ aspects: photoAspects, width, height, mobile, view, paper });
+    grid.classList.add('is-packed');
+    grid.setAttribute('data-layout-rows', String(plan.rowCount));
+    if (mobile) grid.style.setProperty('--album-packed-height', `${plan.height}px`);
+    for (const item of plan.items) {
+      const wrapper = wrappers[item.index];
+      if (!wrapper) continue;
+      for (const [name, value] of Object.entries({ left: item.x, top: item.y, width: item.width, height: item.height })) wrapper.style.setProperty(name, `${value.toFixed(3)}px`);
+    }
+  }
+  function queueLayout() {
+    if (destroyed || layoutFrame !== null) return;
+    if (typeof win.requestAnimationFrame === 'function') {
+      layoutFrame = win.requestAnimationFrame(() => { layoutFrame = null; layoutPhotos(); });
+    } else layoutPhotos();
+  }
   function clearInspection() {
     if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
     pointerFrame = null; pendingPointer = null; inspection = null;
@@ -217,6 +262,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   });
   function renderPlayer() {
     const item = playerItems[playerIndex]; if (!item) return;
+    dialog.setAttribute('data-photo-id', item.id);
     setPlayerAspect(item.width, item.height);
     playerImage.src = item.url; playerImage.alt = altFor(item);
     const date = dateKey(item.takenAt, 'day');
@@ -296,12 +342,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     previous.disabled = !enabled || pageIndex <= 0; next.disabled = !enabled || pageIndex >= pages.length - 1; mode.disabled = filterButton.disabled = orderSelect.disabled = !enabled;
     orderSelect.setAttribute('aria-label', text().dateOrder);
     newestOption.textContent = text().newestFirst; oldestOption.textContent = text().oldestFirst; orderSelect.value = order;
-    groupTitle.textContent = page ? groupLabel(page.key) : text().noPhoto; groupCount.textContent = `${total} ${text().photoCount}`;
+    groupCount.textContent = `${total} ${text().photoCount}`;
     pageStatus.textContent = pages.length ? `${String(pageIndex + 1).padStart(2, '0')} / ${String(pages.length).padStart(2, '0')}` : '00 / 00';
     pagePosition.max = String(Math.max(1, pages.length)); pagePosition.value = String(pageIndex + 1);
     pagePosition.disabled = !enabled || pages.length <= 1;
     pagePosition.setAttribute('aria-label', text().pagePosition); pagePosition.setAttribute('aria-valuetext', pageStatus.textContent);
-    pagePosition.style.setProperty('--album-page-position', `${pages.length > 1 ? pageIndex / (pages.length - 1) * 100 : 0}%`);
+    updatePageRail(pageIndex, pages.length);
     const dated = page && page.key !== 'undated';
     dateMark.classList.toggle('is-undated', !dated);
     dateMark.setAttribute('aria-label', page ? groupLabel(page.key) : text().noPhoto);
@@ -310,7 +356,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     dateMonth.hidden = !dateMonth.textContent;
     sourceNote.textContent = records.every((item) => item.sourceKind === 'video-still' && !item.takenAt) ? text().source : text().mixedSource;
     empty.hidden = Boolean(page?.items.length); empty.textContent = text().empty;
-    wrappers = []; cards = []; const nodes = [];
+    wrappers = []; cards = []; photoAspects = []; const nodes = [];
     for (const [index, item] of (page?.items || []).entries()) {
       const wrapper = element('div', 'album-photo'); const card = button('album-photo-card');
       const pose = albumPhotoPose(item.id,index,page.items.length);
@@ -319,13 +365,15 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       wrapper.style.setProperty('--photo-scale', pose.scale.toFixed(5));
       card.setAttribute('aria-label', `${text().open} · ${altFor(item)}`); card.disabled = !enabled;
       const image = element('img', 'album-photo-image'); image.src = item.thumbnail; image.alt = altFor(item); image.loading = 'lazy'; image.decoding = 'async'; image.draggable = false;
-      function setAspect(width, height) {
+      function setAspect(width, height, relayout = false) {
         const ratio = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0 ? width / height : 16 / 9;
         for (const node of [wrapper, card]) { node.style.setProperty('--photo-aspect', ratio.toFixed(6)); node.style.setProperty('--photo-ratio', ratio.toFixed(6)); }
         wrapper.setAttribute('data-orientation', ratio < .9 ? 'portrait' : ratio > 1.1 ? 'landscape' : 'square');
+        const changed = photoAspects[index] !== ratio; photoAspects[index] = ratio;
+        if (relayout && changed) queueLayout();
       }
       setAspect(item.width, item.height);
-      bind(image, 'load', () => setAspect(image.naturalWidth, image.naturalHeight), cardBindings);
+      bind(image, 'load', () => setAspect(image.naturalWidth, image.naturalHeight, true), cardBindings);
       if (image.complete && image.naturalWidth) setAspect(image.naturalWidth, image.naturalHeight);
       const label = element('span', 'album-photo-label'); label.textContent = `PHOTO ${String(pageIndex + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
       card.append(image, label); wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
@@ -337,6 +385,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       bind(card, 'click', () => openPlayer(item.id), cardBindings);
     }
     grid.replaceChildren(...nodes);
+    layoutPhotos();
     dialog.setAttribute('aria-label', text().player); playerClose.textContent = '×'; playerClose.setAttribute('aria-label', text().close);
     playerPrevious.textContent = '←'; playerNext.textContent = '→'; playerPrevious.setAttribute('aria-label', text().photoPrevious); playerNext.setAttribute('aria-label', text().photoNext);
     if (dialog.open) renderPlayer();
@@ -345,7 +394,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   function goToPage(index) {
     if (!enabled || destroyed || !Number.isInteger(index) || index < 0 || index >= pages.length) return false;
     if(index===pageIndex)return true;
-    pageIndex = index; void pageMotion.run(()=>render('page')); return true;
+    pageIndex = index; updatePageRail(index, pages.length); void pageMotion.run(()=>render('page')); return true;
   }
   function redraw(reason){pageMotion.cancel({commitPending:false});render(reason);}
   function setOrder(nextOrder) {
@@ -359,7 +408,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   bind(pagePosition, 'input', () => {
     const index = Math.max(0, Math.min(pages.length - 1, Math.round(Number(pagePosition.value)) - 1));
     if (!Number.isFinite(index)) return;
-    pagePosition.style.setProperty('--album-page-position', `${pages.length > 1 ? index / (pages.length - 1) * 100 : 0}%`);
+    updatePageRail(index, pages.length);
     pagePosition.setAttribute('aria-valuetext', pages.length ? `${String(index + 1).padStart(2, '0')} / ${String(pages.length).padStart(2, '0')}` : '00 / 00');
   });
   bind(pagePosition, 'change', () => {
@@ -376,6 +425,8 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault(); event.stopPropagation(); changePlayer(event.key === 'ArrowLeft' ? -1 : 1);
   });
+  if (typeof win.ResizeObserver === 'function') { layoutObserver = new win.ResizeObserver(queueLayout); layoutObserver.observe(grid); }
+  else bind(win, 'resize', queueLayout);
   render();
   return {
     get state() { return { pageIndex, pageCount: pages.length, view, filter, order, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
@@ -385,10 +436,24 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     setCommentsCopy(next) { if (!destroyed) commentPanel.setCopy(next); },
     setModel(nextModel) { if (destroyed) return; closePlayer(true); modelId = String(nextModel); pageIndex = 0; redraw('model'); },
     setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(true); redraw('enabled'); },
-    setMedia(nextMedia) { if (destroyed) return; closePlayer(true); records = normalizeAlbumMedia(nextMedia); pageIndex = 0; redraw('media'); },
+    setMedia(nextMedia, { preservePlayer = false } = {}) {
+      if (destroyed) return;
+      const selectedId = preservePlayer && dialog.open ? playerItems[playerIndex]?.id : null;
+      if (!preservePlayer) closePlayer(true);
+      records = normalizeAlbumMedia(nextMedia);
+      if (preservePlayer) {
+        const nextPages = buildAlbumPages(records, { modelId, filter, view, order });
+        const nextItems = nextPages.flatMap(page => page.items);
+        const nextIndex = selectedId ? nextItems.findIndex(item => item.id === selectedId) : -1;
+        if (selectedId && nextIndex >= 0) { playerItems = nextItems; playerIndex = nextIndex; }
+        else if (dialog.open) closePlayer(true);
+        pageIndex = Math.max(0, Math.min(pageIndex, nextPages.length - 1));
+        redraw('inline-edit');
+      } else { pageIndex = 0; redraw('media'); }
+    },
     setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; void pageMotion.run(()=>render('view')); return true; },
     setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; void pageMotion.run(()=>render('filter')); return true; },
     setOrder, goToPage, openPlayer, closePlayer,
-    destroy() { if (destroyed) return; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
+    destroy() { if (destroyed) return; layoutObserver?.disconnect(); if (layoutFrame !== null) win.cancelAnimationFrame?.(layoutFrame); layoutFrame = null; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

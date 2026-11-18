@@ -159,6 +159,7 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       const postTitle = localizeOwnerText(post.title, locale);
       const postBody = localizeOwnerText(post.body, locale);
       const article = element('article', 'personal-journal-post');
+      article.setAttribute('data-journal-id',post.id);
       if (post.dated) {
         const date = new Date(post.timestamp);
         const time = element('time', 'personal-journal-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));

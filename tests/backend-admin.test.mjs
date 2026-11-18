@@ -119,17 +119,20 @@ test('new photo imports join the private album draft and become visible only aft
     photoId: 'new-upload', options: { kind: 'photo' },
     cache: { mime: 'image/png', width: 1, height: 1, metadata: { takenAt: '2026-11-17T12:00:00', timeZone: 'unspecified', source: {}, warnings: [] }, displayBlob: file, thumbnailBlob: file },
   };
-  const state = { content: structuredClone(original.content), jobs: [job], section: 'photos' };
+  const state = { content: structuredClone(original.content), jobs: [job], section: 'photos', photoFilter: 'draft', photoSearch: 'a previous search' };
   let localChanges = 0;
   const uploadBlob = async (_job, blob, role, name) => json(await fetch(`${origin}/api/admin/upload?role=${role}&name=${encodeURIComponent(name)}`, {
     method: 'POST', headers: { ...headers, 'Content-Type': 'image/png' }, body: blob,
   }), 201);
-  await runInNewContext(`(${runUpload})(job)`, { state, job, uploadBlob, cloudLocked: () => false, changed: () => { localChanges++; }, render() {}, setJobProgress() {} });
+  await runInNewContext(`(${runUpload})(job)`, { state, job, uploadBlob, cloudLocked: () => false, changed: () => { localChanges++; }, markCreated(kind, id) { assert.equal(kind, 'media'); assert.equal(id, job.photoId); }, render() {}, setJobProgress() {} });
   const imported = state.content.media.find(item => item.id === 'new-upload');
   assert.equal(imported.enabled, true, 'new imports are included in the next explicit album publication');
   assert.deepEqual(Array.from(imported.modelIds), [], 'uploading does not infer or preselect a model');
   assert.equal(state.content.media.find(item => item.id === 'hidden-photo').enabled, false, 'existing excluded photos remain excluded');
   assert.equal(localChanges, 1);
+  assert.equal(state.photoFilter, 'published', 'a completed import is visible in its included category');
+  assert.equal(state.photoCohort, 'new', 'a completed import is shown with the current new-content cohort');
+  assert.equal(state.photoSearch, '', 'an earlier search cannot hide newly imported photos');
   assert.equal((await json(await fetch(`${origin}/api/admin/content`))).content.media.length, original.content.media.length, 'uploading files does not save or publish their draft reference');
   assert.deepEqual((await json(await fetch(`${origin}/api/content`))).media.map(item => item.id), ['public-photo']);
   const saved = await json(await fetch(`${origin}/api/admin/content`, { method: 'PUT', headers, body: JSON.stringify({ content: state.content, revision: original.revision }) }));

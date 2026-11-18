@@ -1,7 +1,7 @@
 /** Public comment labels are editable alongside the other site dictionaries. */
 export const COMMENTS_COPY = Object.freeze({
-  zh: Object.freeze({ title: '留言', note: '无需登录。留言审核后显示。', unavailable: '评论暂未开放', loading: '正在读取留言…', empty: '还没有留言，留下一点想法吧。', loadError: '留言暂时无法读取。', retry: '重新读取', nickname: '昵称（选填）', nicknamePlaceholder: '匿名访客', body: '想说的话', bodyPlaceholder: '留下一点想法…', submit: '发送留言', submitting: '正在发送…', pending: '留言已收到，审核后显示。', submitError: '发送失败，文字已保留，请稍后重试。', rateLimited: '发送得有些频繁，文字已保留，请稍后再试。', invalidBody: '请填写 1 至 2000 字的留言。', invalidNickname: '昵称请保持在 40 字以内。', anonymous: '匿名访客', owner: '作者', reply: '回复', replyTo: '正在回复', replyLoading: '正在确认回复对象，请稍候或取消回复。', replyUnavailable: '暂时无法回复这条留言，请重新读取或取消回复。', cancelReply: '取消回复', website: '网站（请留空）', count: '字', open: '查看留言' }),
-  ja: Object.freeze({ title: 'コメント', note: 'ログイン不要です。承認後に表示されます。', unavailable: 'コメントは準備中です', loading: 'コメントを読み込み中…', empty: '最初のひとことを残してみませんか。', loadError: 'コメントを読み込めませんでした。', retry: 'もう一度読み込む', nickname: 'お名前（任意）', nicknamePlaceholder: '匿名の訪問者', body: 'メッセージ', bodyPlaceholder: 'ひとことをどうぞ…', submit: 'コメントを送る', submitting: '送信中…', pending: 'コメントを受け付けました。承認後に表示されます。', submitError: '送信できませんでした。入力は残っています。しばらくしてからお試しください。', rateLimited: '送信が続いています。入力は残っています。少し待ってからお試しください。', invalidBody: '1〜2000文字のコメントを入力してください。', invalidNickname: 'お名前は40文字以内で入力してください。', anonymous: '匿名の訪問者', owner: '作者', reply: '返信', replyTo: '返信先', replyLoading: '返信先を確認中です。少し待つか、返信を取り消してください。', replyUnavailable: 'このコメントには返信できません。再読み込みするか、返信を取り消してください。', cancelReply: '返信を取り消す', website: 'ウェブサイト（入力しないでください）', count: '文字', open: 'コメントを見る' }),
+  zh: Object.freeze({ title: '留言', note: '无需登录。留言审核后显示。', unavailable: '评论暂未开放', loading: '正在读取留言…', empty: '还没有留言，留下一点想法吧。', loadError: '留言暂时无法读取。', retry: '重新读取', nickname: '昵称（选填）', nicknamePlaceholder: '匿名访客', body: '想说的话', bodyPlaceholder: '留下一点想法…', submit: '发送留言', submitting: '正在发送…', pending: '留言已收到，审核后显示。', submitError: '发送失败，文字已保留，请稍后重试。', rateLimited: '发送得有些频繁，文字已保留，请稍后再试。', invalidBody: '请填写 1 至 2000 字的留言。', invalidNickname: '昵称请保持在 40 字以内。', anonymous: '匿名访客', owner: '作者', reply: '回复', replyTo: '正在回复', replyLoading: '正在确认回复对象，请稍候或取消回复。', replyUnavailable: '暂时无法回复这条留言，请重新读取或取消回复。', cancelReply: '取消回复', website: '网站（请留空）', count: '字', open: '查看留言', ownerNote: '已以站长身份登录。选择留言下方的「回复」即可直接回复。', ownerReply: '站长回复', ownerSent: '回复已发布。' }),
+  ja: Object.freeze({ title: 'コメント', note: 'ログイン不要です。承認後に表示されます。', unavailable: 'コメントは準備中です', loading: 'コメントを読み込み中…', empty: '最初のひとことを残してみませんか。', loadError: 'コメントを読み込めませんでした。', retry: 'もう一度読み込む', nickname: 'お名前（任意）', nicknamePlaceholder: '匿名の訪問者', body: 'メッセージ', bodyPlaceholder: 'ひとことをどうぞ…', submit: 'コメントを送る', submitting: '送信中…', pending: 'コメントを受け付けました。承認後に表示されます。', submitError: '送信できませんでした。入力は残っています。しばらくしてからお試しください。', rateLimited: '送信が続いています。入力は残っています。少し待ってからお試しください。', invalidBody: '1〜2000文字のコメントを入力してください。', invalidNickname: 'お名前は40文字以内で入力してください。', anonymous: '匿名の訪問者', owner: '作者', reply: '返信', replyTo: '返信先', replyLoading: '返信先を確認中です。少し待つか、返信を取り消してください。', replyUnavailable: 'このコメントには返信できません。再読み込みするか、返信を取り消してください。', cancelReply: '返信を取り消す', website: 'ウェブサイト（入力しないでください）', count: '文字', open: 'コメントを見る', ownerNote: '管理者としてログイン中です。コメントの「返信」を選ぶと直接返信できます。', ownerReply: '管理者として返信', ownerSent: '返信を公開しました。' }),
 });
 
 export const normalizeCommentsCopy = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
@@ -33,8 +33,10 @@ function normalizeComments(input) {
   });
 }
 
-/** Anonymous requests never send browser cookies, including to another origin. */
-export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fetch } = {}) {
+/** Public requests omit cookies; signed-in owner replies use the same-origin admin API. */
+export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fetch, pageURL = globalThis.location?.href } = {}) {
+  let owner = null;
+  const sameOrigin = () => { try { return new URL(endpoint || '/', pageURL).origin === new URL(pageURL).origin; } catch { return false; } };
   let endpoint = normalizeBaseUrl(baseUrl);
   const listeners = new Set();
   const request = async (path, options) => {
@@ -48,10 +50,16 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
   return {
     get enabled() { return endpoint !== null && typeof fetchImpl === 'function'; },
     get baseUrl() { return endpoint; },
+    get ownerSession() { return owner && sameOrigin() ? { authenticated: true, username: owner.username } : { authenticated: false }; },
+    setOwnerSession(value) {
+      owner = value?.authenticated === true && typeof value.csrfToken === 'string' && value.csrfToken && sameOrigin() ? { csrfToken: value.csrfToken, username: typeof value.username === 'string' ? value.username.slice(0, 40) : 'Amubis' } : null;
+      listeners.forEach(listener => listener());
+    },
     setBaseUrl(value) {
       const next = normalizeBaseUrl(value);
       if (next === endpoint) return;
       endpoint = next;
+      if (!sameOrigin()) owner = null;
       listeners.forEach(listener => listener());
     },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -62,7 +70,14 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
       if (data?.available === false) throw commentError('comments_unavailable', 503);
       return normalizeComments(Array.isArray(data) ? data : data?.comments);
     },
-    postComment(payload, { signal } = {}) {
+    async postComment(payload, { signal } = {}) {
+      if (owner && sameOrigin()) {
+        if (!payload?.parentId) throw commentError('owner_reply_required', 400);
+        const response = await fetchImpl(`${endpoint}/api/admin/comments/${encodeURIComponent(payload.parentId)}/reply`, { method: 'POST', credentials: 'same-origin', mode: 'same-origin', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Garden-CSRF': owner.csrfToken }, body: JSON.stringify({ body: payload.body }) });
+        let data; try { data = await response.json(); } catch { throw commentError('invalid_response', response.status); }
+        if (!response.ok) throw commentError(data?.code || 'request_failed', response.status);
+        return data;
+      }
       return request('', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
     },
   };
@@ -88,6 +103,8 @@ export function createAnonymousComments({ container, service = null, targetType 
   let submitState = '';
   let submitting = false;
   let replyId = null;
+  let wasOwner = false, anonymousNickname = '';
+  const ownerMode = () => client?.ownerSession?.authenticated === true;
   const drafts = new Map();
   const bindings = [];
   const words = () => dictionary[locale];
@@ -117,7 +134,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   root.append(heading, note, loadMessage, retry, list, form); container.replaceChildren(root);
 
   const draftKey = () => `${type}:${id}`;
-  function saveDraft() { if (id) drafts.set(draftKey(), { body: body.value || '', nickname: nickname.value || '', website: website.value || '', replyId }); }
+  function saveDraft() { if (id) drafts.set(draftKey(), { body: body.value || '', nickname: ownerMode() ? anonymousNickname : nickname.value || '', website: website.value || '', replyId }); }
   function restoreDraft() {
     const draft = drafts.get(draftKey());
     body.value = draft?.body || ''; nickname.value = draft?.nickname || ''; website.value = draft?.website || ''; replyId = draft?.replyId || null;
@@ -153,7 +170,12 @@ export function createAnonymousComments({ container, service = null, targetType 
     if (destroyed) return;
     const enabled = available();
     heading.textContent = words().title; root.setAttribute('aria-label', words().title);
-    note.textContent = words().note; note.hidden = !enabled || loadState === 'unavailable';
+    const loggedIn = ownerMode();
+    if (loggedIn && !wasOwner) anonymousNickname = nickname.value || '';
+    if (!loggedIn && wasOwner) nickname.value = anonymousNickname;
+    if (loggedIn) nickname.value = client.ownerSession.username || 'Amubis';
+    wasOwner = loggedIn;
+    note.textContent = loggedIn ? words().ownerNote : words().note; note.hidden = !enabled || loadState === 'unavailable';
     form.hidden = !enabled || loadState === 'unavailable'; list.hidden = !enabled;
     nicknameText.textContent = words().nickname; nickname.placeholder = words().nicknamePlaceholder;
     bodyText.textContent = words().body; body.placeholder = words().bodyPlaceholder; trapText.textContent = words().website;
@@ -165,8 +187,8 @@ export function createAnonymousComments({ container, service = null, targetType 
     replyText.textContent = parent ? `${words().replyTo} ${parent.nickname.trim() || words().anonymous}` : replyId ? words()[['loading', 'idle'].includes(loadState) ? 'replyLoading' : 'replyUnavailable'] : '';
     cancelReply.textContent = words().cancelReply;
     count.textContent = `${Array.from(body.value || '').length} / 2000 ${words().count}`;
-    submit.disabled = submitting || !enabled || Boolean(replyId && !parent); submit.textContent = submitting ? words().submitting : words().submit;
-    nickname.disabled = body.disabled = submitting; cancelReply.disabled = submitting;
+    submit.disabled = submitting || !enabled || Boolean(replyId && !parent) || (loggedIn && !parent); submit.textContent = submitting ? words().submitting : loggedIn ? words().ownerReply : words().submit;
+    nickname.disabled = submitting || loggedIn; body.disabled = submitting; cancelReply.disabled = submitting;
     status.textContent = words()[submitState] || ''; status.hidden = !submitState;
   }
   async function load() {
@@ -186,7 +208,7 @@ export function createAnonymousComments({ container, service = null, targetType 
     event.preventDefault();
     if (destroyed || submitting || !isActive || !available()) return;
     const parent = comments.find(comment => comment.id === replyId && !comment.parentId);
-    if (replyId && !parent) { update(); return; }
+    if ((replyId && !parent) || (ownerMode() && !parent)) { update(); return; }
     const message = (body.value || '').trim(); const name = (nickname.value || '').trim();
     if (!message || Array.from(message).length > 2000) { submitState = 'invalidBody'; update(); body.focus?.(); return; }
     if (Array.from(name).length > 40) { submitState = 'invalidNickname'; update(); nickname.focus?.(); return; }
@@ -194,9 +216,11 @@ export function createAnonymousComments({ container, service = null, targetType 
     const payload = { targetType: type, targetId: id, nickname: name, body: message, website: website.value || '' };
     if (parent) payload.parentId = parent.id;
     try {
-      await client.postComment(payload, { signal: submitController.signal });
+      const result = await client.postComment(payload, { signal: submitController.signal });
       if (destroyed || current !== generation) return;
-      body.value = ''; website.value = ''; replyId = null; submitState = 'pending'; saveDraft();
+      const publishedReply = ownerMode() && result?.comment?.verified === true && result.comment.status === 'approved';
+      if (publishedReply) { comments = normalizeComments([...comments, result.comment]); renderComments(); }
+      body.value = ''; website.value = ''; replyId = null; submitState = publishedReply ? 'ownerSent' : 'pending'; saveDraft();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
       submitState = error?.status === 429 ? 'rateLimited' : error?.code === 'comments_unavailable' ? 'unavailable' : 'submitError';

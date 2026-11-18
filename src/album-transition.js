@@ -51,7 +51,7 @@ export function createAlbumEnterPlan(photoCount = 4) {
     { selector: '.album-art-line', kind: 'line', delay: 760, duration: 480 },
     { selector: '.album-art-dots', kind: 'dots', delay: 930, duration: 350 },
     { selector: '.album-title-clover', kind: 'clover', delay: 950, duration: 430 },
-    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-source-note', '.album-date-mark'].map((selector, index) => ({ selector, kind: 'ui', delay: 920 + index * 38, duration: 260 })),
+    ...['.album-heading', '.album-tabs', '.album-cover-controls', '.album-source-note', '.album-date-mark'].map((selector, index) => ({ selector, kind: 'ui', delay: 920 + index * 38, duration: 260 })),
   ];
 }
 
@@ -61,7 +61,7 @@ export function createAlbumExitPlan(photoCount = 4) {
   const coverDelay = Math.max(190, photoEnd - 110);
   const paperDelay = coverDelay + 90;
   return [
-    ...['.album-heading', '.album-tabs', '.album-filter-tab', '.album-group-heading', '.album-source-note', '.album-date-mark'].map((selector) => ({ selector, kind: 'ui', delay: 0, duration: 180 })),
+    ...['.album-heading', '.album-tabs', '.album-cover-controls', '.album-source-note', '.album-date-mark'].map((selector) => ({ selector, kind: 'ui', delay: 0, duration: 180 })),
     { selector: '.album-art-line', kind: 'line', delay: 0, duration: 180 },
     { selector: '.album-art-dots', kind: 'dots', delay: 0, duration: 180 },
     { selector: '.album-title-clover', kind: 'clover', delay: 0, duration: 180 },
@@ -73,7 +73,7 @@ export function createAlbumExitPlan(photoCount = 4) {
   ];
 }
 
-const ACTORS = '.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-filter-tab, .album-group-heading, .album-source-note, .album-art-line, .album-art-dots, .album-title-clover, .album-date-mark';
+const ACTORS = '.album-paper, .album-cover, .album-photo, .album-heading, .album-tabs, .album-cover-controls, .album-source-note, .album-art-line, .album-art-dots, .album-title-clover, .album-date-mark';
 
 /** Owns only decorative transitions; navigation and data remain with their controllers. */
 export function createAlbumTransition({ section, previous, reducedMotion = () => false } = {}) {

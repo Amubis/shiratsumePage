@@ -220,3 +220,35 @@ test('photo player keeps comments on the selected photo, releases work on close 
   album.closePlayer(true); assert.equal(album.state.playerOpen, false);
   album.destroy(); assert.equal(client.listeners.size, 0);
 });
+
+test('owner replies use the existing protected reply API only on the matching site origin', async () => {
+  const requests=[];
+  const client=createCommentService({baseUrl:'https://site.example',pageURL:'https://site.example/',fetchImpl:async(url,options)=>{requests.push({url,options});return response(201,{comment:comment('owner-reply',{parentId:'parent',verified:true})});}});
+  client.setOwnerSession({authenticated:true,csrfToken:'private-csrf',username:'Amubis'});
+  assert.equal(client.ownerSession.authenticated,true);
+  await assert.rejects(client.postComment({body:'没有回复对象'}),error=>error.code==='owner_reply_required');
+  await client.postComment({parentId:'parent',body:'站长回复',nickname:'不会发送'});
+  assert.equal(requests[0].url,'https://site.example/api/admin/comments/parent/reply');
+  assert.equal(requests[0].options.credentials,'same-origin');
+  assert.equal(requests[0].options.headers['X-Garden-CSRF'],'private-csrf');
+  assert.deepEqual(JSON.parse(requests[0].options.body),{body:'站长回复'});
+  client.setBaseUrl('https://another.example');
+  assert.equal(client.ownerSession.authenticated,false);
+  await client.postComment({body:'匿名留言'});
+  assert.equal(requests[1].options.credentials,'omit');
+  assert.equal(requests[1].options.headers['X-Garden-CSRF'],undefined);
+});
+
+test('owner mode requires an explicit reply target and displays a verified published response immediately', async t => {
+  const f=documentFixture(),client=serviceStub([comment('parent',{nickname:'访客'})]);
+  client.ownerSession={authenticated:true,username:'Amubis'};
+  client.postComment=async(payload)=>({comment:comment('owner-new',{parentId:payload.parentId,body:payload.body,nickname:'Amubis',verified:true})});
+  const panel=createAnonymousComments({container:f.container,service:client,targetId:'photo-1'});t.after(()=>panel.destroy());await tick();
+  assert.equal(f.find('.comments-nickname').value,'Amubis');assert.equal(f.find('.comments-nickname').disabled,true);
+  assert.equal(f.find('.comments-submit').disabled,true,'station replies require selecting a comment');
+  f.find('.comment-reply-button').emit('click');f.find('.comments-body').value='谢谢你的留言';
+  await f.find('.comments-form').emit('submit').completed;
+  assert.equal(f.find('.comments-submit-state').textContent,COMMENTS_COPY.zh.ownerSent);
+  assert.equal(f.container.querySelectorAll('.comment-owner').length,1);
+  assert.equal(f.container.querySelectorAll('.comment').length,2);
+});

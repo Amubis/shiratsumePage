@@ -42,3 +42,41 @@
 .photo-model-legacy { margin-top: 10px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .photo-model-batch { grid-column: 1 / -1; min-width: 0; }
 .photo-model-mode { margin: 2px 0 12px; }
+
+/* Separate album inclusion before entering the photo grid. */
+.photo-category-tabs { display: flex; gap: 8px; margin: 0 0 17px; flex-wrap: wrap; }
+.button.photo-category-tab { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 42px; border: 1px solid var(--border); background: var(--paper); color: var(--muted); transition: background .24s cubic-bezier(.22,.7,.26,1), color .24s cubic-bezier(.22,.7,.26,1), box-shadow .24s cubic-bezier(.22,.7,.26,1), transform .32s cubic-bezier(.2,.76,.28,1.2); }
+.button.photo-category-tab:hover { transform: translateY(-1px); color: var(--green-dark); box-shadow: 0 3px 9px #34472a12; }
+.button.photo-category-tab:active { transform: translateY(1px) scale(.98); }
+.button.photo-category-tab.active { background: var(--green); border-color: var(--green); color: #fff; box-shadow: 0 3px 11px #34472a1a; }
+.photo-category-count { min-width: 22px; padding: 2px 6px; border-radius: 12px; background: #8da07816; font-size: 10px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.photo-category-tab.active .photo-category-count { background: #ffffff26; color: #fff; }
+.photo-selection-summary { margin: 0; text-align: right; }
+.photo-detail-navigation { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+.photo-detail-navigation .button { min-height: 35px; }
+.photo-detail-position { min-width: 48px; text-align: center; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.photo-detail-footer { display: flex; flex-direction: column; gap: 18px; padding-top: 20px; border-top: 1px solid var(--border); }
+.photo-detail-footer > .photo-detail-navigation { align-self: flex-end; }
+@media (max-width: 500px) {
+  .photo-category-tabs { flex-wrap: nowrap; gap: 7px; }
+  .button.photo-category-tab { flex: 1; min-width: 0; padding: 10px 8px; gap: 7px; font-size: 11px; }
+  .photo-detail-navigation { flex: 1 1 auto; }
+  .section-intro .section-actions:has(.photo-detail-navigation) { width: 100%; }
+  .photo-detail-footer > .photo-detail-navigation { align-self: stretch; }
+  .photo-selection-summary { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { .button.photo-category-tab { transition: none; } }
+
+/* These are local organizing labels, independent of album or post publication. */
+.content-cohort-tabs { display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:0 0 17px; }
+.button.content-cohort-tab { display:inline-flex;align-items:center;gap:7px;min-height:32px;padding:6px 11px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:11px;transition:background .22s cubic-bezier(.22,.7,.26,1),transform .32s cubic-bezier(.2,.76,.28,1.2); }
+.button.content-cohort-tab:hover { background:#8da07812;transform:translateY(-1px); }
+.button.content-cohort-tab:active { transform:scale(.96); }
+.button.content-cohort-tab.active { background:#8da0781a;border-color:#8da07844;color:var(--green-dark); }
+.content-cohort-count { font-size:10px;font-variant-numeric:tabular-nums;opacity:.8; }
+.content-cohort-badge { display:inline-block;margin-left:8px;padding:2px 6px;border-radius:5px;background:#6d756409;color:var(--muted);font-size:10px;font-weight:500;line-height:1.5;white-space:nowrap;vertical-align:middle; }
+.content-cohort-badge.is-new { background:#92a67520;color:var(--green-dark); }
+.photo-info-meta { display:flex;align-items:center;flex-wrap:wrap;gap:5px; }
+.photo-info-meta .content-cohort-badge { margin-left:0; }
+.journal-item .content-cohort-badge { font-size:9px; }
+@media (prefers-reduced-motion:reduce) { .button.content-cohort-tab { transition:none; } }

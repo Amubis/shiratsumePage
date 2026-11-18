@@ -22,8 +22,8 @@ body:not(.on-home) .language-dock .language-control button {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
-  gap: clamp(24px, 2.8vw, 46px);
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  gap: clamp(24px, 2.4vw, 40px);
   width: min(1420px, 82vw);
   /* Reserve the left navigation lane without pulling both columns to the
      right. Wide displays still use the centered maximum-width composition. */
@@ -31,7 +31,7 @@ body:not(.on-home) .language-dock .language-control button {
   margin-right: 0;
   align-items: center;
   min-height: 100svh;
-  padding-block: 34px 42px;
+  padding-block: 30px 38px;
 }
 /* The portrait and its controls share the column's center. An extra desktop
    offset made the preview compete with the copy for the right-hand space. */
@@ -73,10 +73,12 @@ body:not(.on-home) .language-dock .language-control button {
   overflow: hidden;
 }
 .intro-halftone-seam > svg { width: 100%; height: 100%; }
-.model-intro-copy { width: 100%; max-width: 540px; padding: 2px 22px 0 8px; }
-.model-intro-copy .section-number { margin-bottom: 22px; font-weight: 700; }
+/* Both columns stay centered around the live biography; the removed photo
+   notes no longer reserve a separate row beneath it. */
+.model-intro-copy { width: 100%; max-width: 640px; padding: 0 10px 0 8px; align-self: center; }
+.model-intro-copy .section-number { margin-bottom: 16px; font-weight: 700; }
 .model-intro-copy .section-number > span { font-size: 8px; letter-spacing: .24em; }
-.model-intro-title { position: relative; padding-left: 0; margin-bottom: 24px; }
+.model-intro-title { position: relative; padding-left: 0; margin-bottom: 18px; }
 .model-intro-title > span:first-child {
   position: absolute;
   left: -26px;
@@ -89,18 +91,18 @@ body:not(.on-home) .language-dock .language-control button {
 }
 .model-intro-title h2 {
   font-family: var(--display-strong, var(--display));
-  font-size: clamp(78px, 7.6vw, 116px);
+  font-size: clamp(76px, 7.2vw, 108px);
   font-weight: 900;
   line-height: 1.05;
   letter-spacing: -.055em;
   transform: skewX(-5deg);
 }
-.model-intro-reading { display: block; margin-top: 15px; font-size: 10px; font-weight: 650; letter-spacing: .5em; color: var(--theme-dark); }
-.model-intro-quote { position: relative; isolation: isolate; padding: 15px 0 0 24px; }
+.model-intro-reading { display: block; margin-top: 11px; font-size: 10px; font-weight: 650; letter-spacing: .5em; color: var(--theme-dark); }
+.model-intro-quote { position: relative; isolation: isolate; padding: 8px 0 0 20px; }
 .model-intro-quote::before {
   content: '';
   position: absolute;
-  top: 18px;
+  top: 12px;
   left: 0;
   width: 7px;
   height: 54px;
@@ -111,43 +113,9 @@ body:not(.on-home) .language-dock .language-control button {
 /* The existing marks remain in the entrance collection; the new short bar is
    the visible quote accent, so no text or interaction controller changes. */
 .intro-quote-mark { display: none; }
-.model-intro-lead { font-size: clamp(18px, 1.45vw, 22px); font-weight: 650; line-height: 1.75; letter-spacing: .015em; margin: 0 0 16px; white-space: pre-line; }
-.model-intro-description { font-size: clamp(14px, 1.13vw, 17px); line-height: 1.9; letter-spacing: .025em; color: #66695b; margin: 0; white-space: pre-line; }
-.model-intro-copy > .text-link { margin: 20px 0 0 24px; font-weight: 600; }
-.intro-photo-notes {
-  display: flex;
-  justify-content: flex-end;
-  align-items: flex-start;
-  margin-top: 27px;
-  padding-right: 9px;
-  pointer-events: none;
-}
-.intro-photo-notes figure {
-  position: relative;
-  width: clamp(110px, 10.5vw, 150px);
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 7px 7px 22px;
-  background: #fffefa;
-  box-shadow: 0 5px 14px #24241e20, 0 1px 2px #24241e12;
-  transform: rotate(-9deg) translateY(7px);
-}
-.intro-photo-notes figure + figure { margin-left: -18px; transform: rotate(8deg); }
-.intro-photo-notes img { width: 100%; aspect-ratio: 1.35; object-fit: cover; object-position: 60% 45%; }
-.intro-photo-notes figure::before {
-  content: '';
-  position: absolute;
-  left: 29%;
-  top: -7px;
-  width: 44%;
-  height: 14px;
-  background: var(--theme);
-  opacity: .82;
-  clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%);
-  transform: rotate(-5deg);
-}
-.intro-enter-managed .intro-photo-notes { opacity: var(--intro-decor-alpha, 1); }
-.intro-enter-managed .intro-photo-notes { transform: translateY(calc((1 - var(--intro-decor-alpha, 1)) * 14px)) scale(calc(.96 + var(--intro-decor-alpha, 1) * .04)); }
+.model-intro-lead { font-size: clamp(17px, 1.26vw, 20px); font-weight: 650; line-height: 1.6; letter-spacing: .015em; margin: 0 0 12px; white-space: pre-line; }
+.model-intro-description { font-size: clamp(15px, 1.03vw, 16.5px); line-height: 1.65; letter-spacing: .015em; color: #66695b; margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.model-intro-copy > .text-link { margin: 16px 0 0 20px; font-weight: 600; }
 
 /* A small pull is enough to communicate the next complete chapter. */
 .section-inner { transform: none; }
@@ -160,12 +128,11 @@ body:not(.on-home) .language-dock .language-control button {
   .topbar { right: 4.5vw; }
   .topbar .owner-profile { flex-basis: 18%; }
   .topbar > .language-control { padding-inline: 10px; }
-  .model-intro-inner { gap: 22px; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); }
-  .model-intro-copy { padding-right: 8px; }
-  .model-intro-title h2 { font-size: clamp(66px, 7.3vw, 81px); }
-  .model-intro-lead { font-size: 18px; }
-  .model-intro-description { font-size: 14px; }
-  .intro-photo-notes figure { width: 112px; padding-bottom: 18px; }
+  .model-intro-inner { gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); }
+  .model-intro-copy { padding-right: 0; }
+  .model-intro-title h2 { font-size: clamp(64px, 7vw, 80px); }
+  .model-intro-lead { font-size: 17px; }
+  .model-intro-description { font-size: 14.5px; }
 }
 @media (max-width: 760px) {
   html { scroll-snap-type: y mandatory; }
@@ -191,43 +158,36 @@ body:not(.on-home) .language-dock .language-control button {
   .model-intro-quote { padding: 14px 0 0 19px; }
   .model-intro-quote::before { width: 5px; height: 47px; }
   .model-intro-lead { font-size: 18px; margin-bottom: 15px; }
-  .model-intro-description { font-size: 14px; }
+  .model-intro-description { font-size: 14.5px; }
   .model-intro-copy > .text-link { margin-left: 19px; }
-  .intro-photo-notes { margin-top: 30px; padding-right: 12px; }
-  .intro-photo-notes figure { width: clamp(110px, 30vw, 140px); }
   .intro-geometry > span:last-child { top: 51%; right: -12%; width: 49%; height: 130px; }
   .intro-geometry::before { top: 160px; left: -5%; width: 79%; }
   .intro-geometry::after { right: -7%; bottom: 8%; width: 82%; }
 }
 @media (max-height: 800px) and (min-width: 761px) {
-  .model-intro-inner { padding-block: 28px 36px; }
-  .model-intro-copy .section-number { margin-bottom: 16px; }
-  .model-intro-title { margin-bottom: 18px; }
-  .model-intro-title h2 { font-size: clamp(70px, 6.7vw, 98px); }
-  .model-intro-quote { padding-top: 12px; }
-  .model-intro-quote::before { top: 14px; }
-  .model-intro-lead { font-size: 18px; margin-bottom: 12px; }
-  .model-intro-description { font-size: 14px; }
+  .model-intro-inner { padding-block: 24px 30px; }
+  .model-intro-copy .section-number { margin-bottom: 12px; }
+  .model-intro-title { margin-bottom: 14px; }
+  .model-intro-title h2 { font-size: clamp(64px, 6.2vw, 90px); }
+  .model-intro-quote { padding-top: 6px; }
+  .model-intro-quote::before { top: 10px; }
+  .model-intro-lead { font-size: 17px; margin-bottom: 10px; }
+  .model-intro-description { font-size: 14.5px; }
   .model-intro-copy > .text-link { margin-top: 12px; padding-block: 10px; }
-  .intro-photo-notes { margin-top: 20px; }
-  .intro-photo-notes figure { width: 108px; padding: 6px 6px 17px; }
 }
 @media (max-height: 650px) and (min-width: 761px) {
-  .model-intro-inner { padding-block: 26px 32px; }
+  .model-intro-inner { padding-block: 20px 28px; }
   .model-intro-copy .section-number { margin-bottom: 13px; }
   .model-intro-title { margin-bottom: 15px; }
   .model-intro-title h2 { font-size: clamp(64px, 6vw, 84px); }
   .model-intro-reading { margin-top: 9px; }
   .model-intro-quote { padding-top: 10px; }
   .model-intro-lead { margin-bottom: 11px; font-size: 17px; }
-  .model-intro-description { font-size: 13px; }
-  .intro-photo-notes { margin-top: 15px; }
-  .intro-photo-notes figure { width: 96px; padding-bottom: 15px; }
+  .model-intro-description { font-size: 14.5px; line-height: 1.52; }
 }
 @media (prefers-reduced-motion: reduce) {
   .page-section.is-current .section-inner { transform: none; }
   .hero-copy { transform: translateY(-50%); }
-  .intro-enter-managed :is(.intro-geometry, .intro-photo-notes) { opacity: 1; transform: none; }
   .intro-geometry::before, .intro-geometry::after,
   .intro-geometry > span:last-child { transform: rotate(-8deg); }
   .intro-enter-managed .model-intro-quote::before { opacity: 1; transform: skewX(-12deg); }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeWheel, determineActiveIndex, createSectionNavigator } from '../src/navigation.js';
 
-function browserFixture(t, callbacks = {}, { tops = [0, 800, 1600, 2400], documentHeight = 4200, initialY = 0 } = {}) {
+function browserFixture(t, callbacks = {}, { tops = [0, 800, 1600, 2400], heights, documentHeight = 4200, initialY = 0 } = {}) {
   const previousWindow = globalThis.window;
   const listeners = new Map();
   const frames = new Map();
@@ -37,7 +37,7 @@ function browserFixture(t, callbacks = {}, { tops = [0, 800, 1600, 2400], docume
     },
   };
   const sections = tops.map((_, index) => ({
-    getBoundingClientRect: () => ({ top: tops[index] - win.scrollY }),
+    getBoundingClientRect: () => ({ top: tops[index] - win.scrollY, height: heights?.[index] }),
   }));
   function fire(type, fields = {}) {
     const event = {
@@ -135,6 +135,65 @@ test('reading stays native before a tall chapter reaches the next boundary', asy
   assert.equal(samples.at(-1).destination,null);
   f.fire('pointerdown');
   assert.equal(interrupted,1);
+});
+
+test('new long copy is measured before the album may start a boundary animation', async (t) => {
+  const samples = [], starts = [];
+  const f = browserFixture(t, {
+    onChapterWheel(details, options) {
+      samples.push([details, options]);
+      if (options.allowStart) { starts.push(details); return true; }
+      return false;
+    },
+  }, { initialY: 800 });
+  await f.drain();
+  // Published text expands between input frames, without a resize event.
+  f.tops[2] = 2600; f.tops[3] = 3400;
+  assert.equal(f.fire('wheel', { deltaY: 120 }).defaultPrevented, false);
+  assert.equal(samples.at(-1)[0].destination, null);
+  assert.equal(samples.at(-1)[1].allowStart, false);
+  assert.equal(starts.length, 0, 'reading the new body text cannot start album dots');
+  assert.equal(f.fire('keydown', { key: 'PageDown' }).defaultPrevented, false, 'keyboard reading uses the expanded chapter too');
+  f.win.scrollTo({ top: 1800 });
+  await f.drain();
+  assert.equal(f.fire('wheel', { deltaY: 120 }).defaultPrevented, true);
+  assert.deepEqual(starts.at(-1), { delta: 120, from: 1, destination: 2 });
+});
+
+test('album input uses the physical chapter rather than its early sidebar highlight', async (t) => {
+  const samples = [], preparations = [];
+  const f = browserFixture(t, {
+    onChapterWheel(details, options) { samples.push([details, options]); return false; },
+    onBeforeNavigate(index, details) { preparations.push({ index, from: details.from }); },
+  }, { tops: [0, 800, 2200, 3000], documentHeight: 4600, initialY: 2000 });
+  await f.drain();
+  assert.equal(f.nav.activeIndex, 2, 'the next title can already be highlighted');
+  assert.equal(f.fire('wheel', { deltaY: -100 }).defaultPrevented, false);
+  assert.deepEqual(samples.at(-1), [{ delta: -100, from: 1, destination: null }, { allowStart: false }]);
+  const pending = f.nav.goTo(2, { animate: false });
+  assert.equal(await pending, true);
+  assert.deepEqual(preparations.at(-1), { index: 2, from: 1 });
+  assert.equal(f.win.scrollY, 2200, 'the incoming chapter is actually aligned before settling');
+});
+
+test('a large upward packet reads to a tall album top before a fresh gesture may leave it', async (t) => {
+  const starts = [], arrivals = [];
+  const f = browserFixture(t, {
+    onActive(index, details) { arrivals.push({ index, ...details }); },
+    onChapterWheel(details, { allowStart }) { if (allowStart) { starts.push(details); return true; } return false; },
+  }, { tops: [0, 800, 1600, 3200], heights: [800, 800, 1600, 1200], documentHeight: 4400, initialY: 2000 });
+  await f.drain();
+  assert.equal(arrivals.at(-1).atStart, false, 'reading a lower part is not a decorative arrival');
+  assert.equal(arrivals.at(-1).programmatic, false);
+  assert.equal(f.fire('wheel', { deltaY: -900 }).defaultPrevented, true);
+  assert.equal(f.win.scrollY, 1600);
+  assert.equal(starts.length, 0, 'the packet reaching the top cannot also turn a chapter');
+  await f.step(70);
+  f.fire('wheel', { deltaY: -100 });
+  assert.equal(starts.length, 0, 'the same gesture tail stays at that real boundary');
+  await f.step(240);
+  f.fire('wheel', { deltaY: -120 });
+  assert.deepEqual(starts.at(-1), { delta: -120, from: 2, destination: 1 });
 });
 
 test('a previous chapter gesture cannot start the album hook with its remaining inertia', async(t)=>{
