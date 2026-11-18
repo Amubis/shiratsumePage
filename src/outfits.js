@@ -158,7 +158,7 @@ function railPositionAtX(x, count) {
 export const OUTFIT_HINT_TIMING = Object.freeze({ delay: 4000, duration: 2800 });
 
 /** One selected outfit with independently accessible front and rear views. */
-function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = () => false, onChange = () => {}, outfits = OUTFITS, initialIndex = 0, copy = OUTFIT_COPY } = {}) {
+function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = () => false, onChange = () => {}, outfits = OUTFITS, initialIndex = 0, copy = OUTFIT_COPY, preloadEnabled = true } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An outfit showcase container is required.');
   const records = normalizeOutfits(outfits);
   let messages = normalizedCopy(copy);
@@ -170,11 +170,14 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   const uid = `outfit-showcase-${++outfitSerial}`;
   const listeners = [];
   const preloads = new Map();
+  const sourceLoads = new Map();
+  const sourceImages = new Map();
   const animations = new Set();
   let locale = language === 'ja' ? 'ja' : 'zh';
   let currentIndex = Number.isInteger(initialIndex) ? wrap(initialIndex) : 0;
   let enabled = true;
   let busy = false;
+  let warmEnabled = Boolean(preloadEnabled), warming = false;
   let interacted = false;
   let hintActive = false;
   let hintShown = false;
@@ -247,7 +250,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   const shadowPaint = svgElement('rect', { x: '-320', y: '-320', width: IMAGE_WIDTH + 640, height: IMAGE_HEIGHT + 640, fill: `url(#${uid}-dots)` });
   shadowGroup.append(shadowPaint);
   shadow.append(shadowDefs, shadowGroup);
-  const image = element('img', 'outfit-image');
+  let image = element('img', 'outfit-image');
   image.width = IMAGE_WIDTH;
   image.height = IMAGE_HEIGHT;
   image.decoding = 'async';
@@ -265,12 +268,14 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   const backStage = element('button', 'outfit-back-stage');
   backStage.type = 'button';
   const backArt = element('span', 'outfit-back-art');
-  const backImage = element('img', 'outfit-back-image');
+  let backImage = element('img', 'outfit-back-image');
   backImage.width = IMAGE_WIDTH;
   backImage.height = IMAGE_HEIGHT;
   backImage.decoding = 'async';
   backImage.draggable = false;
   if (records[currentIndex].back) backImage.src = records[currentIndex].back;
+  sourceImages.set(records[currentIndex].front, image);
+  if (records[currentIndex].back && !sourceImages.has(records[currentIndex].back)) sourceImages.set(records[currentIndex].back, backImage);
   backArt.append(backImage);
   backStage.append(backArt);
   pair.append(shadow, stage, backStage);
@@ -622,20 +627,48 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     }, OUTFIT_HINT_TIMING.delay);
   }
 
-  function preload(index) {
+  async function decodeImage(loaded) {
+    if (loaded.decode) await loaded.decode();
+    else if (!loaded.complete) await new Promise((resolve, reject) => { loaded.onload = resolve; loaded.onerror = reject; });
+    if (typeof loaded.naturalWidth === 'number' && !loaded.naturalWidth) throw new Error('Outfit image unavailable.');
+    return loaded;
+  }
+
+  function decodedSource(source, priority) {
+    if (!source) return Promise.resolve(null);
+    let loaded = sourceImages.get(source);
+    if (loaded && priority === 'high') loaded.fetchPriority = priority;
+    if (sourceLoads.has(source)) return sourceLoads.get(source);
+    if (!loaded) {
+      loaded = doc.createElement('img');
+      loaded.decoding = 'async'; loaded.fetchPriority = priority; loaded.src = source;
+      sourceImages.set(source, loaded);
+    }
+    const loading = decodeImage(loaded).catch(error => {
+      if (sourceLoads.get(source) === loading) { sourceLoads.delete(source); sourceImages.delete(source); }
+      throw error;
+    });
+    sourceLoads.set(source, loading);
+    return loading;
+  }
+
+  function preload(index, priority = 'low') {
     const outfit = records[wrap(index)];
+    if (priority === 'high') for (const source of [outfit.front, outfit.back]) {
+      const pending = sourceImages.get(source); if (pending) pending.fetchPriority = priority;
+    }
     if (preloads.has(outfit.id)) return preloads.get(outfit.id);
     const loading = (async () => {
       try {
-        return await Promise.all([outfit.front, outfit.back].filter(Boolean).map(async (source) => {
-          const loaded = doc.createElement('img');
-          loaded.decoding = 'async';
-          loaded.fetchPriority = 'low';
-          loaded.src = source;
-          if (loaded.decode) await loaded.decode();
-          else if (!loaded.complete) await new Promise((resolve, reject) => { loaded.onload = resolve; loaded.onerror = reject; });
-          return loaded;
-        }));
+        const [front, rear] = await Promise.all([decodedSource(outfit.front, priority), decodedSource(outfit.back, priority)]);
+        // One source can be configured for both sides, but one DOM node cannot
+        // occupy both portrait buttons. Its resource still comes from the cache.
+        let back = rear;
+        if (back === front) {
+          back = doc.createElement('img'); back.decoding = 'async'; back.src = outfit.back;
+          await decodeImage(back);
+        }
+        return [front, back];
       } catch {
         preloads.delete(outfit.id);
         return null;
@@ -643,6 +676,34 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     })();
     preloads.set(outfit.id, loading);
     return loading;
+  }
+
+  function warmAll() {
+    if (warming || !warmEnabled || destroyed) return;
+    warming = true;
+    const order = Array.from({ length: records.length }, (_, offset) => wrap(currentIndex + offset));
+    let cursor = 0;
+    const worker = async () => {
+      while (!destroyed && warmEnabled && cursor < order.length) {
+        const index = order[cursor++];
+        await preload(index, index === currentIndex ? 'high' : 'low');
+      }
+    };
+    // At most two background pairs compete for bandwidth; a user-selected
+    // destination can join immediately instead of waiting behind this queue.
+    void Promise.all([worker(), worker()]).finally(() => { warming = false; });
+  }
+
+  function mountDecodedPair(loaded) {
+    image = loaded[0]; backImage = loaded[1] || element('img', 'outfit-back-image');
+    for (const [node, className] of [[image, 'outfit-image'], [backImage, 'outfit-back-image']]) {
+      node.className = className; node.width = IMAGE_WIDTH; node.height = IMAGE_HEIGHT;
+      node.decoding = 'sync'; node.draggable = false;
+      node.style.transform = ''; node.style.transformOrigin = '';
+    }
+    // Insert the already-decoded image itself. Assigning its URL to a separate
+    // async image can leave that element painting its previous source mid-flip.
+    art.replaceChildren(image); backArt.replaceChildren(backImage);
   }
 
   async function animateArt(frames, duration) {
@@ -662,20 +723,26 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     if (destination === currentIndex) { if (pressReleased) cancelPress(); return true; }
     const request = ++serial;
     const direction = wrap(destination - currentIndex) <= records.length / 2 ? 1 : -1;
+    if (animate && !reducedMotion() && !pressed && !pressReleased) {
+      holdPress(); pressed = false; pressReleased = true;
+    }
     busy = true;
+    pair.classList.add('is-outfit-loading');
     resetBackInspection();
     stage.setAttribute('aria-busy', 'true');
     backStage.setAttribute('aria-busy', 'true');
-    const loaded = await preload(destination);
+    const loaded = await preload(destination, 'high');
     if (destroyed || !enabled || request !== serial) return false;
     if (!loaded) {
       busy = false;
+      pair.classList.remove('is-outfit-loading');
       cancelPress();
       stage.setAttribute('aria-busy', 'false');
       backStage.setAttribute('aria-busy', 'false');
       status.textContent = messages[locale].failure;
       return false;
     }
+    pair.classList.remove('is-outfit-loading');
     // A slow connection leaves the released portrait quietly compressed until
     // its replacement is decoded. Rebound and flip then begin together.
     if (pressReleased || pressed) reboundPress();
@@ -686,8 +753,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     ], 190);
     if (destroyed || !enabled || request !== serial) return false;
     currentIndex = destination;
-    image.src = records[currentIndex].front;
-    if (records[currentIndex].back) backImage.src = records[currentIndex].back; else backImage.removeAttribute('src');
+    mountDecodedPair(loaded);
     shadowSources[0].setAttribute('href', records[currentIndex].front);
     if (records[currentIndex].back) shadowSources[1].setAttribute('href', records[currentIndex].back); else shadowSources[1].removeAttribute('href');
     renderLabels(true);
@@ -705,7 +771,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     stage.setAttribute('aria-busy', 'false');
     backStage.setAttribute('aria-busy', 'false');
     refreshHint();
-    void preload(currentIndex + 1);
+    warmAll();
     return true;
   }
 
@@ -897,7 +963,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   }
   renderLabels();
   targetRail(currentIndex, true);
-  void preload(currentIndex).then(() => { if (!destroyed && records.length > 1) void preload(currentIndex + 1); });
+  warmAll();
 
   return {
     get index() { return currentIndex; },
@@ -905,6 +971,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     goTo,
     next() { return goTo(currentIndex + 1); },
     previous() { return goTo(currentIndex - 1); },
+    setPreloadEnabled(value) { warmEnabled = Boolean(value); if (warmEnabled) warmAll(); },
     setHintActive(value) {
       if (destroyed || hintActive === Boolean(value)) return;
       hintActive = Boolean(value);
@@ -933,7 +1000,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
         railMagnet = null;
         targetRail(currentIndex, true);
         resetBackInspection();
-        pair.classList.remove('is-outfit-turning');
+        pair.classList.remove('is-outfit-turning', 'is-outfit-loading');
         stopSharedShadow();
       }
       renderLabels();
@@ -969,7 +1036,7 @@ function createEmptyOutfitShowcase({ container, language, copy }) {
   return {
     get index() { return -1; }, get outfitId() { return null; },
     async goTo() { return false; }, async next() { return false; }, async previous() { return false; },
-    setHintActive() {}, setEnabled() {},
+    setHintActive() {}, setEnabled() {}, setPreloadEnabled() {},
     setCopy(next) { if (!destroyed) { messages = normalizedCopy(next); render(); } },
     setLanguage(next) { if (!destroyed) { locale = next === 'ja' ? 'ja' : 'zh'; render(); } },
     destroy() { if (destroyed) return; destroyed = true; container.replaceChildren(); container.classList.remove('outfit-showcase'); },
@@ -982,6 +1049,7 @@ export function createOutfitShowcase(options = {}) {
   let messages = normalizedCopy(options.copy);
   let locale = options.language === 'ja' ? 'ja' : 'zh';
   let enabled = true, hintActive = false, destroyed = false;
+  let preloadEnabled = options.preloadEnabled !== false;
   let view = createOutfitShowcaseView({ ...options, outfits: records, language: locale, copy: messages });
   return {
     get index() { return view.index; }, get outfitId() { return view.outfitId; },
@@ -994,13 +1062,14 @@ export function createOutfitShowcase(options = {}) {
       const selected = next.findIndex(item => item.id === selectedId);
       const initialIndex = selected >= 0 ? selected : Math.max(0, Math.min(previousIndex, next.length - 1));
       view.destroy(); records = next;
-      view = createOutfitShowcaseView({ ...options, outfits: records, initialIndex, language: locale, copy: messages });
+      view = createOutfitShowcaseView({ ...options, outfits: records, initialIndex, language: locale, copy: messages, preloadEnabled });
       view.setEnabled(enabled); view.setHintActive(hintActive);
       return true;
     },
     setCopy(next) { if (destroyed) return; messages = normalizedCopy(next); view.setCopy(messages); },
     setLanguage(next) { if (destroyed) return; locale = next === 'ja' ? 'ja' : 'zh'; view.setLanguage(locale); },
     setEnabled(value) { if (destroyed) return; enabled = Boolean(value); view.setEnabled(enabled); },
+    setPreloadEnabled(value) { if (destroyed) return; preloadEnabled = Boolean(value); view.setPreloadEnabled(preloadEnabled); },
     setHintActive(value) { if (destroyed) return; hintActive = Boolean(value); view.setHintActive(hintActive); },
     destroy() { if (destroyed) return; destroyed = true; view.destroy(); },
   };

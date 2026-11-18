@@ -3,6 +3,7 @@ import { createAlbumPlayerMotion } from './album-player-motion.js';
 import { createAlbumPageMotion } from './album-page-motion.js';
 import { createAnonymousComments } from './comments.js';
 import { planAlbumLayout } from './album-layout.js';
+import { albumNeighborOffsets } from './album-neighbors.js';
 
 /** Public content records; a future CMS can replace this array through setMedia(). */
 export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) => Object.freeze({
@@ -107,6 +108,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let photoAspects = [];
   let layoutFrame = null;
   let layoutObserver = null;
+  let neighborLayout = [];
 
   const element = (tag, className = '') => { const node = doc.createElement(tag); node.className = className; return node; };
   const bind = (node, name, handler, list = bindings) => {
@@ -165,7 +167,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');
   const playerContent = element('div', 'album-player-content'); const playerStage = element('div', 'album-player-stage'); const playerComments = element('aside', 'album-player-comments');
   const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerDescription = element('p', 'album-player-description'); const playerCaption = element('figcaption', 'album-player-caption');
-  playerFigure.append(playerImage, playerDescription, playerCaption); playerStage.append(playerPrevious, playerFigure, playerNext); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent); doc.body.append(dialog);
+  playerFigure.append(playerImage, playerDescription, playerCaption); playerStage.append(playerFigure); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent, playerPrevious, playerNext); doc.body.append(dialog);
   const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
   const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion,onRequestClose:()=>closePlayer()});
   const pageMotion = createAlbumPageMotion({root,reducedMotion,isActive(){
@@ -195,6 +197,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     };
     const paper = { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', mobile ? 21 : 26) };
     const plan = planAlbumLayout({ aspects: photoAspects, width, height, mobile, view, paper });
+    // Jitter belongs to the resting composition; inspection never feeds its
+    // own lift, push or tilt back into the geometry of the next pointer frame.
+    neighborLayout = plan.items.map(item => ({ ...item,
+      x: item.x + item.width * (parseFloat(cards[item.index]?.style.getPropertyValue('--jitter-x')) || 0) / 100,
+      y: item.y + item.height * (parseFloat(cards[item.index]?.style.getPropertyValue('--jitter-y')) || 0) / 100,
+    }));
     grid.classList.add('is-packed');
     grid.setAttribute('data-layout-rows', String(plan.rowCount));
     if (mobile) grid.style.setProperty('--album-packed-height', `${plan.height}px`);
@@ -210,6 +218,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       grid.getBoundingClientRect?.();
       grid.classList.remove('is-layout-initializing');
     }
+    if (inspection !== null) updateInspectionNeighbors(inspection);
   }
   function queueLayout() {
     if (destroyed || layoutFrame !== null) return;
@@ -221,19 +230,24 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
     pointerFrame = null; pendingPointer = null; inspection = null;
     cards.forEach((card, index) => {
-      card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); card.style.setProperty('--inspect-lift', '0px'); card.style.setProperty('--neighbor-shift', '0px');
+      card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); card.style.setProperty('--inspect-lift', '0px'); card.style.setProperty('--neighbor-x', '0px'); card.style.setProperty('--neighbor-y', '0px');
       wrappers[index].classList.remove('is-inspected');
+    });
+  }
+  function updateInspectionNeighbors(index) {
+    const offsets = albumNeighborOffsets(neighborLayout, index);
+    cards.forEach((card, cardIndex) => {
+      wrappers[cardIndex].classList.toggle('is-inspected', cardIndex === index);
+      card.style.setProperty('--inspect-lift', cardIndex === index ? '-12px' : '0px');
+      card.style.setProperty('--neighbor-x', `${(offsets[cardIndex]?.x || 0).toFixed(3)}px`);
+      card.style.setProperty('--neighbor-y', `${(offsets[cardIndex]?.y || 0).toFixed(3)}px`);
+      if (cardIndex !== index) { card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); }
     });
   }
   function inspect(index, event) {
     if (!enabled || reducedMotion() || event?.pointerType === 'touch') return;
+    if (inspection !== index) updateInspectionNeighbors(index);
     inspection = index;
-    cards.forEach((card, cardIndex) => {
-      wrappers[cardIndex].classList.toggle('is-inspected', cardIndex === index);
-      card.style.setProperty('--inspect-lift', cardIndex === index ? '-12px' : '0px');
-      card.style.setProperty('--neighbor-shift', Math.abs(cardIndex - index) === 1 ? `${Math.sign(cardIndex - index) * 8}px` : '0px');
-      if (cardIndex !== index) { card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); }
-    });
     if (!event || !Number.isFinite(event.clientX)) return;
     const bounds = wrappers[index].getBoundingClientRect();
     const x = Math.max(-1, Math.min(1, (event.clientX - bounds.left) / (bounds.width || 1) * 2 - 1));
@@ -359,7 +373,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     dateMonth.hidden = !dateMonth.textContent;
     sourceNote.textContent = records.every((item) => item.sourceKind === 'video-still' && !item.takenAt) ? text().source : text().mixedSource;
     empty.hidden = Boolean(page?.items.length); empty.textContent = text().empty;
-    wrappers = []; cards = []; photoAspects = []; const nodes = [];
+    wrappers = []; cards = []; photoAspects = []; neighborLayout = []; const nodes = [];
     for (const [index, item] of (page?.items || []).entries()) {
       const wrapper = element('div', 'album-photo'); const card = button('album-photo-card');
       const pose = albumPhotoPose(item.id,index,page.items.length);

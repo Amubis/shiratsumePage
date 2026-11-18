@@ -143,7 +143,7 @@ function syncOutfitGround(outfit=selectedOutfit()){
 
 function ensureOutfitShowcase(){
   if(!outfitShowcase){
-    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits,onChange(_index,outfit){syncOutfitGround(outfit);}});
+    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits,preloadEnabled:publicSceneStarted,onChange(_index,outfit){syncOutfitGround(outfit);}});
     syncOutfitGround();
     if(typeof ResizeObserver==='function'){
       outfitGroundObserver=new ResizeObserver(()=>syncOutfitGround());
@@ -846,6 +846,7 @@ applyTheme();
 function beginPublicScene(){
   if(publicSceneStarted)return;
   publicSceneStarted=true;
+  outfitShowcase?.setPreloadEnabled?.(true);
   if(requestedSection>0) {
     finishIntro();
     // Keep the original fragment until the first verified chapter settles.

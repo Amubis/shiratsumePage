@@ -185,6 +185,16 @@ body:not(.on-home) .language-dock .language-control button {
   .model-intro-lead { margin-bottom: 11px; font-size: 17px; }
   .model-intro-description { font-size: 14.5px; line-height: 1.52; }
 }
+/* The current Japanese biography has many deliberate line breaks. Keep those
+   paragraphs intact while giving its desktop column more vertical breathing
+   room; narrow screens retain the original reading size and natural height. */
+@media (min-width: 761px) {
+  html[lang="ja"] .primary-intro .model-intro-description { font-size: clamp(14.5px, 1vw, 16px); line-height: 1.5; }
+  html[lang="ja"] .primary-intro .model-intro-lead { line-height: 1.5; }
+}
+@media (max-height: 800px) and (min-width: 761px) {
+  html[lang="ja"] .primary-intro .model-intro-description { font-size: 14.5px; line-height: 1.48; }
+}
 @media (prefers-reduced-motion: reduce) {
   .page-section.is-current .section-inner { transform: none; }
   .hero-copy { transform: translateY(-50%); }

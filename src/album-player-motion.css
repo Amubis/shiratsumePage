@@ -2,6 +2,7 @@
 .album-player.album-player-motion-charging { opacity: 0; pointer-events: none; }
 .album-player.album-player-motion-charging::backdrop { opacity: 0; }
 .album-player.album-player-motion-opening { transform-origin: 50% 50%; will-change: transform, opacity; }
+.album-player.album-player-motion-opening > :is(.album-player-previous,.album-player-next) { opacity: 0; pointer-events: none; }
 .album-player.album-player-motion-opening::backdrop { animation: albumPlayerBackdropIn .18s ease-out both; }
 .album-player.album-player-motion-closing { will-change: opacity; }
 .album-player.album-player-motion-closing::backdrop { animation: albumPlayerBackdropOut .18s ease-out both; }

@@ -23,10 +23,14 @@ class Element {
         return add;
       },
     };
-    if (tag === 'img') this.decode = async () => {
-      if (doc.failedImages.has(this.src)) throw new Error('Missing image');
-      if (doc.delayedImages.has(this.src)) await doc.delayedImages.get(this.src);
-    };
+    if (tag === 'img') {
+      doc.images.push(this);
+      this.decode = async () => {
+        doc.decodedImages.push(this);
+        if (doc.failedImages.has(this.src)) throw new Error('Missing image');
+        if (doc.delayedImages.has(this.src)) await doc.delayedImages.get(this.src);
+      };
+    }
   }
   set className(value) { this.classes = new Set(value.split(/\s+/).filter(Boolean)); }
   get className() { return [...this.classes].join(' '); }
@@ -76,7 +80,7 @@ class Element {
 }
 
 function fixture(t, { docSetup, ...options } = {}) {
-  const doc = { failedImages: new Set(), delayedImages: new Map(), animations: [] };
+  const doc = { failedImages: new Set(), delayedImages: new Map(), animations: [], images: [], decodedImages: [] };
   const events = new Map();
   doc.addEventListener = (type, callback) => { if (!events.has(type)) events.set(type, new Set()); events.get(type).add(callback); };
   doc.removeEventListener = (type, callback) => events.get(type)?.delete(callback);
@@ -118,7 +122,7 @@ function fixture(t, { docSetup, ...options } = {}) {
   const changed = [];
   const api = createOutfitShowcase({ container, reducedMotion: () => true, onChange: (index) => changed.push(index), ...options });
   t.after(() => api.destroy());
-  return { doc, container, api, changed, pair:container.find('outfit-pair'), stage: container.find('outfit-stage'), backStage:container.find('outfit-back-stage'), image: container.find('outfit-image'), backImage:container.find('outfit-back-image'), dots: container.all((node) => node.classList.contains('outfit-dot')), rail: container.find('outfit-dots'), clover: container.find('outfit-rail-clover'), cue: container.find('outfit-cue'), status: container.find('outfit-status') };
+  return { doc, container, api, changed, pair:container.find('outfit-pair'), stage: container.find('outfit-stage'), backStage:container.find('outfit-back-stage'), get image() { return container.find('outfit-image'); }, get backImage() { return container.find('outfit-back-image'); }, dots: container.all((node) => node.classList.contains('outfit-dot')), rail: container.find('outfit-dots'), clover: container.find('outfit-rail-clover'), cue: container.find('outfit-cue'), status: container.find('outfit-status') };
 }
 
 async function settle() { for (let i = 0; i < 10; i += 1) await Promise.resolve(); }
@@ -311,9 +315,8 @@ test('arrow keys and endpoints are handled inside the stage rather than turning 
 });
 
 test('failed image decoding keeps the existing portrait visible and allows a later retry', async (t) => {
-  const f = fixture(t);
+  const f = fixture(t, { docSetup: doc => doc.failedImages.add(OUTFITS[2].front) });
   await settle();
-  f.doc.failedImages.add(OUTFITS[2].front);
   assert.equal(await f.api.goTo(2), false);
   assert.equal(f.api.index, 0);
   assert.equal(f.image.src, OUTFITS[0].front);
@@ -324,10 +327,59 @@ test('failed image decoding keeps the existing portrait visible and allows a lat
   assert.equal(f.api.index, 2);
 });
 
-test('a failed rear decode retains the entire selected pair and a retry can load both views', async (t) => {
-  const f = fixture(t);
+test('enabled prewarming decodes every pair with two background workers and reuses the decoded nodes', async (t) => {
+  let releaseFirst, releaseSecond;
+  const first = new Promise(resolve => { releaseFirst = resolve; });
+  const second = new Promise(resolve => { releaseSecond = resolve; });
+  const f = fixture(t, { preloadEnabled: false, docSetup(doc) {
+    doc.delayedImages.set(OUTFITS[0].back, first);
+    doc.delayedImages.set(OUTFITS[1].back, second);
+  } });
   await settle();
-  f.doc.failedImages.add(OUTFITS[2].back);
+  assert.equal(f.doc.decodedImages.length, 0, 'unverified fallback content does not warm its whole outfit list');
+  f.api.setPreloadEnabled(true); await settle();
+  assert.deepEqual(new Set(f.doc.decodedImages.map(node => node.src)), new Set(OUTFITS.slice(0, 2).flatMap(outfit => [outfit.front, outfit.back])));
+  releaseFirst(); releaseSecond();
+  for (let turn = 0; turn < 4; turn++) await settle();
+  assert.equal(new Set(f.doc.decodedImages.map(node => node.src)).size, 8);
+  const decodedFront = f.doc.decodedImages.find(node => node.src === OUTFITS[3].front);
+  const decodedBack = f.doc.decodedImages.find(node => node.src === OUTFITS[3].back);
+  const created = f.doc.images.length, decoded = f.doc.decodedImages.length;
+  assert.equal(await f.api.goTo(3), true);
+  assert.equal(f.image, decodedFront);
+  assert.equal(f.backImage, decodedBack);
+  assert.equal(f.image.decoding, 'sync');
+  assert.ok(f.image.alt.includes(OUTFITS[3].label.zh));
+  assert.equal(f.image.draggable, false);
+  assert.equal(f.doc.images.length, created);
+  assert.equal(f.doc.decodedImages.length, decoded);
+});
+
+test('shared outfit URLs are decoded once and remain usable without another network fetch', async (t) => {
+  const outfits = [OUTFITS[0], { ...OUTFITS[0], id: 'same-resources', label: { zh: '共享图片', ja: '共有画像' } }];
+  const f = fixture(t, { outfits });
+  for (let turn = 0; turn < 3; turn++) await settle();
+  assert.equal(f.doc.decodedImages.length, 2);
+  const originalFront = f.image, originalBack = f.backImage;
+  f.doc.failedImages.add(OUTFITS[0].front); f.doc.failedImages.add(OUTFITS[0].back);
+  assert.equal(await f.api.next(), true);
+  assert.equal(f.image, originalFront); assert.equal(f.backImage, originalBack);
+  assert.equal(f.doc.decodedImages.length, 2);
+  assert.ok(f.image.alt.includes('共享图片'));
+});
+
+test('replacing the outfit list keeps the delayed-prewarming preference until the verified list is enabled', async (t) => {
+  const f = fixture(t, { preloadEnabled: false });
+  await settle(); f.api.setOutfits([OUTFITS[2], OUTFITS[3]]); await settle();
+  assert.equal(f.doc.decodedImages.length, 0);
+  f.api.setPreloadEnabled(true);
+  for (let turn = 0; turn < 3; turn++) await settle();
+  assert.deepEqual(new Set(f.doc.decodedImages.map(node => node.src)), new Set(OUTFITS.slice(2).flatMap(outfit => [outfit.front, outfit.back])));
+});
+
+test('a failed rear decode retains the entire selected pair and a retry can load both views', async (t) => {
+  const f = fixture(t, { docSetup: doc => doc.failedImages.add(OUTFITS[2].back) });
+  await settle();
   assert.equal(await f.api.goTo(2), false);
   assert.equal(f.api.index, 0);
   assert.equal(f.image.src, OUTFITS[0].front);

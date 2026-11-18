@@ -184,10 +184,10 @@ test('page changes clamp at boundaries and dispose old photo event listeners', (
 test('hover raises a card, pushes neighbors and clamps inspect tilt, then releases its frame', (t) => {
   const f = fixture(t); const cards = f.container.findAll('album-photo-card'); const wrappers = f.container.findAll('album-photo');
   cards[1].emit('pointerenter', { pointerType: 'mouse', clientX: 1000, clientY: -1000 });
-  assert.equal(wrappers[1].classList.contains('is-inspected'), true); assert.equal(cards[0].style.getPropertyValue('--neighbor-shift'), '-8px'); assert.equal(cards[2].style.getPropertyValue('--neighbor-shift'), '8px');
+  assert.equal(wrappers[1].classList.contains('is-inspected'), true); assert.ok(parseFloat(cards[0].style.getPropertyValue('--neighbor-x')) < 0); assert.ok(cards.some((card, index) => index !== 1 && parseFloat(card.style.getPropertyValue('--neighbor-y')) !== 0));
   assert.equal(cards[1].style.getPropertyValue('--inspect-rx'), '5.00deg'); assert.equal(cards[1].style.getPropertyValue('--inspect-ry'), '5.00deg');
   cards[1].emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 }); assert.equal(f.frames.size, 1);
-  cards[1].emit('pointerleave'); assert.equal(f.frames.size, 0); assert.equal(wrappers[1].classList.contains('is-inspected'), false); assert.equal(cards[0].style.getPropertyValue('--neighbor-shift'), '0px');
+  cards[1].emit('pointerleave'); assert.equal(f.frames.size, 0); assert.equal(wrappers[1].classList.contains('is-inspected'), false); assert.equal(cards[0].style.getPropertyValue('--neighbor-x'), '0px'); assert.equal(cards[0].style.getPropertyValue('--neighbor-y'), '0px');
 });
 
 test('touch and reduced-motion avoid card tilt and neighbor displacement', (t) => {
@@ -308,6 +308,18 @@ test('player description sits above its date metadata and the photo aspect updat
  image.naturalWidth = 0; image.naturalHeight = 0; image.emit('load');
  assert.equal(f.dialog.style.getPropertyValue('--player-image-aspect'), '1.777778');
  f.api.setLanguage('ja'); assert.equal(description.textContent, '夢の始まり');
+});
+
+test('player navigation lives outside the resizable photograph stage', t => {
+ const f = fixture(t, { media: [sample('wide', null), sample('tall', null)] });
+ f.api.openPlayer(0);
+ const stage = f.dialog.find('album-player-stage');
+ const previous = f.dialog.find('album-player-previous'), next = f.dialog.find('album-player-next');
+ assert.equal(previous.parentElement, f.dialog);
+ assert.equal(next.parentElement, f.dialog);
+ assert.deepEqual(stage.children, [f.dialog.find('album-player-figure')]);
+ next.emit('click'); assert.equal(f.dialog.getAttribute('data-photo-id'), 'tall');
+ next.emit('click'); assert.equal(f.dialog.getAttribute('data-photo-id'), 'wide');
 });
 
 test('closing a photo reached on another page quietly returns to its page, card and focus', t => {

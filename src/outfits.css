@@ -110,6 +110,7 @@
 }
 
 .outfit-stage:disabled { opacity: 1; }
+.outfit-pair.is-outfit-loading :is(.outfit-stage,.outfit-back-stage) { cursor: progress; }
 
 .outfit-art,
 .outfit-back-art {

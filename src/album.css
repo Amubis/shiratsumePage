@@ -85,7 +85,7 @@
   padding: 11px 11px 32px;
   background: #fffefb;
   box-shadow: 1px 5px 12px #00000024, 0 1px 2px #0000001c;
-  transform: translate(calc(var(--jitter-x, 0%) + var(--neighbor-shift, 0px)), calc(var(--jitter-y, 0%) + var(--inspect-lift, 0px)))
+  transform: translate(calc(var(--jitter-x, 0%) + var(--neighbor-x, 0px)), calc(var(--jitter-y, 0%) + var(--inspect-lift, 0px) + var(--neighbor-y, 0px)))
     rotate(var(--jitter-rotation, 0deg)) perspective(700px) rotateX(var(--inspect-rx, 0deg)) rotateY(var(--inspect-ry, 0deg));
   transform-origin: center;
   transition: transform .32s var(--water-settle, var(--easing)), box-shadow .3s var(--easing);
@@ -144,7 +144,7 @@
   inset: 0;
   /* The photograph determines the frame's width at a bounded height. A
      portrait therefore narrows the whole viewer, including its paper. */
-  width: min(1280px, 94vw, calc(var(--player-photo-height) * var(--player-image-aspect, 1.7778) + var(--player-comments-width) + 163px));
+  width: min(1280px, calc(100vw - 160px), calc(var(--player-photo-height) * var(--player-image-aspect, 1.7778) + var(--player-comments-width) + 73px));
   height: var(--player-height);
   max-width: calc(100vw - 24px);
   max-height: calc(100svh - 32px);
@@ -154,19 +154,22 @@
   background: var(--paper);
   color: var(--ink);
   box-shadow: 0 25px 90px #11170f55;
-  overflow: hidden;
+  overflow: visible;
+  transition: width .44s cubic-bezier(.2,.75,.3,1);
 }
 .album-player::backdrop { background: #171d14cc; backdrop-filter: blur(6px); }
-.album-player-content { display: grid; grid-template-columns: minmax(0, 1fr) var(--player-comments-width); gap: 25px; height: 100%; min-height: 0; }
-.album-player-stage { position: relative; min-width: 0; min-height: 0; height: 100%; padding-inline: 45px; }
+.album-player-content { display: grid; grid-template-columns: minmax(0, 1fr) var(--player-comments-width); gap: 25px; height: 100%; min-height: 0; overflow: hidden; }
+.album-player-stage { position: relative; min-width: 0; min-height: 0; height: 100%; }
 .album-player-comments { min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px 20px; border-left: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); scrollbar-width: thin; }
 .album-player-figure { display: flex; height: 100%; min-height: 0; flex-direction: column; gap: 9px; margin: 0; }
 .album-player-image { flex: 1 1 0; width: 100%; height: 0; min-width: 0; min-height: 0; object-fit: contain; }
 .album-player-description { flex: 0 0 auto; margin: 0; max-height: min(4.8em, 18svh); overflow: auto; overflow-wrap: anywhere; white-space: pre-line; font-size: clamp(14px, 1.15vw, 18px); line-height: 1.6; font-weight: 550; text-align: center; color: var(--ink); }
 .album-player-caption { flex: 0 0 auto; max-height: min(3.5em, 12svh); overflow: auto; overflow-wrap: anywhere; font-size: 11px; line-height: 1.7; letter-spacing: .08em; text-align: center; color: var(--theme-dark); }
 .album-player-close { position: absolute; right: 8px; top: 4px; width: 44px; height: 44px; font-size: 29px; }
-.album-player-previous, .album-player-next { position: absolute; top: calc(50% - 23px); width: 46px; height: 46px; border-radius: 50%; background: var(--theme); color: #303622; font-size: 21px; transition: scale .25s var(--water-settle); }
-.album-player-previous { left: 7px; }.album-player-next { right: 7px; }
+/* Direct children stay in the native top layer, in stable slots outside its
+   widest paper; portrait changes therefore never move the click targets. */
+.album-player-previous, .album-player-next { position: fixed; top: calc(50% - 23px); width: 46px; height: 46px; border-radius: 50%; background: var(--theme); color: #303622; font-size: 21px; transition: scale .25s var(--water-settle); z-index: 4; }
+.album-player-previous { left: max(16px,env(safe-area-inset-left),calc(50% - 702px)); }.album-player-next { right: max(16px,env(safe-area-inset-right),calc(50% - 702px)); }
 .album-player-previous:hover, .album-player-next:hover { scale: 1.08; }
 .album-player-previous:active, .album-player-next:active { scale: .94; }
 
@@ -203,13 +206,14 @@
     --player-mobile-width: min(94vw, max(280px, calc(var(--player-photo-height) * var(--player-image-aspect, 1.7778) + 36px)));
     padding: 51px 18px 20px;
     width: var(--player-mobile-width);
-    height: calc(100svh - 32px);
-    overflow: hidden;
+    height: calc(100svh - 104px - env(safe-area-inset-bottom));
+    margin-block: 16px calc(88px + env(safe-area-inset-bottom));
+    overflow: visible;
   }
   .album-player-content { display: flex; flex-direction: column; height: 100%; gap: 22px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-  .album-player-stage { height: calc(min(var(--player-photo-height), (var(--player-mobile-width) - 36px) / var(--player-image-aspect, 1.7778)) + var(--player-caption-space) + 56px); flex: none; padding: 0 0 56px; }
+  .album-player-stage { height: calc(min(var(--player-photo-height), (var(--player-mobile-width) - 36px) / var(--player-image-aspect, 1.7778)) + var(--player-caption-space)); flex: none; padding: 0; }
   .album-player-comments { flex: 0 0 auto; overflow: visible; padding: 21px 2px 8px; border-left: 0; border-top: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); }
-  .album-player-previous, .album-player-next { top: auto; bottom: 9px; width: 44px; height: 44px; }
+  .album-player-previous, .album-player-next { top: auto; bottom: calc(18px + env(safe-area-inset-bottom)); width: 44px; height: 44px; }
   .album-player-previous { left: calc(50% - 53px); }.album-player-next { right: calc(50% - 53px); }
   .album-player-description { font-size: 15px; }
   .album-player-caption { font-size: 10px; }
@@ -226,5 +230,5 @@
   .album-paper-footer { padding-top: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .album-photo-card, .album-tab, .album-filter-tab, .album-player-previous, .album-player-next { transition: none; }
+  .album-photo-card, .album-tab, .album-filter-tab, .album-player, .album-player-previous, .album-player-next { transition: none; }
 }
