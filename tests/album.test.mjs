@@ -8,6 +8,11 @@ class Element {
     this.localName = tag; this.ownerDocument = doc; this.children = []; this.listeners = new Map(); this.attributes = new Map(); this.classes = new Set(); this.isConnected = true;
     this.style = { values: new Map(), setProperty(name, value) { this.values.set(name, String(value)); }, getPropertyValue(name) { return this.values.get(name) || ''; } };
     this.classList = { add: (...names) => names.forEach((name) => this.classes.add(name)), remove: (...names) => names.forEach((name) => this.classes.delete(name)), contains: (name) => this.classes.has(name), toggle: (name, enabled) => { if (enabled ?? !this.classes.has(name)) this.classes.add(name); else this.classes.delete(name); } };
+    if (doc?.animations) this.animate = (keyframes, options) => {
+      let resolve, reject;
+      const animation = { node: this, keyframes, options, cancelled: false, finished: new Promise((yes, no) => { resolve = yes; reject = no; }), finish: () => resolve(), cancel() { this.cancelled = true; reject(new Error('cancel')); } };
+      doc.animations.push(animation); return animation;
+    };
     if (tag === 'dialog') this.open = false;
   }
   set className(value) { this.classes = new Set(value.split(/\s+/).filter(Boolean)); }
@@ -23,6 +28,9 @@ class Element {
   all(predicate) { return this.children.flatMap((node) => [...(predicate(node) ? [node] : []), ...node.all(predicate)]); }
   find(className) { return this.all((node) => node.classList.contains(className))[0]; }
   findAll(className) { return this.all((node) => node.classList.contains(className)); }
+  querySelectorAll(selector) { return this.findAll(selector.slice(1)); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  closest(selector) { for (let current = this; current; current = current.parentElement) if (current.classList.contains(selector.slice(1))) return current; return null; }
   getBoundingClientRect() { return { left: 10, top: 20, width: 200, height: 180, right: 210, bottom: 200 }; }
   scrollIntoView(options) { this.scrollOptions = options; }
   focus() { this.ownerDocument.activeElement = this; this.emit('focus'); }
@@ -30,18 +38,90 @@ class Element {
   close() { this.open = false; this.emit('close'); }
 }
 
-function fixture(t, options = {}) {
+function fixture(t, { animated = false, ...options } = {}) {
   const doc = new Element('document'); doc.ownerDocument = doc; doc.body = new Element('body', doc); doc.append(doc.body);
+  if (animated) doc.animations = [];
   const frames = new Map(); let serial = 0;
   doc.defaultView = { requestAnimationFrame(fn) { const id = ++serial; frames.set(id, fn); return id; }, cancelAnimationFrame(id) { frames.delete(id); },addEventListener(){},removeEventListener(){},getComputedStyle(){return {opacity:'1',transform:'none'};} };
   doc.createElement = (tag) => new Element(tag, doc);
   doc.querySelector = (selector) => selector === 'dialog[open]' ? doc.body.all((node) => node.localName === 'dialog' && node.open)[0] || null : null;
-  const container = doc.createElement('div'); doc.body.append(container);
+  const container = doc.createElement('div');
+  if (animated) { const section = doc.createElement('section'); section.className = 'page-section is-current'; section.append(container); doc.body.append(section); }
+  else doc.body.append(container);
   const ready = []; const api = createAlbum({ container, onReady: (state) => ready.push(state), ...options });
   t.after(() => api.destroy());
   return { doc, container, api, ready, frames, get dialog() { return doc.body.find('album-player'); }, find: (name) => container.find(name), flush() { const batch = [...frames]; frames.clear(); batch.forEach(([, fn]) => fn(16)); } };
 }
 const sample = (id, takenAt, modelIds = ['shiratsume']) => ({ id, url: `./${id}.jpg`, thumbnail: `./${id}-small.jpg`, takenAt, modelIds, sourceKind: 'photo', alt: { zh: id, ja: id } });
+const microtick = async () => { for (let index = 0; index < 12; index++) await Promise.resolve(); };
+async function settlePage(f) {
+  for (let pass = 0; pass < 4; pass++) {
+    f.doc.animations.filter(animation => !animation.cancelled).forEach(animation => animation.finish());
+    await microtick();
+    if (f.find('album-desk').getAttribute('data-page-motion') === 'idle') return;
+  }
+  assert.fail('photo page transition did not settle');
+}
+const dateAnimations = (f, part) => f.doc.animations.filter(animation => part ? animation.node.classList.contains(`album-date-${part}`) : ['mark', 'year', 'month'].some(part => animation.node.classList.contains(`album-date-${part}`)));
+
+test('same-month continuation, sorting and filtering leave the visible date stationary', async t => {
+  const media = [...Array.from({ length: 9 }, (_, index) => sample(`nov-${index}`, `2026-11-${String(index + 1).padStart(2, '0')}`)), sample('oct', '2026-10-01')];
+  const f = fixture(t, { animated: true, media });
+  f.api.goToPage(1); await settlePage(f);
+  assert.equal(dateAnimations(f).length, 0);
+  assert.equal(f.find('album-date-year').textContent, '2026');
+  assert.equal(f.find('album-date-month').textContent, '11');
+  f.api.setOrder('desc'); await settlePage(f); f.api.setFilter('model'); await settlePage(f);
+  assert.equal(dateAnimations(f).length, 0);
+  f.api.goToPage(2); await settlePage(f);
+  assert.equal(dateAnimations(f).length, 2, 'a different month still exits and enters');
+  assert.equal(dateAnimations(f, 'year').length, 0, 'the unchanged year stays still');
+  assert.equal(f.find('album-date-month').textContent, '10');
+});
+
+test('annual continuation and undated continuation animate only when displayed date fields change', async t => {
+  const annual = fixture(t, { animated: true, media: Array.from({ length: 26 }, (_, index) => sample(`year-${index}`, `2026-${index < 13 ? '11' : '10'}-${String(index % 13 + 1).padStart(2, '0')}`)) });
+  annual.api.setView('year'); await settlePage(annual);
+  assert.equal(dateAnimations(annual).length, 1, 'only the removed month exits');
+  assert.equal(dateAnimations(annual, 'year').length, 0);
+  annual.api.goToPage(1); await settlePage(annual); annual.api.goToPage(2); await settlePage(annual);
+  assert.equal(dateAnimations(annual).length, 1, 'same-year pages do not reanimate the year');
+  annual.api.setView('month'); await settlePage(annual);
+  assert.equal(dateAnimations(annual).length, 2, 'only the reappearing month enters');
+  assert.equal(dateAnimations(annual, 'year').length, 0);
+  const undated = fixture(t, { animated: true, media: Array.from({ length: 9 }, (_, index) => sample(`unknown-${index}`, null, [])) });
+  undated.api.goToPage(1); await settlePage(undated); undated.api.setView('year'); await settlePage(undated); undated.api.setFilter('model'); await settlePage(undated);
+  assert.equal(dateAnimations(undated).length, 0, 'None stays stationary across pages, views and an empty filter');
+  assert.equal(undated.find('album-date-year').textContent, 'None');
+});
+
+test('changing only the year leaves the identical displayed month stationary', async t => {
+  const f = fixture(t, { animated: true, media: [sample('nov-new', '2026-11-01'), sample('nov-old', '2025-11-01')] });
+  f.api.goToPage(1); await settlePage(f);
+  assert.equal(dateAnimations(f, 'year').length, 2);
+  assert.equal(dateAnimations(f, 'month').length, 0);
+  assert.equal(f.find('album-date-year').textContent, '2025');
+  assert.equal(f.find('album-date-month').textContent, '11');
+});
+
+test('rapid page requests compare with the date still rendered instead of the pending page index', async t => {
+  const media = [...Array.from({ length: 9 }, (_, index) => sample(`nov-fast-${index}`, `2026-11-${String(index + 1).padStart(2, '0')}`)), sample('oct-fast', '2026-10-01')];
+  const f = fixture(t, { animated: true, media });
+  f.api.goToPage(2);
+  assert.equal(dateAnimations(f).length, 1);
+  f.api.goToPage(1);
+  assert.ok(dateAnimations(f).every(animation => animation.cancelled), 'the cancelled October exit does not affect the November continuation');
+  await settlePage(f);
+  assert.equal(dateAnimations(f).length, 1, 'the latest same-month request adds no date animation');
+  assert.equal(f.find('album-date-month').textContent, '11');
+  f.api.goToPage(2);
+  f.doc.animations.filter(animation => !animation.cancelled).forEach(animation => animation.finish());
+  await microtick();
+  assert.equal(f.find('album-date-month').textContent, '10', 'the new date has committed before its entrance finishes');
+  f.api.goToPage(0); await settlePage(f);
+  assert.equal(f.find('album-date-month').textContent, '11');
+  assert.equal(dateAnimations(f).filter(animation => !animation.cancelled).length, 0);
+});
 
 test('the four supplied video stills remain undated and refer to real local assets', async () => {
   assert.equal(ALBUM_MEDIA.length, 4);

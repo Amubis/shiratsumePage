@@ -97,8 +97,11 @@ export function createAlbumPageMotion({ root, reducedMotion = () => false, isAct
       current.animations.push(animation);
       return animation.finished.catch(() => false);
     });
-    const date = root.querySelector?.('.album-date-mark');
-    if (date && typeof date.animate === 'function') {
+    const dateNodes = current.dateParts
+      ? ['year', 'month'].filter(part => current.dateParts[part]).map(part => root.querySelector?.(`.album-date-${part}`)).filter(node => node && !node.hidden && node.textContent)
+      : [root.querySelector?.('.album-date-mark')].filter(Boolean);
+    for (const date of current.animateDate ? dateNodes : []) {
+      if (typeof date.animate !== 'function') continue;
       const rest = win?.getComputedStyle?.(date)?.transform || 'none';
       const animation = date.animate(albumPageDateFrames(kind, rest), {
         // Finish with the last print rather than leaving a gap after its stagger.
@@ -131,7 +134,7 @@ export function createAlbumPageMotion({ root, reducedMotion = () => false, isAct
   function cancel({ commitPending = true } = {}) {
     if (operation) finish(operation, Boolean(commitPending), Boolean(commitPending));
   }
-  function run(nextCommit) {
+  function run(nextCommit, { animateDate = true, dateParts = null } = {}) {
     if (destroyed) return Promise.resolve(false);
     if (typeof nextCommit !== 'function') throw new TypeError('A synchronous page commit is required.');
     cancel({ commitPending: false });
@@ -139,7 +142,7 @@ export function createAlbumPageMotion({ root, reducedMotion = () => false, isAct
     if (!canAnimate(oldPhotos)) { nextCommit(); return Promise.resolve(true); }
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const current = { commit: nextCommit, committed: false, animations: [], frame: null, resolve, reject, promise };
+    const current = { commit: nextCommit, animateDate: Boolean(animateDate), dateParts, committed: false, animations: [], frame: null, resolve, reject, promise };
     operation = current; root.setAttribute?.('aria-busy', 'true');
     monitor(current); void transition(current, oldPhotos);
     return promise;

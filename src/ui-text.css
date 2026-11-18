@@ -1,0 +1,26 @@
+/* Interface labels stay inert; published prose and real editors remain usable. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  caret-color: transparent;
+}
+:where(h1, h2, h3, h4, nav, .section-number, .album-date-mark, .album-page-meta, .album-photo-label) {
+  cursor: default;
+}
+:where(a[href], button, [role="button"], summary, select) { cursor: pointer; }
+:where(button:disabled, [aria-disabled="true"]) { cursor: default; }
+:is(.model-intro-lead, .model-intro-description, .section-lead, .section-description,
+    .owner-bio, .personal-bio, .personal-journal-title, .personal-journal-body, .personal-journal-date,
+    .album-player-description, .album-player-caption, .comment-author, .comment-body, .comment-date,
+    .metadata-note, pre, code) {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+:is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+  -webkit-user-select: text;
+  user-select: text;
+  caret-color: auto;
+}
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+    textarea, [contenteditable]:not([contenteditable="false"])) { cursor: text; }

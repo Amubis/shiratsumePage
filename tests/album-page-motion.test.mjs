@@ -52,6 +52,13 @@ test('cancelling a date transition clears hidden fills without committing the ob
  f.reduced=true;assert.equal(await f.api.run(f.commit),true);assert.equal(f.commits,1);
  assert.equal(f.animations.length,4,'reduced motion adds no date or photo animation');
 });
+test('an unchanged date skips its exit and entry while photographs keep the page choreography',async t=>{
+ const f=fixture(t,{withDate:true}),p=f.api.run(f.commit,{animateDate:false});
+ assert.equal(f.api.state,'peeling');assert.equal(f.animations.length,3);assert.ok(f.animations.every(a=>a.target==='photo'));
+ f.animations.slice().forEach(a=>a.finish());await tick();assert.equal(f.commits,1);assert.equal(f.api.state,'sticking');
+ assert.equal(f.animations.length,5);assert.ok(f.animations.every(a=>a.target==='photo'));
+ f.animations.filter(a=>!a.cancelled).forEach(a=>a.finish());await tick();assert.equal(await p,true);assert.equal(f.api.state,'idle');
+});
 test('rapid requests discard stale commits and hidden pages complete only the latest page',async t=>{
  const f=fixture(t),first=f.api.run(f.commit),second=f.api.run(f.commit);assert.equal(await first,false);assert.equal(f.commits,0);
  f.hide();assert.equal(await second,true);assert.equal(f.commits,1);assert.equal(f.api.busy,false);assert.equal(f.frames.size,0);
