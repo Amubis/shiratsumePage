@@ -119,9 +119,9 @@ html[lang="zh-CN"] .primary-album .album-title { font-family:"Shiratsume Text",s
 .primary-album .album-page-rail.is-disabled > .album-page-position { cursor:default; }
 .primary-album .album-page-rail:focus-within { outline:2px solid var(--theme-dark);outline-offset:2px;border-radius:4px; }
 /* Sorting belongs to the same paper edge as the scope sticker. */
-.primary-album .album-cover-controls { position:absolute;top:calc(100% - 10px);left:calc(19vw - 116px);display:flex;align-items:center;gap:14px;z-index:3;pointer-events:auto; }
+.primary-album .album-cover-controls { position:absolute;top:calc(100% - 10px);left:calc(19vw - 116px);display:flex;align-items:flex-start;gap:14px;z-index:3;pointer-events:auto; }
 .primary-album .album-cover-unit .album-cover-controls .album-filter-tab { position:relative;top:0;left:0;flex:none;transform:none; }
-.primary-album .album-sort-tab { display:block;width:134px;margin-top:0;padding:4px 8px;background:var(--paper);border:1px solid color-mix(in srgb,var(--theme-dark) 22%,transparent);border-radius:2px;box-shadow:0 2px 5px #00000015; }
+.primary-album .album-sort-tab { display:block;width:134px;margin-top:-32px;padding:4px 8px;background:var(--paper);border:1px solid color-mix(in srgb,var(--theme-dark) 22%,transparent);border-radius:2px;box-shadow:0 2px 5px #00000015; }
 .primary-album .album-sort { display:block;width:100%;min-height:28px;padding:3px 17px 3px 3px;border:0;border-radius:0;background:transparent;color:var(--ink);font-family:var(--body);font-size:10px;line-height:1.5;cursor:pointer; }
 .primary-album .album-sort:focus-visible { outline:2px solid var(--theme-dark);outline-offset:3px; }
 /* Ordinary labels use the same bundled sans face in both languages. */
@@ -159,7 +159,7 @@ html[lang="zh-CN"] .primary-album .album-title { font-family:"Shiratsume Text",s
 @media(max-width:760px) {
  .primary-album .album-cover-controls { left:68px;gap:10px; }
  .primary-album .album-cover-unit .album-cover-controls .album-filter-tab { left:0; }
- .primary-album .album-sort-tab { width:118px;margin-top:0;padding:4px 7px; }
+ .primary-album .album-sort-tab { width:118px;margin-top:-10px;padding:4px 7px; }
  .primary-album .album-sort { font-size:9px; }
  .primary-album .album-desk .album-photo-grid.is-packed { flex:none;height:var(--album-packed-height,350px);min-height:0;padding:0;margin:12px 0 35px; }
 }
