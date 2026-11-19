@@ -64,6 +64,55 @@ test('inline photo edits update only selected published/draft text and leave unr
   assert.equal(f.writes, 1);
 });
 
+test('bilingual photo descriptions update both languages in one write without publishing other drafts', async () => {
+  const f = await fixture(), before = structuredClone(f.state);
+  const caption = { zh: '新的中文描述', ja: '新しい日本語の説明' };
+  const response = await f.request({ targetType: 'photo', targetId: 'photo', patch: { caption } });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.deepEqual(result.content.media[0].caption, caption);
+  assert.deepEqual(result.content.media.map(item => item.id), ['photo']);
+  assert.equal(result.content.owner.bio, before.published.content.owner.bio);
+  const expectedPublished = structuredClone(before.published.content);
+  expectedPublished.media[0].caption = caption;
+  assert.deepEqual(f.state.published.content, expectedPublished);
+  const expectedDraft = structuredClone(before.draft.content);
+  expectedDraft.media[0].caption = caption;
+  assert.deepEqual(f.state.draft.content, expectedDraft);
+  assert.deepEqual(f.state.previousPublished, before.published);
+  assert.equal(f.writes, 1, 'both descriptions share the same conditional state write');
+
+  // A legacy unlocalized description can be replaced without inventing text
+  // in the language deliberately left empty by the editor.
+  f.state.published.content.media[0].caption = 'Legacy description';
+  f.state.draft.content.media[0].caption = 'Legacy draft description';
+  const emptyJapanese = await f.request({ targetType: 'photo', targetId: 'photo', patch: { caption: { zh: '中文\u0000描述', ja: '' } } });
+  assert.equal(emptyJapanese.status, 200);
+  assert.deepEqual((await emptyJapanese.json()).content.media[0].caption, { zh: '中文描述', ja: '' });
+  assert.deepEqual(f.state.draft.content.media[0].caption, { zh: '中文描述', ja: '' });
+  assert.equal(f.writes, 2);
+});
+
+test('bilingual photo validation rejects an invalid language before either description changes', async () => {
+  const f = await fixture(), before = structuredClone(f.state);
+  const body = { targetType: 'photo', targetId: 'photo', patch: { caption: { zh: 'valid Chinese', ja: 'valid Japanese' } } };
+  for (const caption of [
+    { zh: 'valid', ja: 'x'.repeat(5001) }, { zh: 'x'.repeat(5001), ja: 'valid' },
+    { zh: 'valid', ja: 42 }, { zh: 'valid' }, { ja: 'valid' },
+    { zh: 'valid', ja: 'valid', en: 'extra language' }, {}, [], null,
+  ]) assert.equal((await f.request({ ...body, patch: { caption } })).status, 422);
+  assert.equal((await f.request({ ...body, locale: 'en' })).status, 422);
+  assert.equal((await f.request({ ...body, targetType: 'journal', targetId: 'note' })).status, 422);
+  assert.equal((await f.request({ ...body, patch: { ...body.patch, enabled: true } })).status, 422);
+  assert.deepEqual(f.state, before);
+  assert.equal(f.writes, 0);
+  const response = await f.request({ ...body, patch: { caption: { zh: '中'.repeat(5000), ja: '日'.repeat(5000) } } });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.content.media[0].caption.zh.length, 5000);
+  assert.equal(result.content.media[0].caption.ja.length, 5000);
+});
+
 test('inline journal edits preserve other locales, images and pending deletion in the draft', async () => {
   const f = await fixture();
   let response = await f.request({ targetType: 'journal', targetId: 'note', locale: 'ja', patch: { title: '新しい題名', body: '新しい本文' } });
@@ -107,6 +156,10 @@ test('a concurrent storage write returns conflict without publishing or changing
   f.failWrite();
   const response = await f.request({ targetType: 'journal', targetId: 'note', locale: 'zh', patch: { body: 'Conflicting edit' } });
   assert.equal(response.status, 409);
+  assert.deepEqual(f.state, before);
+  assert.equal(f.writes, 0);
+  const photoResponse = await f.request({ targetType: 'photo', targetId: 'photo', patch: { caption: { zh: 'Conflicting Chinese', ja: 'Conflicting Japanese' } } });
+  assert.equal(photoResponse.status, 409);
   assert.deepEqual(f.state, before);
   assert.equal(f.writes, 0);
 });

@@ -1,7 +1,7 @@
 /** Public comment labels are editable alongside the other site dictionaries. */
 export const COMMENTS_COPY = Object.freeze({
-  zh: Object.freeze({ title: '留言', note: '无需登录。留言审核后显示。', unavailable: '评论暂未开放', loading: '正在读取留言…', empty: '还没有留言，留下一点想法吧。', loadError: '留言暂时无法读取。', retry: '重新读取', nickname: '昵称（选填）', nicknamePlaceholder: '匿名访客', body: '想说的话', bodyPlaceholder: '留下一点想法…', submit: '发送留言', submitting: '正在发送…', pending: '留言已收到，审核后显示。', submitError: '发送失败，文字已保留，请稍后重试。', rateLimited: '发送得有些频繁，文字已保留，请稍后再试。', invalidBody: '请填写 1 至 2000 字的留言。', invalidNickname: '昵称请保持在 40 字以内。', anonymous: '匿名访客', owner: '作者', reply: '回复', replyTo: '正在回复', replyLoading: '正在确认回复对象，请稍候或取消回复。', replyUnavailable: '暂时无法回复这条留言，请重新读取或取消回复。', cancelReply: '取消回复', website: '网站（请留空）', count: '字', open: '查看留言', ownerNote: '已以站长身份登录。选择留言下方的「回复」即可直接回复。', ownerReply: '站长回复', ownerSent: '回复已发布。' }),
-  ja: Object.freeze({ title: 'コメント', note: 'ログイン不要です。承認後に表示されます。', unavailable: 'コメントは準備中です', loading: 'コメントを読み込み中…', empty: '最初のひとことを残してみませんか。', loadError: 'コメントを読み込めませんでした。', retry: 'もう一度読み込む', nickname: 'お名前（任意）', nicknamePlaceholder: '匿名の訪問者', body: 'メッセージ', bodyPlaceholder: 'ひとことをどうぞ…', submit: 'コメントを送る', submitting: '送信中…', pending: 'コメントを受け付けました。承認後に表示されます。', submitError: '送信できませんでした。入力は残っています。しばらくしてからお試しください。', rateLimited: '送信が続いています。入力は残っています。少し待ってからお試しください。', invalidBody: '1〜2000文字のコメントを入力してください。', invalidNickname: 'お名前は40文字以内で入力してください。', anonymous: '匿名の訪問者', owner: '作者', reply: '返信', replyTo: '返信先', replyLoading: '返信先を確認中です。少し待つか、返信を取り消してください。', replyUnavailable: 'このコメントには返信できません。再読み込みするか、返信を取り消してください。', cancelReply: '返信を取り消す', website: 'ウェブサイト（入力しないでください）', count: '文字', open: 'コメントを見る', ownerNote: '管理者としてログイン中です。コメントの「返信」を選ぶと直接返信できます。', ownerReply: '管理者として返信', ownerSent: '返信を公開しました。' }),
+  zh: Object.freeze({ title: '留言', note: '无需登录。留言审核后显示。', unavailable: '评论暂未开放', loading: '正在读取留言…', empty: '还没有留言，留下一点想法吧。', loadError: '留言暂时无法读取。', retry: '重新读取', nickname: '昵称（选填）', nicknamePlaceholder: '匿名访客', body: '想说的话', bodyPlaceholder: '留下一点想法…', submit: '发送留言', submitting: '正在发送…', pending: '留言已收到，审核后显示。', submitError: '发送失败，文字已保留，请稍后重试。', rateLimited: '发送得有些频繁，文字已保留，请稍后再试。', invalidBody: '请填写 1 至 2000 字的留言。', invalidNickname: '昵称请保持在 40 字以内。', anonymous: '匿名访客', owner: '作者', reply: '回复', replyTo: '正在回复', replyLoading: '正在确认回复对象，请稍候或取消回复。', replyUnavailable: '暂时无法回复这条留言，请重新读取或取消回复。', cancelReply: '取消回复', website: '网站（请留空）', count: '字', open: '查看留言', ownerNote: '已以站长身份登录。选择留言下方的「回复」即可直接回复。', ownerReply: '站长回复', ownerSent: '回复已发布。', ownerModerationNote: '站长模式：待审核留言仅你可见，可直接审核、回复或删除。', pendingReview: '待审核', approve: '通过', reject: '拒绝', remove: '删除', reviewFirst: '请先通过留言，再回复。', moderationError: '操作未完成，请稍后重试。', approved: '留言已通过。', rejected: '留言已拒绝。', deleted: '留言已删除。' }),
+  ja: Object.freeze({ title: 'コメント', note: 'ログイン不要です。承認後に表示されます。', unavailable: 'コメントは準備中です', loading: 'コメントを読み込み中…', empty: '最初のひとことを残してみませんか。', loadError: 'コメントを読み込めませんでした。', retry: 'もう一度読み込む', nickname: 'お名前（任意）', nicknamePlaceholder: '匿名の訪問者', body: 'メッセージ', bodyPlaceholder: 'ひとことをどうぞ…', submit: 'コメントを送る', submitting: '送信中…', pending: 'コメントを受け付けました。承認後に表示されます。', submitError: '送信できませんでした。入力は残っています。しばらくしてからお試しください。', rateLimited: '送信が続いています。入力は残っています。少し待ってからお試しください。', invalidBody: '1〜2000文字のコメントを入力してください。', invalidNickname: 'お名前は40文字以内で入力してください。', anonymous: '匿名の訪問者', owner: '作者', reply: '返信', replyTo: '返信先', replyLoading: '返信先を確認中です。少し待つか、返信を取り消してください。', replyUnavailable: 'このコメントには返信できません。再読み込みするか、返信を取り消してください。', cancelReply: '返信を取り消す', website: 'ウェブサイト（入力しないでください）', count: '文字', open: 'コメントを見る', ownerNote: '管理者としてログイン中です。コメントの「返信」を選ぶと直接返信できます。', ownerReply: '管理者として返信', ownerSent: '返信を公開しました。', ownerModerationNote: '管理者モード：承認待ちのコメントは管理者だけに表示されます。承認・返信・削除ができます。', pendingReview: '承認待ち', approve: '承認', reject: '非承認', remove: '削除', reviewFirst: '承認してから返信してください。', moderationError: '操作できませんでした。もう一度お試しください。', approved: 'コメントを承認しました。', rejected: 'コメントを非承認にしました。', deleted: 'コメントを削除しました。' }),
 });
 
 export const normalizeCommentsCopy = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
@@ -22,20 +22,23 @@ function commentError(code, status = 0) {
   return Object.assign(new Error(code), { code, status });
 }
 
-function normalizeComments(input) {
+function normalizeComments(input, { owner = false } = {}) {
   const seen = new Set();
-  return (Array.isArray(input) ? input : []).flatMap(item => {
-    if (!item || typeof item.id !== 'string' || seen.has(item.id) || typeof item.body !== 'string' || (item.status && item.status !== 'approved')) return [];
+  const records = (Array.isArray(input) ? input : []).flatMap(item => {
+    const status = item?.status || 'approved';
+    if (!item || typeof item.id !== 'string' || seen.has(item.id) || typeof item.body !== 'string' || (status !== 'approved' && !(owner && status === 'pending'))) return [];
     seen.add(item.id);
     return [{ id: item.id, parentId: typeof item.parentId === 'string' ? item.parentId : null,
       nickname: typeof item.nickname === 'string' ? item.nickname : '', body: item.body,
-      createdAt: typeof item.createdAt === 'string' ? item.createdAt : '', verified: item.verified === true }];
+      status, createdAt: typeof item.createdAt === 'string' ? item.createdAt : '', verified: item.verified === true }];
   });
+  const parents = new Set(records.filter(item => !item.parentId).map(item => item.id));
+  return records.filter(item => !item.parentId || parents.has(item.parentId));
 }
 
 /** Public requests omit cookies; signed-in owner replies use the same-origin admin API. */
 export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fetch, pageURL = globalThis.location?.href } = {}) {
-  let owner = null;
+  let owner = null, sessionVersion = 0;
   const sameOrigin = () => { try { return new URL(endpoint || '/', pageURL).origin === new URL(pageURL).origin; } catch { return false; } };
   let endpoint = normalizeBaseUrl(baseUrl);
   const listeners = new Set();
@@ -47,25 +50,46 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
     if (!response.ok) throw commentError(data?.code || 'request_failed', response.status);
     return data;
   };
+  const clearOwner = () => { owner = null; sessionVersion++; listeners.forEach(listener => listener()); };
+  const ownerRequest = async (path, { method = 'GET', body, signal } = {}) => {
+    if (endpoint === null || typeof fetchImpl !== 'function') throw commentError('comments_unavailable', 503);
+    if (!owner || !sameOrigin()) throw commentError('owner_required', 401);
+    const access = owner, version = sessionVersion, base = endpoint;
+    const response = await fetchImpl(`${base}/api/admin/comments${path}`, { method, credentials: 'same-origin', mode: 'same-origin', cache: 'no-store', signal,
+      headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'X-Garden-CSRF': access.csrfToken }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    let data; try { data = await response.json(); } catch { throw commentError('invalid_response', response.status); }
+    if (version !== sessionVersion || owner !== access || endpoint !== base || !sameOrigin()) throw commentError('owner_session_changed', 401);
+    if (!response.ok) { if (response.status === 401) clearOwner(); throw commentError(data?.code || 'request_failed', response.status); }
+    return data;
+  };
   return {
     get enabled() { return endpoint !== null && typeof fetchImpl === 'function'; },
     get baseUrl() { return endpoint; },
-    get ownerSession() { return owner && sameOrigin() ? { authenticated: true, username: owner.username } : { authenticated: false }; },
+    get ownerSession() { return endpoint !== null && owner && sameOrigin() ? { authenticated: true, username: owner.username } : { authenticated: false }; },
     setOwnerSession(value) {
       owner = value?.authenticated === true && typeof value.csrfToken === 'string' && value.csrfToken && sameOrigin() ? { csrfToken: value.csrfToken, username: typeof value.username === 'string' ? value.username.slice(0, 40) : 'Amubis' } : null;
+      sessionVersion++;
       listeners.forEach(listener => listener());
     },
     setBaseUrl(value) {
       const next = normalizeBaseUrl(value);
-      if (next === endpoint) return;
+      if (next === endpoint) { if (next === null && owner) clearOwner(); return; }
       endpoint = next;
-      if (!sameOrigin()) owner = null;
+      sessionVersion++;
+      if (endpoint === null || !sameOrigin()) owner = null;
       listeners.forEach(listener => listener());
     },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async getComments({ targetType, targetId, signal } = {}) {
       if (!['photo', 'note'].includes(targetType) || !targetId) throw commentError('invalid_target');
       const query = new URLSearchParams({ targetType, targetId: String(targetId) });
+      if (owner && sameOrigin()) {
+        query.set('limit', '500');
+        const data = await ownerRequest(`?${query}`, { signal });
+        const matching = (Array.isArray(data) ? data : data?.comments || []).filter(item => item.targetType === targetType && item.targetId === String(targetId));
+        return normalizeComments(matching, { owner: true });
+      }
       const data = await request(`?${query}`, { method: 'GET', signal, headers: { Accept: 'application/json' } });
       if (data?.available === false) throw commentError('comments_unavailable', 503);
       return normalizeComments(Array.isArray(data) ? data : data?.comments);
@@ -73,12 +97,13 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
     async postComment(payload, { signal } = {}) {
       if (owner && sameOrigin()) {
         if (!payload?.parentId) throw commentError('owner_reply_required', 400);
-        const response = await fetchImpl(`${endpoint}/api/admin/comments/${encodeURIComponent(payload.parentId)}/reply`, { method: 'POST', credentials: 'same-origin', mode: 'same-origin', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Garden-CSRF': owner.csrfToken }, body: JSON.stringify({ body: payload.body }) });
-        let data; try { data = await response.json(); } catch { throw commentError('invalid_response', response.status); }
-        if (!response.ok) throw commentError(data?.code || 'request_failed', response.status);
-        return data;
+        return ownerRequest(`/${encodeURIComponent(payload.parentId)}/reply`, { method: 'POST', signal, body: { body: payload.body } });
       }
       return request('', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
+    },
+    async moderateComment(commentId, status, { signal } = {}) {
+      if (typeof commentId !== 'string' || !commentId || !['approved', 'rejected', 'deleted'].includes(status)) throw commentError('invalid_moderation', 400);
+      return ownerRequest(`/${encodeURIComponent(commentId)}`, { method: 'PATCH', signal, body: { status, read: true } });
     },
   };
 }
@@ -97,6 +122,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   let generation = 0;
   let loadController = null;
   let submitController = null;
+  let moderationController = null, moderating = null;
   let unsubscribe = () => {};
   let comments = [];
   let loadState = 'idle';
@@ -107,6 +133,9 @@ export function createAnonymousComments({ container, service = null, targetType 
   const limit = Number.isFinite(Number(previewLimit)) ? Math.max(0, Math.floor(Number(previewLimit))) : 0;
   let expanded = false, listAnimation = null;
   const ownerMode = () => client?.ownerSession?.authenticated === true;
+  const canModerate = () => ownerMode() && typeof client?.moderateComment === 'function';
+  const selectedReply = () => comments.find(comment => comment.id === replyId && !comment.parentId);
+  const canReplyTo = comment => Boolean(comment && comment.status === 'approved' && !comment.parentId);
   const drafts = new Map();
   const bindings = [];
   const words = () => dictionary[locale];
@@ -121,6 +150,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   const loadMessage = element('p', 'comments-load-state'); loadMessage.setAttribute('role', 'status');
   const retry = button('comments-retry');
   const list = element('div', 'comments-list');
+  list.tabIndex = -1;
   const more = button('comments-more'); more.hidden = true;
   const form = element('form', 'comments-form');
   const nicknameLabel = element('label', 'comments-label comments-nickname-label'); const nicknameText = element('span', 'comments-label-text');
@@ -145,36 +175,55 @@ export function createAnonymousComments({ container, service = null, targetType 
   }
   function abort() {
     generation++;
-    loadController?.abort(); submitController?.abort(); loadController = submitController = null; submitting = false;
+    loadController?.abort(); submitController?.abort(); moderationController?.abort(); loadController = submitController = moderationController = null; submitting = false; moderating = null;
   }
   function renderComments() {
     listAnimation?.cancel(); listAnimation = null;
     const topLevel = comments.filter(comment => !comment.parentId);
     const createComment = comment => {
       const article = element('article', `comment${comment.parentId ? ' comment-reply' : ''}`);
+      article.setAttribute('data-comment-id', comment.id);
+      article.classList.toggle('comment-pending', comment.status === 'pending');
       const meta = element('div', 'comment-meta');
       const author = element('span', 'comment-author', comment.nickname.trim() || words().anonymous); meta.append(author);
       if (comment.verified === true) meta.append(element('span', 'comment-owner', words().owner));
+      if (comment.status === 'pending') meta.append(element('span', 'comment-review-state', words().pendingReview));
       const parsed = Date.parse(comment.createdAt);
       if (Number.isFinite(parsed)) {
         const date = new Date(parsed); const time = element('time', 'comment-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' })); time.dateTime = date.toISOString(); meta.append(time);
       }
       article.append(meta, element('p', 'comment-body', comment.body));
+      const actions = element('div', 'comment-actions');
       if (!comment.parentId) {
         const replyButton = button('comment-reply-button'); replyButton.textContent = words().reply;
+        replyButton.disabled = Boolean(moderating) || !canReplyTo(comment);
+        if (!canReplyTo(comment)) replyButton.title = words().reviewFirst;
         replyButton.addEventListener('click', () => { replyId = comment.id; submitState = ''; update(); body.focus?.(); });
-        article.append(replyButton);
+        actions.append(replyButton);
+      }
+      if (canModerate()) {
+        if (comment.status === 'pending') for (const [status, label] of [['approved', 'approve'], ['rejected', 'reject']]) {
+          const reviewButton = button(`comment-moderation-button comment-${label}-button`); reviewButton.textContent = words()[label]; reviewButton.disabled = Boolean(moderating) || submitting;
+          reviewButton.addEventListener('click', () => moderate(comment, status)); actions.append(reviewButton);
+        }
+        const remove = button('comment-moderation-button comment-delete-button'); remove.textContent = words().remove; remove.disabled = Boolean(moderating) || submitting;
+        remove.setAttribute('aria-label', `${words().remove} · ${comment.nickname.trim() || words().anonymous}`);
+        remove.addEventListener('click', () => moderate(comment, 'deleted')); actions.append(remove);
+      }
+      if (actions.children.length) article.append(actions);
+      if (!comment.parentId) {
         const children = comments.filter(child => child.parentId === comment.id);
         if (children.length) { const replies = element('div', 'comment-replies'); replies.append(...children.map(createComment)); article.append(replies); }
       }
       return article;
     };
-    list.replaceChildren(...(limit && !expanded ? topLevel.slice(0, limit) : topLevel).map(createComment));
+    list.replaceChildren(...(limit && !expanded && !ownerMode() ? topLevel.slice(0, limit) : topLevel).map(createComment));
     const remainder = Math.max(0, topLevel.length - limit);
-    more.hidden = !available() || !limit || !remainder;
+    more.hidden = !available() || !limit || !remainder || ownerMode();
     more.textContent = expanded ? (locale === 'ja' ? 'コメントを折りたたむ' : '收起留言') : (locale === 'ja' ? `残り${remainder}件のコメントを見る` : `展开其余 ${remainder} 条留言`);
     more.setAttribute('aria-expanded', String(expanded));
-    root.classList.toggle('comments-expanded', expanded);
+    root.classList.toggle('comments-expanded', expanded || ownerMode());
+    root.classList.toggle('comments-owner-mode', ownerMode());
   }
   function revealReply() {
     if (limit && comments.filter(comment => !comment.parentId).findIndex(comment => comment.id === replyId) >= limit) expanded = true;
@@ -200,19 +249,19 @@ export function createAnonymousComments({ container, service = null, targetType 
     if (!loggedIn && wasOwner) nickname.value = anonymousNickname;
     if (loggedIn) nickname.value = client.ownerSession.username || 'Amubis';
     wasOwner = loggedIn;
-    note.textContent = loggedIn ? words().ownerNote : words().note; note.hidden = !enabled || loadState === 'unavailable';
+    note.textContent = loggedIn ? words()[canModerate() ? 'ownerModerationNote' : 'ownerNote'] : words().note; note.hidden = !enabled || loadState === 'unavailable';
     form.hidden = !enabled || loadState === 'unavailable'; list.hidden = !enabled;
     nicknameText.textContent = words().nickname; nickname.placeholder = words().nicknamePlaceholder;
     bodyText.textContent = words().body; body.placeholder = words().bodyPlaceholder; trapText.textContent = words().website;
     const message = !enabled || loadState === 'unavailable' ? 'unavailable' : loadState === 'loading' ? 'loading' : loadState === 'error' ? 'loadError' : !comments.length ? 'empty' : '';
     loadMessage.textContent = words()[message] || ''; loadMessage.hidden = !message;
     retry.textContent = words().retry; retry.hidden = !enabled || loadState !== 'error';
-    const parent = comments.find(comment => comment.id === replyId && !comment.parentId);
+    const parent = selectedReply();
     reply.hidden = !replyId;
     replyText.textContent = parent ? `${words().replyTo} ${parent.nickname.trim() || words().anonymous}` : replyId ? words()[['loading', 'idle'].includes(loadState) ? 'replyLoading' : 'replyUnavailable'] : '';
     cancelReply.textContent = words().cancelReply;
     count.textContent = `${Array.from(body.value || '').length} / 2000 ${words().count}`;
-    submit.disabled = submitting || !enabled || Boolean(replyId && !parent) || (loggedIn && !parent); submit.textContent = submitting ? words().submitting : loggedIn ? words().ownerReply : words().submit;
+    submit.disabled = submitting || Boolean(moderating) || !enabled || Boolean(replyId && !canReplyTo(parent)) || (loggedIn && !canReplyTo(parent)); submit.textContent = submitting ? words().submitting : loggedIn ? words().ownerReply : words().submit;
     nickname.disabled = submitting || loggedIn; body.disabled = submitting; cancelReply.disabled = submitting;
     status.textContent = words()[submitState] || ''; status.hidden = !submitState;
   }
@@ -223,7 +272,7 @@ export function createAnonymousComments({ container, service = null, targetType 
     try {
       const result = await client.getComments({ targetType: type, targetId: id, signal: loadController.signal });
       if (destroyed || current !== generation) return;
-      comments = normalizeComments(result); loadState = 'loaded'; revealReply(); renderComments();
+      comments = normalizeComments(result, { owner: ownerMode() }); loadState = 'loaded'; revealReply(); renderComments();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
       loadState = error?.code === 'comments_unavailable' ? 'unavailable' : 'error';
@@ -231,9 +280,9 @@ export function createAnonymousComments({ container, service = null, targetType 
   }
   async function send(event) {
     event.preventDefault();
-    if (destroyed || submitting || !isActive || !available()) return;
-    const parent = comments.find(comment => comment.id === replyId && !comment.parentId);
-    if ((replyId && !parent) || (ownerMode() && !parent)) { update(); return; }
+    if (destroyed || submitting || moderating || !isActive || !available()) return;
+    const parent = selectedReply();
+    if ((replyId && !canReplyTo(parent)) || (ownerMode() && !canReplyTo(parent))) { update(); return; }
     const message = (body.value || '').trim(); const name = (nickname.value || '').trim();
     if (!message || Array.from(message).length > 2000) { submitState = 'invalidBody'; update(); body.focus?.(); return; }
     if (Array.from(name).length > 40) { submitState = 'invalidNickname'; update(); nickname.focus?.(); return; }
@@ -244,12 +293,32 @@ export function createAnonymousComments({ container, service = null, targetType 
       const result = await client.postComment(payload, { signal: submitController.signal });
       if (destroyed || current !== generation) return;
       const publishedReply = ownerMode() && result?.comment?.verified === true && result.comment.status === 'approved';
-      if (publishedReply) { comments = normalizeComments([...comments, result.comment]); renderComments(); }
+      if (publishedReply) { comments = normalizeComments([...comments, result.comment], { owner: true }); renderComments(); }
       body.value = ''; website.value = ''; replyId = null; submitState = publishedReply ? 'ownerSent' : 'pending'; saveDraft();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
       submitState = error?.status === 429 ? 'rateLimited' : error?.code === 'comments_unavailable' ? 'unavailable' : 'submitError';
     } finally { if (!destroyed && current === generation) { submitting = false; submitController = null; update(); } }
+  }
+  async function moderate(comment, nextStatus) {
+    if (destroyed || moderating || submitting || !isActive || !canModerate()) return;
+    const current = generation; moderating = comment.id; moderationController = new AbortController(); submitState = ''; renderComments(); update();
+    try {
+      const result = await client.moderateComment(comment.id, nextStatus, { signal: moderationController.signal });
+      if (destroyed || current !== generation || !ownerMode()) return;
+      if (nextStatus === 'approved') comments = normalizeComments(comments.map(item => item.id === comment.id ? { ...item, ...result?.comment, status: 'approved' } : item), { owner: true });
+      else {
+        const removed = new Set(comments.filter(item => item.id === comment.id || item.parentId === comment.id).map(item => item.id));
+        comments = comments.filter(item => !removed.has(item.id));
+        if (removed.has(replyId)) { replyId = null; saveDraft(); }
+      }
+      submitState = nextStatus;
+    } catch (error) {
+      if (destroyed || current !== generation || error?.name === 'AbortError') return;
+      submitState = 'moderationError';
+    } finally {
+      if (!destroyed && current === generation) { moderationController = null; moderating = null; renderComments(); update(); list.focus?.({ preventScroll: true }); }
+    }
   }
   function setService(next) {
     unsubscribe(); client = next;

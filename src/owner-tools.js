@@ -151,19 +151,34 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     dialogKind = 'edit';
     const locale = zh() ? 'zh' : 'ja';
     openDialog(type === 'photo' ? text('编辑照片说明', '写真の説明を編集') : text('编辑碎碎念', 'ひとりごとを編集'), text('保存并更新网站', '保存してサイトを更新'), origin);
-    let title = null;
-    if (type === 'journal') { title = field(text('标题（选填）', 'タイトル（任意）'), create('input', 'owner-tools-title')); title.value = localized(record.title, locale); title.maxLength = 500; }
-    const body = field(type === 'photo' ? text('照片说明', '写真の説明') : text('正文', '本文'), create('textarea', 'owner-tools-body')); body.rows = type === 'photo' ? 5 : 9; body.value = localized(type === 'photo' ? record.caption : record.body, locale); body.maxLength = type === 'photo' ? 5000 : 50000;
+    let title = null, body = null, captions = null;
+    if (type === 'photo') {
+      captions = {};
+      for (const [captionLocale, label] of [['zh', text('照片说明 · 中文', '写真の説明 · 中文')], ['ja', text('照片说明 · 日本語', '写真の説明 · 日本語')]]) {
+        const input = field(label, create('textarea', `owner-tools-body owner-tools-caption-${captionLocale}`));
+        input.rows = 4; input.maxLength = 5000; input.name = `caption_${captionLocale}`;
+        input.setAttribute('lang', captionLocale === 'zh' ? 'zh-CN' : 'ja');
+        // A missing translation stays blank instead of borrowing the other
+        // language and accidentally saving it as an existing translation.
+        input.value = typeof record.caption === 'string' ? captionLocale === 'zh' ? record.caption : '' : typeof record.caption?.[captionLocale] === 'string' ? record.caption[captionLocale] : '';
+        captions[captionLocale] = input;
+      }
+    } else {
+      title = field(text('标题（选填）', 'タイトル（任意）'), create('input', 'owner-tools-title')); title.value = localized(record.title, locale); title.maxLength = 500;
+      body = field(text('正文', '本文'), create('textarea', 'owner-tools-body')); body.rows = 9; body.value = localized(record.body, locale); body.maxLength = 50000;
+    }
     submitForm = async () => {
-      const patch = type === 'photo' ? { caption: body.value } : { title: title.value, body: body.value };
-      const result = await api.save({ targetType: type, targetId: id, locale, patch }, session.csrfToken);
+      const change = type === 'photo'
+        ? { targetType: type, targetId: id, patch: { caption: { zh: captions.zh.value, ja: captions.ja.value } } }
+        : { targetType: type, targetId: id, locale, patch: { title: title.value, body: body.value } };
+      const result = await api.save(change, session.csrfToken);
       if (destroyed) return;
       if (!result?.content) throw new Error(text('保存结果暂时无法读取，请刷新确认。', '保存結果を確認できません。再読み込みしてください。'));
       onPublished(result.content); update();
       if (opener?.isConnected === false) opener = Array.from(doc.querySelectorAll('.owner-inline-edit')).find(entry => entry.dataset.ownerType === type && entry.dataset.ownerId === id) || null;
       notice.textContent = text('已更新网站。', 'サイトを更新しました。'); closeDialog(true); scheduleUpdate();
     };
-    body.focus();
+    (captions?.[locale] || body).focus();
   }
   bind(form, 'submit', async event => {
     event.preventDefault(); if (dialogBusy || !submitForm) return;

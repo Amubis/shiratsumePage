@@ -286,3 +286,75 @@ test('owner mode requires an explicit reply target and displays a verified publi
   assert.equal(f.container.querySelectorAll('.comment-owner').length,1);
   assert.equal(f.container.querySelectorAll('.comment').length,2);
 });
+
+test('owner thread reads and moderation use authenticated target-filtered requests without exposing unrelated records', async () => {
+  const calls = [], target = { targetType: 'note', targetId: 'note/1' };
+  const client = createCommentService({ baseUrl: 'https://site.example', pageURL: 'https://site.example/', fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    return options.method === 'PATCH' ? response(200, { comment: comment('pending', { ...target }), unreadCount: 0 })
+      : response(200, { comments: [comment('approved', target), comment('pending', { ...target, status: 'pending' }), comment('hidden', { ...target, status: 'rejected' }), comment('other', { targetType: 'photo', targetId: 'elsewhere', status: 'pending' }), comment('orphan', { ...target, parentId: 'hidden' })] });
+  } });
+  client.setOwnerSession({ authenticated: true, csrfToken: 'owner-token', username: 'Amubis' });
+  const visible = await client.getComments(target);
+  assert.deepEqual(visible.map(item => [item.id, item.status]), [['approved', 'approved'], ['pending', 'pending']]);
+  const url = new URL(calls[0].url); assert.equal(url.pathname, '/api/admin/comments'); assert.equal(url.searchParams.get('targetId'), 'note/1'); assert.equal(url.searchParams.get('targetType'), 'note');
+  assert.equal(calls[0].options.credentials, 'same-origin'); assert.equal(calls[0].options.cache, 'no-store');
+  await client.moderateComment('pending', 'approved');
+  assert.equal(calls[1].url, 'https://site.example/api/admin/comments/pending'); assert.equal(calls[1].options.headers['X-Garden-CSRF'], 'owner-token');
+  assert.deepEqual(JSON.parse(calls[1].options.body), { status: 'approved', read: true });
+  client.setOwnerSession(null);
+  assert.deepEqual((await client.getComments(target)).map(item => item.id), ['approved']);
+  assert.ok(calls[2].url.startsWith('https://site.example/api/comments?')); assert.equal(calls[2].options.credentials, 'omit');
+  await assert.rejects(client.moderateComment('pending', 'deleted'), error => error.status === 401); assert.equal(calls.length, 3);
+  client.setOwnerSession({ authenticated: true, csrfToken: 'owner-token' }); client.setBaseUrl(null);
+  assert.equal(client.ownerSession.authenticated, false);
+  await assert.rejects(client.moderateComment('pending', 'deleted'), error => error.code === 'comments_unavailable'); assert.equal(calls.length, 3);
+});
+
+test('a private comment response arriving after logout is discarded by the service', async () => {
+  let finish;
+  const client = createCommentService({ baseUrl: 'https://site.example', pageURL: 'https://site.example/', fetchImpl: () => new Promise(resolve => { finish = resolve; }) });
+  client.setOwnerSession({ authenticated: true, csrfToken: 'owner-token' });
+  const loading = client.getComments({ targetType: 'photo', targetId: 'first' });
+  client.setOwnerSession(null);
+  finish(response(200, { comments: [comment('private', { targetType: 'photo', targetId: 'first', status: 'pending' })] }));
+  await assert.rejects(loading, error => error.code === 'owner_session_changed');
+});
+
+test('owner sees pending threads beyond the preview and can approve, reject and remove a full conversation', async t => {
+  const records = ['a', 'b', 'c', 'd'].map(id => comment(id));
+  records.push(comment('pending', { status: 'pending', nickname: '等待审核' }), comment('child', { parentId: 'a' }), comment('reject-me', { status: 'pending' }));
+  const f = documentFixture(), client = serviceStub(records); client.ownerSession = { authenticated: true, username: 'Amubis' }; client.moderations = [];
+  client.moderateComment = async (id, status) => { client.moderations.push({ id, status }); const item = records.find(item => item.id === id); item.status = status; return { comment: item, unreadCount: 0 }; };
+  const panel = createAnonymousComments({ container: f.container, service: client, targetType: 'note', targetId: 'note', previewLimit: 3 }); t.after(() => panel.destroy()); await tick();
+  assert.equal(f.container.querySelectorAll('.comment-body').length, 7); assert.equal(f.find('.comments-more').hidden, true);
+  assert.equal(f.container.querySelectorAll('.comment-review-state').length, 2);
+  const pending = f.container.querySelectorAll('.comment').find(node => node.getAttribute('data-comment-id') === 'pending');
+  assert.equal(pending.querySelector('.comment-reply-button').disabled, true);
+  await pending.querySelector('.comment-approve-button').emit('click').completed;
+  assert.equal(f.container.querySelectorAll('.comment-review-state').length, 1);
+  assert.equal(f.container.querySelectorAll('.comment').find(node => node.getAttribute('data-comment-id') === 'pending').querySelector('.comment-reply-button').disabled, false);
+  await f.find('.comment-reject-button').emit('click').completed;
+  assert.equal(f.container.querySelectorAll('.comment-review-state').length, 0);
+  const first = f.container.querySelectorAll('.comment').find(node => node.getAttribute('data-comment-id') === 'a');
+  first.querySelector('.comment-reply-button').emit('click'); f.find('.comments-body').value = '保留正文';
+  await first.querySelector('.comment-delete-button').emit('click').completed;
+  assert.ok(!f.container.querySelectorAll('.comment-body').some(node => ['留言 a', '留言 child'].includes(node.textContent)));
+  assert.equal(f.find('.comments-reply-target').hidden, true); assert.equal(f.find('.comments-body').value, '保留正文');
+  assert.deepEqual(client.moderations, [{ id: 'pending', status: 'approved' }, { id: 'reject-me', status: 'rejected' }, { id: 'a', status: 'deleted' }]);
+});
+
+test('logout and target changes remove pending comments immediately and ignore a late moderation result', async t => {
+  const f = documentFixture(), client = serviceStub(); let finish, signal;
+  client.ownerSession = { authenticated: true, username: 'Amubis' };
+  client.getComments = async ({ targetId }) => targetId === 'first' ? [comment('private', { status: 'pending' })] : [comment('public')];
+  client.moderateComment = (id, status, options) => { signal = options.signal; return new Promise(resolve => { finish = resolve; }); };
+  const panel = createAnonymousComments({ container: f.container, service: client, targetId: 'first' }); t.after(() => panel.destroy()); await tick();
+  const action = f.find('.comment-approve-button').emit('click'); panel.setTarget('photo', 'second');
+  assert.equal(signal.aborted, true); await tick(); finish({ comment: comment('private') }); await action.completed;
+  assert.deepEqual(f.container.querySelectorAll('.comment-body').map(node => node.textContent), ['留言 public']);
+  panel.setTarget('photo', 'first'); await tick(); assert.equal(f.find('.comment-review-state').textContent, COMMENTS_COPY.zh.pendingReview);
+  client.ownerSession = { authenticated: false }; client.listeners.forEach(listener => listener());
+  assert.equal(f.find('.comment-body'), null, 'private DOM clears synchronously at logout'); await tick();
+  assert.equal(f.find('.comment-review-state'), null); assert.equal(f.find('.comment-delete-button'), null);
+});

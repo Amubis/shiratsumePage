@@ -149,7 +149,8 @@ export function createCommentsApi({ store, getPublishedContent, requireAuth, req
         if (status && status !== 'all' && !STATUSES.has(status)) fail(400, 'Unknown comment status.');
         const unread = url.searchParams.get('unread');
         if (unread !== null && !['true', 'false'].includes(unread)) fail(400, 'Unread must be true or false.');
-        const comments = await store.list({ ...(status && status !== 'all' ? { status } : {}), ...(unread === null ? {} : { unread: unread === 'true' }), limit: pageLimit(url) });
+        const target = url.searchParams.has('targetType') || url.searchParams.has('targetId') ? targetFrom(Object.fromEntries(url.searchParams)) : {};
+        const comments = await store.list({ ...target, ...(status && status !== 'all' ? { status } : {}), ...(unread === null ? {} : { unread: unread === 'true' }), limit: pageLimit(url) });
         return json({ comments, unreadCount: await store.unreadCount(), pendingCount: await store.pendingCount() });
       }
       if (path === '/api/admin/notifications' && request.method === 'GET') {

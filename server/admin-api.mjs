@@ -102,12 +102,19 @@ function assertRevision(actual, expected) {
 }
 
 function liveContentPatch(body) {
-  const allowed = body.targetType === 'photo' ? { caption: 5000 } : body.targetType === 'journal' ? { title: 500, body: 50000 } : null;
-  if (!allowed || typeof body.targetId !== 'string' || !body.targetId.trim() || body.targetId.length > 120 || !['zh', 'ja'].includes(body.locale)) throw new HttpError(422, 'Choose a published photo or journal entry and its language.');
+  const allowed = body?.targetType === 'photo' ? { caption: 5000 } : body?.targetType === 'journal' ? { title: 500, body: 50000 } : null;
+  if (!allowed || typeof body.targetId !== 'string' || !body.targetId.trim() || body.targetId.length > 120) throw new HttpError(422, 'Choose a published photo or journal entry.');
   const patch = body.patch;
   if (!patch || typeof patch !== 'object' || Array.isArray(patch) || !Object.keys(patch).length || Object.keys(patch).some(key => !Object.hasOwn(allowed, key))) throw new HttpError(422, 'Only the displayed text fields can be changed here.');
+  const bilingual = body.targetType === 'photo' && patch.caption && typeof patch.caption === 'object' && !Array.isArray(patch.caption);
+  if ((!bilingual || body.locale !== undefined) && !['zh', 'ja'].includes(body.locale)) throw new HttpError(422, 'Choose a language for this text edit.');
   const fields = {};
   for (const [key, value] of Object.entries(patch)) {
+    if (bilingual && key === 'caption') {
+      if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'zh') || !Object.hasOwn(value, 'ja') || ['zh', 'ja'].some(locale => typeof value[locale] !== 'string' || value[locale].length > allowed.caption)) throw new HttpError(422, 'Provide Chinese and Japanese descriptions, each no more than 5000 characters.');
+      fields.caption = Object.fromEntries(['zh', 'ja'].map(locale => [locale, value[locale].replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')]));
+      continue;
+    }
     if (typeof value !== 'string' || value.length > allowed[key]) throw new HttpError(422, `${key} must be text of no more than ${allowed[key]} characters.`);
     fields[key] = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
   }
@@ -117,7 +124,7 @@ function liveContentPatch(body) {
 function applyLiveText(record, locale, fields) {
   for (const [key, value] of Object.entries(fields)) {
     const previous = record[key];
-    record[key] = { ...(typeof previous === 'string' ? { zh: previous, ja: previous } : previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : { zh: '', ja: '' }), [locale]: value };
+    record[key] = { ...(typeof previous === 'string' ? { zh: previous, ja: previous } : previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : { zh: '', ja: '' }), ...(typeof value === 'string' ? { [locale]: value } : value) };
   }
 }
 

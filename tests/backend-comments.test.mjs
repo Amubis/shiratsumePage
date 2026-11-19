@@ -70,6 +70,25 @@ test('an omitted nickname remains localizable rather than storing a Chinese disp
   assert.equal(result.comments[0].nickname,'');
 });
 
+test('owner comment lists filter the requested thread and keep the unfiltered manager listing', async t => {
+  const context = await local(t, { seed: normalizeGardenContent({ ...seed, media: [...seed.media, { id: 'photo-other', url: './assets/other.png', enabled: true }] }) });
+  const first = await createComment(context, 'Photo one');
+  const second = await createComment(context, 'Photo two');
+  const other = await createComment(context, 'Other photo', { targetType: 'photo', targetId: 'photo-other' });
+  const note = await createComment(context, 'Note message', noteTarget);
+  await moderate(context, first.id, { status: 'approved' });
+  const list = async target => (await json(await admin(context, `comments?${new URLSearchParams(target)}`))).comments;
+  assert.deepEqual((await list(photoTarget)).map(item => item.id).sort(), [first.id, second.id].sort());
+  assert.deepEqual((await list(noteTarget)).map(item => item.id), [note.id]);
+  assert.deepEqual((await list({ targetType: 'photo', targetId: 'photo-other' })).map(item => item.id), [other.id]);
+  const all = await json(await admin(context, 'comments'));
+  assert.equal(all.comments.length, 4);
+  assert.deepEqual(new Set(all.comments.map(item => item.id)), new Set([first.id, second.id, other.id, note.id]));
+  for (const params of [{ targetType: 'photo' }, { targetId: 'photo-live' }, { targetType: 'owner', targetId: 'photo-live' }]) {
+    await json(await admin(context, `comments?${new URLSearchParams(params)}`), 422);
+  }
+});
+
 test('anonymous HTTP comments await moderation and server-controlled author replies become public', async t => {
   const context = await local(t);
   const text = '<img src=x onerror=alert(1)>\nこんにちは，花园';
