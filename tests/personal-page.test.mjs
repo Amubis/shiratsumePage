@@ -129,24 +129,102 @@ test('journal settings hide posts or retain a configured external entry and empt
   assert.equal(f.root.querySelector('.personal-journal-entry').disabled, true);
 });
 
-test('large journals render six entries at a time and updates reset the first batch', t => {
-  const posts = Array.from({ length: 500 }, (_, index) => ({ body: `第${index}条`, createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(), published: true }));
+const journalPosts = count => Array.from({ length: count }, (_, index) => ({ id: `note-${index}`, body: `第${index}条`, createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(), published: true }));
+const selectedPage = root => root.querySelectorAll('.personal-journal-page').find(button => button.getAttribute('aria-current') === 'page');
+const pageNumber = (root, page) => root.querySelectorAll('.personal-journal-page').find(button => button.textContent === String(page));
+
+test('large journals keep five entries per page with compact numbered navigation and fixed owner content', t => {
+  const posts = journalPosts(500);
   const f = fixture(t, { posts });
-  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 6);
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 5);
   assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第499条');
-  const first = f.root.querySelector('.personal-journal-post');
-  f.root.querySelector('.personal-journal-more').emit('click');
-  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 12);
-  assert.equal(f.root.querySelector('.personal-journal-post'), first, 'loading more preserves existing reading content');
+  assert.equal(f.root.querySelector('.personal-journal-previous').disabled, true);
+  assert.equal(selectedPage(f.root).textContent, '1');
+  assert.equal(f.root.querySelector('.personal-journal-more'), null);
+  const avatar = f.root.querySelector('.personal-avatar-wrap');
+  f.root.querySelector('.personal-journal-next').emit('click');
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 5);
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第494条');
+  assert.equal(selectedPage(f.root).textContent, '2');
+  assert.equal(f.root.querySelector('.personal-avatar-wrap'), avatar, 'page changes never replace or replay the owner card');
+  pageNumber(f.root, 5).emit('click');
+  assert.equal(selectedPage(f.root).textContent, '5');
+  assert.deepEqual(f.root.querySelectorAll('.personal-journal-page').filter(button => !button.classList.contains('is-previous') && !button.classList.contains('is-next')).map(button => button.textContent), ['1', '4', '5', '6', '100']);
+  assert.equal(f.root.querySelectorAll('.personal-journal-ellipsis').length, 2);
+  assert.ok(f.root.querySelector('.personal-journal-pagination').children.length <= 9, 'arrows and seven compact page tokens fit narrow screens');
+  pageNumber(f.root, 100).emit('click');
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第4条');
+  assert.equal(f.root.querySelector('.personal-journal-next').disabled, true);
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 5);
+});
+
+test('journal page selection survives language and content edits and clamps when posts are removed', t => {
+  const posts = journalPosts(12), f = fixture(t, { posts });
+  pageNumber(f.root, 3).emit('click');
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 2);
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第1条');
   f.component.setLanguage('ja');
-  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 12);
-  assert.equal(f.root.querySelector('.personal-journal-more').textContent, 'もっと見る');
+  assert.equal(selectedPage(f.root).textContent, '3');
+  assert.equal(f.root.querySelector('.personal-journal-next').getAttribute('aria-label'), PERSONAL_COPY.ja.journalNext);
+  f.component.setCopy({ ja: { journalPagination: '記事のページ' } });
+  assert.equal(selectedPage(f.root).textContent, '3');
+  assert.equal(f.root.querySelector('.personal-journal-pagination').getAttribute('aria-label'), '記事のページ');
+  f.component.setPosts(posts.map(post => post.id === 'note-1' ? { ...post, body: '本文の更新' } : post));
+  assert.equal(selectedPage(f.root).textContent, '3');
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '本文の更新');
   f.component.setPosts(posts.slice(0, 7));
-  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 6);
-  f.root.querySelector('.personal-journal-more').emit('click');
-  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 7);
-  assert.equal(f.root.querySelector('.personal-journal-more').disabled, true);
-  assert.equal(f.root.querySelector('.personal-journal-more').textContent, PERSONAL_COPY.ja.journalLoaded);
+  assert.equal(selectedPage(f.root).textContent, '2');
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 2);
+  assert.equal(f.root.querySelector('.personal-journal-next').disabled, true);
+  f.component.setPosts(posts.slice(0, 5));
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 5);
+  assert.equal(f.root.querySelector('.personal-journal-pagination').hidden, true);
+  assert.equal(selectedPage(f.root).textContent, '1');
+});
+
+test('journal page motion rejects repeated clicks and cancels stale changes during content updates', async t => {
+  const f = fixture(t, { posts: journalPosts(12) });
+  f.doc.defaultView = { matchMedia: () => ({ matches: false }) };
+  // The feed captures its window when rendered, so recreate it once for this browser-like fixture.
+  f.component.setLanguage('zh');
+  const list = f.root.querySelector('.personal-journal-posts'), animations = [], scrolls = [];
+  list.scrollIntoView = options => scrolls.push(options);
+  list.animate = (frames, options) => {
+    let finish, reject;
+    const animation = { frames, options, finished: new Promise((resolve, fail) => { finish = resolve; reject = fail; }), finish: () => finish(), cancel: () => reject(new Error('cancelled')) };
+    animations.push(animation); return animation;
+  };
+  const next = f.root.querySelector('.personal-journal-next');
+  next.emit('click'); next.emit('click');
+  assert.equal(animations.length, 1);
+  assert.equal(f.root.querySelector('.personal-journal-pagination').getAttribute('aria-busy'), 'true');
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第11条');
+  animations[0].finish(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(selectedPage(f.root).textContent, '2');
+  assert.equal(animations.length, 2);
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第6条');
+  f.root.querySelector('.personal-journal-next').emit('click');
+  assert.equal(animations.length, 2);
+  animations[1].finish(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(f.root.querySelector('.personal-journal-pagination').getAttribute('aria-busy'), 'false');
+  assert.deepEqual(scrolls, [{ block: 'start', behavior: 'smooth' }]);
+  assert.ok(animations.every(animation => animation.options.easing.startsWith('cubic-bezier(')));
+
+  f.root.querySelector('.personal-journal-next').emit('click');
+  f.component.setPosts(journalPosts(6));
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(selectedPage(f.root).textContent, '2');
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 1);
+  assert.equal(f.root.querySelector('.personal-journal-body').textContent, '第0条');
+  assert.equal(f.root.querySelector('.personal-journal-pagination').getAttribute('aria-busy'), 'false');
+  f.doc.defaultView.matchMedia = () => ({ matches: true });
+  const reducedList = f.root.querySelector('.personal-journal-posts');
+  reducedList.animate = () => { throw new Error('Reduced motion must not animate'); };
+  reducedList.scrollIntoView = options => scrolls.push(options);
+  f.root.querySelector('.personal-journal-previous').emit('click');
+  assert.equal(selectedPage(f.root).textContent, '1');
+  assert.equal(f.root.querySelectorAll('.personal-journal-post').length, 5);
+  assert.deepEqual(scrolls.at(-1), { block: 'start', behavior: 'instant' });
 });
 
 test('journal images open an accessible viewer, close it on data changes and release the scroll lock', t => {

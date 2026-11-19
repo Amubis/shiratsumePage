@@ -14,14 +14,22 @@ export const DEFAULT_PERSONAL_PROFILE = Object.freeze({
   journal: Object.freeze({ mode: 'placeholder', url: null }),
 });
 export const PERSONAL_COPY = Object.freeze({
-  zh: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '作者头像', links: '在别处找到我', pending: '个人主页链接待补充', journal: '碎碎念', journalNote: '想到什么，就写一点。', journalEmpty: '还没有公开的文章', soon: '准备中', journalMore: '加载更多', journalLoaded: '已显示全部碎碎念', viewImage: '查看图片', closeImage: '关闭图片', imageUnavailable: '图片暂时无法加载' }),
-  ja: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '庭の主のアイコン', links: 'ほかの場所でも', pending: 'プロフィールのリンクは準備中です', journal: 'ひとりごと', journalNote: '思いついたことを、少しずつ。', journalEmpty: '公開された記事はまだありません', soon: '準備中', journalMore: 'もっと見る', journalLoaded: 'すべてのひとりごとを表示しました', viewImage: '画像を見る', closeImage: '画像を閉じる', imageUnavailable: '画像を読み込めませんでした' }),
+  zh: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '作者头像', links: '在别处找到我', pending: '个人主页链接待补充', journal: '碎碎念', journalNote: '想到什么，就写一点。', journalEmpty: '还没有公开的文章', soon: '准备中', journalMore: '加载更多', journalLoaded: '已显示全部碎碎念', journalPagination: '碎碎念分页', journalPrevious: '上一页', journalNext: '下一页', journalPage: '第 {page} 页，共 {pages} 页', viewImage: '查看图片', closeImage: '关闭图片', imageUnavailable: '图片暂时无法加载' }),
+  ja: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '庭の主のアイコン', links: 'ほかの場所でも', pending: 'プロフィールのリンクは準備中です', journal: 'ひとりごと', journalNote: '思いついたことを、少しずつ。', journalEmpty: '公開された記事はまだありません', soon: '準備中', journalMore: 'もっと見る', journalLoaded: 'すべてのひとりごとを表示しました', journalPagination: 'ひとりごとのページ', journalPrevious: '前のページ', journalNext: '次のページ', journalPage: '{page}ページ、全{pages}ページ', viewImage: '画像を見る', closeImage: '画像を閉じる', imageUnavailable: '画像を読み込めませんでした' }),
 });
 const copyDictionary = (input) => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(PERSONAL_COPY[locale]).map(([key, fallback]) =>
     [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
 ]));
-const JOURNAL_PAGE_SIZE = 6;
+const JOURNAL_PAGE_SIZE = 5;
+let journalSerial = 0;
+
+function journalPageItems(page, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  if (page <= 4) return [1, 2, 3, 4, 5, null, total];
+  if (page >= total - 3) return [1, null, total - 4, total - 3, total - 2, total - 1, total];
+  return [1, null, page - 1, page, page + 1, null, total];
+}
 
 function publishedPosts(input) {
   return (Array.isArray(input) ? input : []).filter(post => post?.published === true).map(post => {
@@ -66,7 +74,8 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
   let locale = language === 'ja' ? 'ja' : 'zh';
   let dictionary = copyDictionary(copy);
   let entries = publishedPosts(posts);
-  let visibleCount = JOURNAL_PAGE_SIZE;
+  let pageIndex = 0;
+  let cancelPageMotion = () => {};
   let closeViewer = () => {};
   let destroyed = false;
   let commentService = commentsService;
@@ -100,10 +109,18 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     const heading = element('h3', 'personal-journal-heading');
     heading.append(glyph('personal-journal-clover'), element('span', '', words.journal));
     const list = element('div', 'personal-journal-posts');
-    const more = element('button', 'personal-journal-more');
-    more.type = 'button';
-    more.hidden = entries.length <= JOURNAL_PAGE_SIZE;
-    journal.append(heading, element('p', 'personal-journal-note', words.journalNote), list, more);
+    list.id = `personal-journal-posts-${++journalSerial}`;
+    list.tabIndex = -1;
+    const pagination = element('nav', 'personal-journal-pagination');
+    pagination.setAttribute('aria-label', words.journalPagination);
+    const pageCount = Math.max(1, Math.ceil(entries.length / JOURNAL_PAGE_SIZE));
+    pageIndex = Math.min(pageIndex, pageCount - 1);
+    pagination.hidden = pageCount <= 1;
+    journal.append(heading, element('p', 'personal-journal-note', words.journalNote), list, pagination);
+    let pageBusy = false, motionSequence = 0, pageAnimation = null;
+    const win = doc.defaultView;
+    const reducedMotion = () => Boolean(win?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    cancelPageMotion = () => { ++motionSequence; pageAnimation?.cancel(); pageAnimation = null; pageBusy = false; };
 
     let dialog = null;
     let opener = null;
@@ -193,17 +210,71 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       commentsSection.append(commentRoot); article.append(commentsSection); commentSections.add(section);
       return article;
     };
-    const appendEntries = () => {
-      const end = Math.min(visibleCount, entries.length);
-      for (let index = list.children.length; index < end; index++) list.append(createPost(entries[index]));
-      more.disabled = end >= entries.length;
-      more.textContent = more.disabled ? words.journalLoaded : words.journalMore;
+    const renderPagination = () => {
+      const pageButton = (target, label, className, accessibleLabel) => {
+        const button = element('button', `personal-journal-page${className ? ` ${className}` : ''}`, label);
+        button.type = 'button';
+        button.disabled = pageBusy || target < 0 || target >= pageCount;
+        button.setAttribute('aria-controls', list.id);
+        button.setAttribute('aria-label', accessibleLabel);
+        if (!className && target === pageIndex) button.setAttribute('aria-current', 'page');
+        button.addEventListener('click', () => changePage(target));
+        return button;
+      };
+      const items = journalPageItems(pageIndex + 1, pageCount).map(page => {
+        if (page === null) {
+          const ellipsis = element('span', 'personal-journal-ellipsis', '…');
+          ellipsis.setAttribute('aria-hidden', 'true');
+          return ellipsis;
+        }
+        return pageButton(page - 1, String(page), '', words.journalPage.replace('{page}', String(page)).replace('{pages}', String(pageCount)));
+      });
+      pagination.replaceChildren(
+        pageButton(pageIndex - 1, '〈', 'is-previous personal-journal-previous', words.journalPrevious),
+        ...items,
+        pageButton(pageIndex + 1, '〉', 'is-next personal-journal-next', words.journalNext),
+      );
+      pagination.setAttribute('aria-busy', String(pageBusy));
     };
-    more.addEventListener('click', () => { visibleCount += JOURNAL_PAGE_SIZE; appendEntries(); });
-    appendEntries();
+    const renderEntries = () => {
+      disposeComments();
+      list.replaceChildren(...entries.slice(pageIndex * JOURNAL_PAGE_SIZE, (pageIndex + 1) * JOURNAL_PAGE_SIZE).map(createPost));
+    };
+    function changePage(next) {
+      if (destroyed || pageBusy || next < 0 || next >= pageCount || next === pageIndex) return;
+      const sequence = ++motionSequence;
+      const active = () => !destroyed && sequence === motionSequence && root.contains(journal);
+      pageBusy = true; renderPagination(); list.setAttribute('aria-busy', 'true');
+      let committed = false;
+      const commit = () => {
+        if (!active()) return;
+        closeViewer(); pageIndex = next; renderEntries(); renderPagination(); committed = true;
+        list.focus?.({ preventScroll: true });
+        list.scrollIntoView?.({ block: 'start', behavior: reducedMotion() ? 'instant' : 'smooth' });
+      };
+      const finish = () => {
+        if (!active()) return;
+        pageAnimation?.cancel(); pageAnimation = null;
+        pageBusy = false; list.removeAttribute('aria-busy'); renderPagination();
+      };
+      if (typeof list.animate !== 'function' || reducedMotion() || doc.hidden) { commit(); finish(); return; }
+      void (async () => {
+        try {
+          pageAnimation = list.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-9px)' }], { duration: 150, easing: 'cubic-bezier(.4,0,.7,1)', fill: 'both' });
+          await pageAnimation.finished;
+          if (!active()) return;
+          pageAnimation.cancel(); pageAnimation = null; commit();
+          pageAnimation = list.animate([{ opacity: 0, transform: 'translateY(13px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, easing: 'cubic-bezier(.2,.75,.3,1)', fill: 'both' });
+          await pageAnimation.finished;
+        } catch { /* Animation support or cancellation must not strand the selected page. */ }
+        finally { if (active()) { if (!committed) commit(); finish(); } }
+      })();
+    }
+    renderEntries(); renderPagination();
   }
 
   function render() {
+    cancelPageMotion(); cancelPageMotion = () => {};
     disposeComments();
     closeViewer(); closeViewer = () => {};
     const copy = dictionary[locale];
@@ -257,8 +328,8 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     setCopy(next) { if (destroyed) return; dictionary = copyDictionary(next); render(); },
     setCommentsService(next) { if (destroyed) return; commentService = next; commentSections.forEach(section => section.setService(next)); },
     setCommentsCopy(next) { if (destroyed) return; commentDictionary = normalizeCommentsCopy(next); commentSections.forEach(section => section.updateCopy()); },
-    setPosts(next) { if (destroyed) return; entries = publishedPosts(next); visibleCount = JOURNAL_PAGE_SIZE; render(); },
+    setPosts(next) { if (destroyed) return; entries = publishedPosts(next); pageIndex = Math.min(pageIndex, Math.max(0, Math.ceil(entries.length / JOURNAL_PAGE_SIZE) - 1)); render(); },
     update(next) { if (destroyed) return; data = normalizePersonalProfile(next); render(); },
-    destroy() { if (destroyed) return; closeViewer(); disposeComments(); commentDrafts.clear(); expandedComments.clear(); destroyed = true; root.replaceChildren(); root.classList.remove('personal-page'); },
+    destroy() { if (destroyed) return; cancelPageMotion(); closeViewer(); disposeComments(); commentDrafts.clear(); expandedComments.clear(); destroyed = true; root.replaceChildren(); root.classList.remove('personal-page'); },
   };
 }

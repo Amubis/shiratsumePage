@@ -170,15 +170,27 @@ test('a removed reply parent never silently converts the saved reply into a top 
   assert.equal(f.find('.comments-body').value, '回复草稿');
 });
 
-test('journal comments are visible for six published posts and preserve drafts across language updates', async t => {
-  const f = documentFixture(); const client = serviceStub();
+test('journal comments follow five-post pages and preserve drafts and expansion across paging and language updates', async t => {
+  const f = documentFixture(); const client = serviceStub([comment('a'), comment('b'), comment('c'), comment('d')]);
   const page = createPersonalPage({ root: f.container, commentsService: client, posts: Array.from({ length: 8 }, (_, index) => ({ id: `note-${index}`, body: `正文 ${index}`, published: true })) }); t.after(() => page.destroy());
-  assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 6); assert.equal(client.calls.length, 6);
+  assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 5); assert.equal(client.calls.length, 5);
   assert.equal(f.find('.personal-post-comments').localName, 'section'); await tick();
   assert.equal(f.find('.comments-form').hidden, false); assert.equal(client.calls[0].targetType, 'note'); assert.equal(client.calls[0].targetId, 'note-0');
-  f.find('.comments-body').value = '切语言时保留'; page.setLanguage('ja'); await tick();
+  f.find('.comments-body').value = '切语言时保留'; f.find('.comments-more').emit('click'); page.setLanguage('ja'); await tick();
   assert.equal(f.find('.comments-body').value, '切语言时保留'); assert.equal(f.find('.comments-submit').textContent, COMMENTS_COPY.ja.submit);
-  f.find('.personal-journal-more').emit('click'); assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 8);
+  assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
+  f.find('.personal-journal-next').emit('click'); await tick();
+  assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 3);
+  assert.equal(client.listeners.size, 3, 'off-page comment listeners are released');
+  assert.equal(f.find('.personal-journal-post').getAttribute('data-journal-id'), 'note-5');
+  assert.equal(f.find('.comments-body').value, '');
+  f.find('.comments-body').value = '第二页的草稿';
+  f.find('.personal-journal-previous').emit('click'); await tick();
+  assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 5);
+  assert.equal(f.find('.comments-body').value, '切语言时保留');
+  assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
+  f.find('.personal-journal-next').emit('click'); await tick();
+  assert.equal(f.find('.comments-body').value, '第二页的草稿');
   page.setCommentsService(null); assert.equal(f.find('.comments-form').hidden, true);
   assert.equal(f.find('.comments-load-state').textContent, COMMENTS_COPY.ja.unavailable);
   assert.equal(f.find('.personal-post-comments-summary'), null);

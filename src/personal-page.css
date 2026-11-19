@@ -46,7 +46,8 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
 .personal-journal-note { margin: 0; font-size: 10px; line-height: 1.8; color: var(--muted); }
 .personal-journal.has-feed { width: 100%; max-width: 620px; margin-top: 42px; }
 .personal-journal-heading { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 0 0 5px; font-size: 14px; font-weight: 500; letter-spacing: .1em; }
-.personal-journal-posts { margin-top: 26px; text-align: left; }
+.personal-journal-posts { margin-top: 26px; text-align: left; scroll-margin-top: 88px; }
+.personal-journal-posts:focus-visible { outline: 1px solid color-mix(in srgb, var(--theme-dark) 28%, transparent); outline-offset: 8px; border-radius: 2px; }
 .personal-journal-post { min-width: 0; padding: 27px 0; border-top: 1px solid color-mix(in srgb, var(--theme-dark) 17%, transparent); }
 .personal-journal-date { display: block; margin-bottom: 10px; color: var(--muted); font-size: 10px; letter-spacing: .045em; }
 .personal-journal-title { margin: 0 0 12px; font-family: var(--display); font-size: 19px; font-weight: 550; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -54,9 +55,13 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
 .personal-journal-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 10px; margin-top: 18px; }
 .personal-journal-image-button { display: block; min-width: 0; padding: 0; overflow: hidden; border-radius: 12px; background: color-mix(in srgb, var(--theme) 15%, var(--paper)); cursor: zoom-in; }
 .personal-journal-image { display: block; width: 100%; max-height: 420px; aspect-ratio: 4 / 3; object-fit: contain; }
-.personal-journal-more { margin-top: 7px; min-height: 44px; max-width: 100%; padding: 10px 22px; border: 1px solid color-mix(in srgb, var(--theme-dark) 18%, transparent); border-radius: 999px; color: var(--theme-dark); background: color-mix(in srgb, var(--theme) 15%, var(--paper)); font-size: 11px; line-height: 1.7; }
-.personal-journal-more:disabled { opacity: .65; }
-.personal-journal-more[hidden] { display: none; }
+.personal-journal-pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 5px; max-width: 100%; margin: 19px auto 0; font-variant-numeric: tabular-nums; }
+.personal-journal-pagination[hidden] { display: none; }
+.personal-journal-page { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 42px; padding: 6px 9px; border: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); border-radius: 7px; color: var(--theme-dark); background: color-mix(in srgb, var(--theme) 9%, var(--paper)); font: inherit; font-size: 12px; line-height: 1.4; transition: transform .3s cubic-bezier(.2,.75,.3,1.2), background .24s cubic-bezier(.4,0,.2,1), border-color .24s cubic-bezier(.4,0,.2,1), opacity .2s cubic-bezier(.4,0,.2,1), box-shadow .24s cubic-bezier(.4,0,.2,1); }
+.personal-journal-page[aria-current="page"] { border-color: var(--theme); color: #272923; background: var(--theme); font-weight: 650; }
+.personal-journal-page:disabled:not([aria-current="page"]) { opacity: .35; }
+.personal-journal-ellipsis { display: inline-flex; justify-content: center; align-items: center; min-width: 20px; min-height: 42px; color: var(--muted); font-size: 12px; }
+.personal-journal-pagination[aria-busy="true"] .personal-journal-page:not([aria-current="page"]) { opacity: .6; }
 .personal-post-comments { min-width: 0; margin-top: 22px; padding: 20px 24px 24px; border: 1px solid color-mix(in srgb, var(--theme-dark) 16%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--theme) 12%, var(--paper)); }
 .personal-post-comments-content { min-width: 0; }
 .personal-image-viewer { position: fixed; inset: 0; width: min(1080px, calc(100vw - 48px)); max-width: none; max-height: calc(100svh - 48px); margin: auto; padding: 48px 18px 18px; border: 1px solid color-mix(in srgb, var(--theme-dark) 15%, transparent); border-radius: 20px; color: var(--theme-dark); background: var(--paper); box-shadow: 0 22px 90px #27292338; overscroll-behavior: contain; }
@@ -65,7 +70,7 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
 .personal-image-full[hidden], .personal-image-error[hidden] { display: none; }
 .personal-image-close { position: absolute; top: 5px; right: 7px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; font-size: 28px; line-height: 1; }
 .personal-image-error { padding: 35px 12px; text-align: center; font-size: 13px; }
-.personal-journal-image-button:focus-visible, .personal-journal-more:focus-visible, .personal-image-close:focus-visible { outline: 2px solid var(--theme-dark); outline-offset: 4px; }
+.personal-journal-image-button:focus-visible, .personal-journal-page:focus-visible, .personal-image-close:focus-visible { outline: 2px solid var(--theme-dark); outline-offset: 4px; }
 .personal-return { display: flex; justify-content: center; width: 100%; margin-top: auto; padding-top: 38px; }
 .personal-home { display: inline-flex; gap: 10px; align-items: center; padding: 12px 20px; color: var(--theme-dark); font-size: 11px; letter-spacing: .1em; transition: transform .3s var(--water-settle); }
 .personal-home > span:first-child { width: 20px; height: 20px; }
@@ -73,8 +78,10 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
 @media (hover: hover) {
   .personal-social:not(.is-pending):hover { transform: translateY(-3px) scale(1.025); background: color-mix(in srgb, var(--theme) 30%, var(--paper)); box-shadow: 0 6px 12px #2729230a; }
   .personal-home:hover { transform: translateY(-3px); }
+  .personal-journal-page:hover:not(:disabled):not([aria-current="page"]) { transform: translateY(-2px) scale(1.06); background: color-mix(in srgb, var(--theme) 29%, var(--paper)); box-shadow: 0 4px 9px #2729230d; }
 }
 .personal-social:active:not(.is-pending), .personal-home:active { transform: translateY(2px) scale(.96); }
+.personal-journal-page:active:not(:disabled) { transform: translateY(1px) scale(.92); }
 .personal-enter-managed .personal-avatar-wrap {
   opacity: var(--personal-avatar-alpha, 1);
   transform: translateY(var(--personal-avatar-y, 0px)) scale(var(--personal-avatar-scale-x, 1), var(--personal-avatar-scale-y, 1));
@@ -99,6 +106,9 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
   .personal-journal { margin-top: 23px; }
   .personal-journal.has-feed { margin-top: 35px; }
   .personal-journal-post { padding-block: 23px; }
+  .personal-journal-pagination { gap: 2px; margin-top: 14px; }
+  .personal-journal-page { min-width: 26px; min-height: 44px; padding-inline: 4px; font-size: 11px; }
+  .personal-journal-ellipsis { min-width: 12px; min-height: 44px; }
   .personal-post-comments { padding: 16px 14px 20px; }
   .personal-journal-images { grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)); gap: 8px; }
   .personal-image-viewer { width: calc(100vw - 24px); max-height: calc(100svh - 24px); padding-inline: 10px; border-radius: 15px; }
@@ -120,5 +130,5 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
   .personal-enter-managed :is(.personal-eyebrow, .personal-name, .personal-bio, .personal-socials, .personal-journal, .personal-return) { opacity: 1; transform: none; translate: none; }
   .personal-clovers { opacity: 1; }
   .personal-clovers .scene-clover { animation: none !important; }
-  .personal-social, .personal-home { transition: none; }
+  .personal-social, .personal-home, .personal-journal-page { transition: none; }
 }
