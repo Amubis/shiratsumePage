@@ -2,7 +2,7 @@
 
 以模型为主角的静态交互展示 demo。配色以 `#B7BB5A`、奶白和深灰为基础，展示首页视频、四叶草动效、章节导航和中日双语切换。
 
-源码仓库：[Amubis/shiratsumePage](https://github.com/Amubis/shiratsumePage)。GitHub Pages 部署成功后可访问 [しらつめ展示页](https://amubis.github.io/shiratsumePage/)，部署状态以仓库 Actions 为准。
+源码仓库：[Amubis/shiratsumePage](https://github.com/Amubis/shiratsumePage)。主站为 [amubis.art](https://amubis.art/)，内容管理入口为 [/admin/](https://amubis.art/admin/)；[GitHub Pages](https://amubis.github.io/shiratsumePage/) 保留为浏览入口，部署状态以仓库 Actions 为准。主站头像弹窗内的四叶草打开站长登录，登录后显示管理页和退出登录按钮。
 
 ## 当前版本
 
