@@ -141,6 +141,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   const words = () => dictionary[locale];
   const available = () => Boolean(client?.enabled && id && ['photo', 'note'].includes(type));
   const element = (tag, className, text) => { const node = doc.createElement(tag); node.className = className; if (text !== undefined) node.textContent = text; return node; };
+  const languageText = node => { node.setAttribute('data-language-text', ''); return node; };
   const bind = (node, event, fn) => { node.addEventListener(event, fn); bindings.push(() => node.removeEventListener(event, fn)); };
   const button = className => { const node = element('button', className); node.type = 'button'; return node; };
   const root = element('section', 'anonymous-comments');
@@ -164,6 +165,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   const reply = element('div', 'comments-reply-target'); const replyText = element('span', ''); const cancelReply = button('comments-cancel-reply'); reply.append(replyText, cancelReply);
   const footer = element('div', 'comments-form-footer'); const count = element('span', 'comments-count'); const submit = element('button', 'comments-submit'); submit.type = 'submit'; footer.append(count, submit);
   const status = element('p', 'comments-submit-state'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+  [heading, note, loadMessage, retry, more, nicknameText, bodyText, replyText, cancelReply, count, submit, status].forEach(languageText);
   form.append(nicknameLabel, reply, bodyLabel, trap, footer, status);
   root.append(heading, note, loadMessage, retry, list, more, form); container.replaceChildren(root);
 
@@ -185,17 +187,19 @@ export function createAnonymousComments({ container, service = null, targetType 
       article.setAttribute('data-comment-id', comment.id);
       article.classList.toggle('comment-pending', comment.status === 'pending');
       const meta = element('div', 'comment-meta');
-      const author = element('span', 'comment-author', comment.nickname.trim() || words().anonymous); meta.append(author);
-      if (comment.verified === true) meta.append(element('span', 'comment-owner', words().owner));
-      if (comment.status === 'pending') meta.append(element('span', 'comment-review-state', words().pendingReview));
+      const author = element('span', 'comment-author', comment.nickname.trim() || words().anonymous);
+      if (!comment.nickname.trim()) languageText(author);
+      meta.append(author);
+      if (comment.verified === true) meta.append(languageText(element('span', 'comment-owner', words().owner)));
+      if (comment.status === 'pending') meta.append(languageText(element('span', 'comment-review-state', words().pendingReview)));
       const parsed = Date.parse(comment.createdAt);
       if (Number.isFinite(parsed)) {
-        const date = new Date(parsed); const time = element('time', 'comment-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' })); time.dateTime = date.toISOString(); meta.append(time);
+        const date = new Date(parsed); const time = languageText(element('time', 'comment-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' }))); time.dateTime = date.toISOString(); meta.append(time);
       }
       article.append(meta, element('p', 'comment-body', comment.body));
       const actions = element('div', 'comment-actions');
       if (!comment.parentId) {
-        const replyButton = button('comment-reply-button'); replyButton.textContent = words().reply;
+        const replyButton = languageText(button('comment-reply-button')); replyButton.textContent = words().reply;
         replyButton.disabled = Boolean(moderating) || !canReplyTo(comment);
         if (!canReplyTo(comment)) replyButton.title = words().reviewFirst;
         replyButton.addEventListener('click', () => { replyId = comment.id; submitState = ''; update(); body.focus?.(); });
@@ -203,10 +207,10 @@ export function createAnonymousComments({ container, service = null, targetType 
       }
       if (canModerate()) {
         if (comment.status === 'pending') for (const [status, label] of [['approved', 'approve'], ['rejected', 'reject']]) {
-          const reviewButton = button(`comment-moderation-button comment-${label}-button`); reviewButton.textContent = words()[label]; reviewButton.disabled = Boolean(moderating) || submitting;
+          const reviewButton = languageText(button(`comment-moderation-button comment-${label}-button`)); reviewButton.textContent = words()[label]; reviewButton.disabled = Boolean(moderating) || submitting;
           reviewButton.addEventListener('click', () => moderate(comment, status)); actions.append(reviewButton);
         }
-        const remove = button('comment-moderation-button comment-delete-button'); remove.textContent = words().remove; remove.disabled = Boolean(moderating) || submitting;
+        const remove = languageText(button('comment-moderation-button comment-delete-button')); remove.textContent = words().remove; remove.disabled = Boolean(moderating) || submitting;
         remove.setAttribute('aria-label', `${words().remove} · ${comment.nickname.trim() || words().anonymous}`);
         remove.addEventListener('click', () => moderate(comment, 'deleted')); actions.append(remove);
       }

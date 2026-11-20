@@ -158,7 +158,7 @@ function railPositionAtX(x, count) {
 export const OUTFIT_HINT_TIMING = Object.freeze({ delay: 4000, duration: 2800 });
 
 /** One selected outfit with independently accessible front and rear views. */
-function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = () => false, onChange = () => {}, outfits = OUTFITS, initialIndex = 0, copy = OUTFIT_COPY, preloadEnabled = true } = {}) {
+function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = () => false, onChange = () => {}, outfits = OUTFITS, initialIndex = 0, copy = OUTFIT_COPY, preloadEnabled = true, hintConsumed = false } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An outfit showcase container is required.');
   const records = normalizeOutfits(outfits);
   let messages = normalizedCopy(copy);
@@ -180,7 +180,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   let warmEnabled = Boolean(preloadEnabled), warming = false;
   let interacted = false;
   let hintActive = false;
-  let hintShown = false;
+  let hintShown = Boolean(hintConsumed);
   let hintHovered = false;
   let hintFocused = false;
   let hintTimer = null;
@@ -233,6 +233,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
 
   container.classList.add('outfit-showcase');
   const pair = element('div', 'outfit-pair');
+  pair.style.setProperty('--hint-duration', `${OUTFIT_HINT_TIMING.duration}ms`);
   const stage = element('button', 'outfit-stage');
   stage.type = 'button';
   const art = element('span', 'outfit-art');
@@ -262,9 +263,15 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   cue.hidden = true;
   cue.style.setProperty('--hint-duration', `${OUTFIT_HINT_TIMING.duration}ms`);
   const cueArt = element('span', 'outfit-cue-art');
-  cueArt.innerHTML = `${cloverSVG({ className: 'clover-svg', variant: 'small' })}<svg class="outfit-cue-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12V5a2 2 0 0 1 4 0v6l1.8-1a2 2 0 0 1 1.7-.1l3.2 1.3A2.2 2.2 0 0 1 20 13.3V17a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2L4.6 14a1.7 1.7 0 0 1 2.6-2.2L8 13"/><path d="M3.5 5.5 2 4M6 2.3V1M14 3l1.5-1.5"/></svg>`;
+  cueArt.innerHTML = '<svg class="outfit-cue-icon" viewBox="0 0 24 24" fill="#fff" stroke="#34372d" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 12V5a2 2 0 0 1 4 0v6l1.8-1a2 2 0 0 1 1.7-.1l3.2 1.3A2.2 2.2 0 0 1 20 13.3V17a5 5 0 0 1-5 5h-2a5 5 0 0 1-4-2L4.6 14a1.7 1.7 0 0 1 2.6-2.2L8 13Z"/></svg>';
+  cueArt.append(element('span', 'outfit-cue-ripple ripple-first'), element('span', 'outfit-cue-ripple ripple-second'));
   cue.append(cueArt);
-  stage.append(art, cue);
+  // The portrait button clips transparent image margins for hit testing. Keep
+  // this visual-only cue outside that clip while matching the front canvas.
+  const cueAnchor = element('span', 'outfit-cue-anchor');
+  cueAnchor.setAttribute('aria-hidden', 'true');
+  cueAnchor.append(cue);
+  stage.append(art);
   const backStage = element('button', 'outfit-back-stage');
   backStage.type = 'button';
   const backArt = element('span', 'outfit-back-art');
@@ -278,7 +285,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   if (records[currentIndex].back && !sourceImages.has(records[currentIndex].back)) sourceImages.set(records[currentIndex].back, backImage);
   backArt.append(backImage);
   backStage.append(backArt);
-  pair.append(shadow, stage, backStage);
+  pair.append(shadow, stage, backStage, cueAnchor);
   const footer = element('div', 'outfit-footer');
   footer.style.width = '100%'; footer.style.maxWidth = '100%';
   footer.style.overflowX = 'auto'; footer.style.overflowY = 'hidden';
@@ -447,6 +454,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     backStage.hidden = !outfit.back;
     shadowSources[1].style.display = outfit.back ? '' : 'none';
     stage.style.translate = outfit.back ? '' : '-50% 0';
+    cueAnchor.style.translate = stage.style.translate;
     dots.hidden = records.length < 2;
     backStage.setAttribute('aria-label', records.length > 1 ? `${label} · ${copy.back} · ${copy.next}` : `${label} · ${copy.inspect}`);
     backStage.setAttribute('aria-busy', String(busy));
@@ -604,7 +612,8 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     if (hintTimer !== null) win.clearTimeout(hintTimer);
     if (hintEndTimer !== null) win.clearTimeout(hintEndTimer);
     hintTimer = hintEndTimer = null;
-    cue.classList.remove('is-hint-visible');
+    cue.classList.remove('is-hint-visible', 'is-hint-static');
+    pair.classList.remove('is-hint-demonstrating');
     cue.hidden = true;
   }
 
@@ -623,6 +632,8 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
       hintShown = true;
       cue.hidden = false;
       cue.classList.add('is-hint-visible');
+      cue.classList.toggle('is-hint-static', Boolean(reducedMotion()));
+      pair.classList.toggle('is-hint-demonstrating', !reducedMotion());
       hintEndTimer = win.setTimeout(() => { if (generation === hintSerial) hideHint(); }, OUTFIT_HINT_TIMING.duration);
     }, OUTFIT_HINT_TIMING.delay);
   }
@@ -968,6 +979,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   return {
     get index() { return currentIndex; },
     get outfitId() { return records[currentIndex].id; },
+    get hintConsumed() { return hintShown || interacted; },
     goTo,
     next() { return goTo(currentIndex + 1); },
     previous() { return goTo(currentIndex - 1); },
@@ -1027,7 +1039,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
 function createEmptyOutfitShowcase({ container, language, copy }) {
   let messages = normalizedCopy(copy);
   const message = container.ownerDocument.createElement('p');
-  message.className = 'outfit-empty'; message.setAttribute('role', 'status');
+  message.className = 'outfit-empty'; message.setAttribute('role', 'status'); message.setAttribute('data-language-text', '');
   message.style.minHeight = 'min(60svh, 560px)'; message.style.display = 'grid'; message.style.placeItems = 'center';
   let locale = language === 'ja' ? 'ja' : 'zh';
   let destroyed = false;
@@ -1048,7 +1060,7 @@ export function createOutfitShowcase(options = {}) {
   let records = normalizeOutfits(Object.hasOwn(options, 'outfits') ? options.outfits : OUTFITS);
   let messages = normalizedCopy(options.copy);
   let locale = options.language === 'ja' ? 'ja' : 'zh';
-  let enabled = true, hintActive = false, destroyed = false;
+  let enabled = true, hintActive = false, hintConsumed = false, destroyed = false;
   let preloadEnabled = options.preloadEnabled !== false;
   let view = createOutfitShowcaseView({ ...options, outfits: records, language: locale, copy: messages });
   return {
@@ -1061,8 +1073,9 @@ export function createOutfitShowcase(options = {}) {
       const selectedId = view.outfitId, previousIndex = view.index;
       const selected = next.findIndex(item => item.id === selectedId);
       const initialIndex = selected >= 0 ? selected : Math.max(0, Math.min(previousIndex, next.length - 1));
+      hintConsumed ||= view.hintConsumed === true;
       view.destroy(); records = next;
-      view = createOutfitShowcaseView({ ...options, outfits: records, initialIndex, language: locale, copy: messages, preloadEnabled });
+      view = createOutfitShowcaseView({ ...options, outfits: records, initialIndex, language: locale, copy: messages, preloadEnabled, hintConsumed });
       view.setEnabled(enabled); view.setHintActive(hintActive);
       return true;
     },

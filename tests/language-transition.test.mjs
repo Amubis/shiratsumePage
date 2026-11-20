@@ -88,3 +88,68 @@ test('text discovery wraps button text alone and excludes offscreen labels, SVG 
   assert.equal(targets[0].textContent, '全部照片'); assert.equal(button.childNodes[1], svg);
   assert.equal(targets[1], heading); assert.equal(offscreen.childNodes[0].nodeType, 3);
 });
+
+test('target selectors discover the sort sticker, new localized controls and explicit component markers', () => {
+  const win = { innerWidth: 1000, innerHeight: 800, getComputedStyle: () => ({ display: 'block', opacity: '1', visibility: 'visible' }) };
+  const doc = { defaultView: win };
+  const node = (className, marked = false) => ({
+    ownerDocument: doc, localName: 'span', className, marked, isConnected: true, textContent: '可见译文',
+    closest: () => null, querySelector: () => null,
+    contains: () => false,
+    getBoundingClientRect: () => ({ top: 20, bottom: 40, left: 20, right: 160, width: 140, height: 20 }),
+  });
+  const sort = node('album-sort-tab'), empty = node('album-empty'), retry = node('comments-retry');
+  const review = node('comment-review-state'), manage = node('owner-tools-manage'), future = node('future-localized-control', true);
+  const nickname = node('comment-author'), prose = node('comment-body');
+  const candidates = [sort, empty, retry, review, manage, future, nickname, prose];
+  // Match the real selector string instead of returning all candidates no
+  // matter what the production selector contains.
+  const root = { ownerDocument: doc, querySelectorAll(selector) {
+    const selectors = selector.split(',').map(value => value.trim());
+    return candidates.filter(candidate => selectors.includes('.' + candidate.className) || candidate.marked && selectors.includes('[data-language-text]'));
+  } };
+  assert.deepEqual(languageTextTargets(root), [sort, empty, retry, review, manage, future]);
+});
+
+test('empty placeholders animate independently and restore native fields on completion and interruption', async t => {
+  const animations = [], overlays = [], handlers = new Map();
+  const classes = () => {
+    const values = new Set();
+    return { contains: name => values.has(name), add: name => values.add(name), remove: name => values.delete(name) };
+  };
+  const win = {
+    getComputedStyle: () => ({ display: 'block', opacity: '1', scale: '1', visibility: 'visible', fontSize: '14px', paddingLeft: '12px', paddingTop: '10px', borderLeftWidth: '1px', borderTopWidth: '1px' }),
+    addEventListener(name, handler) { handlers.set('window:' + name, handler); }, removeEventListener(name) { handlers.delete('window:' + name); },
+  };
+  const doc = { defaultView: win, hidden: false, addEventListener() {}, removeEventListener() {} };
+  const body = { append(node) { overlays.push(node); } }; doc.body = body;
+  doc.createElement = () => {
+    const overlay = { localName: 'span', ownerDocument: doc, isConnected: true, classList: classes(), style: {}, setAttribute() {},
+      remove() { this.isConnected = false; overlays.splice(overlays.indexOf(this), 1); },
+      animate(frames, options) {
+        let finish, reject;
+        const animation = { frames, options, finished: new Promise((yes, no) => { finish = yes; reject = no; }), finish() { finish(); }, cancel() { reject(new Error('cancelled')); } };
+        animations.push(animation); return animation;
+      } };
+    return overlay;
+  };
+  const input = { localName: 'input', value: '', placeholder: '匿名访客', classList: classes(), isConnected: true, closest: () => null,
+    getBoundingClientRect: () => ({ top: 50, bottom: 100, left: 20, right: 320, width: 300, height: 50 }) };
+  const typed = { ...input, classList: classes(), value: '访客已填写的昵称' };
+  const root = { ownerDocument: doc, setAttribute() {}, querySelectorAll: () => [input, typed],
+    addEventListener(name, handler) { handlers.set('root:' + name, handler); }, removeEventListener(name) { handlers.delete('root:' + name); } };
+  const api = createLanguageTransition({ root, getTargets: () => [] }); t.after(() => api.destroy());
+  const first = api.run(() => { input.placeholder = '匿名の訪問者'; });
+  assert.equal(overlays.length, 1); assert.equal(overlays[0].textContent, '匿名访客');
+  assert.equal(input.classList.contains('language-placeholder-hidden'), true);
+  assert.equal(typed.classList.contains('language-placeholder-hidden'), false);
+  animations[0].finish(); await tick();
+  assert.equal(api.phase, 'expanding'); assert.equal(overlays[0].textContent, '匿名の訪問者');
+  animations.at(-1).finish(); await tick(); await first;
+  assert.equal(overlays.length, 0); assert.equal(input.classList.contains('language-placeholder-hidden'), false);
+  assert.equal(typed.value, '访客已填写的昵称');
+  const pending = api.run(() => { input.placeholder = '匿名访客'; });
+  handlers.get('root:input')(); await pending;
+  assert.equal(api.phase, 'idle'); assert.equal(overlays.length, 0);
+  assert.equal(input.classList.contains('language-placeholder-hidden'), false);
+});

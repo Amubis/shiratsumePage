@@ -779,6 +779,7 @@ personalEntrance=createPersonalEntrance({section:$('#collection'),reducedMotion,
 waterFooter=createWaterFooter({container:$('.personal-water-footer'),reducedMotion});
 modelSwitchMotion=createModelSwitchMotion({root:$('#model-toggle'),reducedMotion,themes:{left:MODELS.shiratsume.theme,right:MODELS.preview.theme},onFrame:paintModelChange});
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
+for(const node of $$('#mobile-current,#video-message,#video-retry,#video-open,.model-intro-eyebrow,.model-intro-reading,.model-intro-lead,.model-intro-description,.top-links small'))node.setAttribute('data-language-text','');
 languageTransition=createLanguageTransition({root:document.body,reducedMotion:()=>reducedMotion()||Boolean(pendingModelChange),getTargets:()=>languageTextTargets(document.body)});
 if(!previewToken)ownerTools=createOwnerTools({root:document.body,getContent:()=>activeGarden,getLanguage:()=>language,onPublished:content=>applyGardenContent(content,{inline:true}),onSession:session=>commentsService.setOwnerSession(session)});
 function applyGardenContent(next,{inline=false}={}) {

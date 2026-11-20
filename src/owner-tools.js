@@ -38,7 +38,7 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   let observer = null, scheduled = false, refreshSequence = 0, lastFocusRefresh = 0, opener = null;
   const zh = () => getLanguage() !== 'ja';
   const text = (chinese, japanese) => zh() ? chinese : japanese;
-  const create = (tag, className, value) => { const node = doc.createElement(tag); node.className = className; if (value !== undefined) node.textContent = value; return node; };
+  const create = (tag, className, value) => { const node = doc.createElement(tag); node.className = className; if (value !== undefined) node.textContent = value; if (['owner-tools-manage', 'owner-tools-logout', 'owner-tools-heading', 'owner-tools-status', 'owner-tools-save', 'owner-tools-notice owner-tools-ui'].includes(className)) node.setAttribute('data-language-text', ''); return node; };
   const write = (node, value) => { if (node.textContent !== value) node.textContent = value; };
   const bind = (node, type, handler, options) => { if (!node?.addEventListener) return; node.addEventListener(type, handler, options); bindings.push(() => node.removeEventListener(type, handler, options)); };
   const button = (className, value) => { const node = create('button', className, value); node.type = 'button'; return node; };
@@ -130,7 +130,7 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     opener = origin || doc.activeElement; heading.textContent = title; save.textContent = submitLabel; message.textContent = ''; fields.replaceChildren();
     if (!dialog.open) dialog.showModal(); doc.body.classList.add('owner-dialog-open');
   }
-  function field(label, input) { const row = create('label', 'owner-tools-field'); row.append(create('span', '', label), input); fields.append(row); return input; }
+  function field(label, input) { const row = create('label', 'owner-tools-field'), caption = create('span', '', label); caption.setAttribute('data-language-text', ''); row.append(caption, input); fields.append(row); return input; }
   function openLogin(origin) {
     if (!api || destroyed) return;
     dialogKind = 'login';

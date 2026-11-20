@@ -1,6 +1,8 @@
 /* Individual scale leaves the title's skew and each navigation pose intact. */
 .language-text-motion { will-change: scale, opacity; }
 .language-text-motion-inline, .language-text-fragment { display: inline-block; }
+.language-placeholder-hidden::placeholder { color: transparent !important; opacity: 0 !important; }
+.language-placeholder-fragment { z-index: 100010; display: block; margin: 0; padding: 0; overflow: hidden; pointer-events: none; user-select: none; transform-origin: 50% 50%; }
 @media (prefers-reduced-motion: reduce) {
   .language-text-motion { will-change: auto; }
 }

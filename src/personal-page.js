@@ -83,14 +83,15 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
   const commentSections = new Set();
   const commentDrafts = new Map();
   const expandedComments = new Set();
-  function disposeComments() {
-    for (const section of commentSections) {
-      if (section.id && section.panel) {
-        commentDrafts.set(section.id, section.panel.draft);
-        if (section.panel.expanded) expandedComments.add(section.id); else expandedComments.delete(section.id);
-      }
-      section.panel?.destroy();
+  function disposeComment(section) {
+    if (section.id && section.panel) {
+      commentDrafts.set(section.id, section.panel.draft);
+      if (section.panel.expanded) expandedComments.add(section.id); else expandedComments.delete(section.id);
     }
+    section.panel?.destroy();
+  }
+  function disposeComments() {
+    for (const section of commentSections) disposeComment(section);
     commentSections.clear();
   }
   const element = (tag, className, text) => {
@@ -98,16 +99,19 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     if (text !== undefined) node.textContent = text;
     return node;
   };
+  const languageText = (tag, className, text) => {
+    const node = element(tag, className, text); node.setAttribute('data-language-text', ''); return node;
+  };
   const glyph = (className) => {
     const node = element('span', className); node.setAttribute('aria-hidden', 'true');
     node.innerHTML = cloverSVG({ className: 'clover-svg', variant: 'small' });
     return node;
   };
 
-  function createJournalFeed(journal, words) {
+  function createJournalFeed(journal, words, reusableComments = new Map()) {
     journal.classList.add('has-feed');
     const heading = element('h3', 'personal-journal-heading');
-    heading.append(glyph('personal-journal-clover'), element('span', '', words.journal));
+    heading.append(glyph('personal-journal-clover'), languageText('span', '', words.journal));
     const list = element('div', 'personal-journal-posts');
     list.id = `personal-journal-posts-${++journalSerial}`;
     list.tabIndex = -1;
@@ -116,7 +120,7 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     const pageCount = Math.max(1, Math.ceil(entries.length / JOURNAL_PAGE_SIZE));
     pageIndex = Math.min(pageIndex, pageCount - 1);
     pagination.hidden = pageCount <= 1;
-    journal.append(heading, element('p', 'personal-journal-note', words.journalNote), list, pagination);
+    journal.append(heading, languageText('p', 'personal-journal-note', words.journalNote), list, pagination);
     let pageBusy = false, motionSequence = 0, pageAnimation = null;
     const win = doc.defaultView;
     const reducedMotion = () => Boolean(win?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -152,7 +156,7 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
         const close = element('button', 'personal-image-close', '×');
         close.type = 'button'; close.setAttribute('aria-label', words.closeImage);
         image = element('img', 'personal-image-full'); image.decoding = 'async';
-        errorMessage = element('p', 'personal-image-error', words.imageUnavailable);
+        errorMessage = languageText('p', 'personal-image-error', words.imageUnavailable);
         errorMessage.hidden = true; errorMessage.setAttribute('role', 'status');
         image.addEventListener('error', () => { errorMessage.hidden = false; image.hidden = true; });
         close.addEventListener('click', closeViewer);
@@ -182,11 +186,11 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       article.setAttribute('data-journal-id',post.id);
       if (post.dated) {
         const date = new Date(post.timestamp);
-        const time = element('time', 'personal-journal-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
+        const time = languageText('time', 'personal-journal-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
         time.dateTime = date.toISOString(); article.append(time);
       }
-      if (postTitle.trim()) article.append(element('h4', 'personal-journal-title', postTitle));
-      if (postBody.trim()) article.append(element('p', 'personal-journal-body', postBody));
+      if (postTitle.trim()) article.append(languageText('h4', 'personal-journal-title', postTitle));
+      if (postBody.trim()) article.append(languageText('p', 'personal-journal-body', postBody));
       if (post.images.length) {
         const gallery = element('div', 'personal-journal-images');
         for (const source of post.images) {
@@ -203,11 +207,17 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
         article.append(gallery);
       }
       const commentsSection = element('section', 'personal-post-comments');
-      const commentRoot = element('div', 'personal-post-comments-content');
-      const panel = createAnonymousComments({ container: commentRoot, service: commentService, targetType: 'note', targetId: post.id, language: locale, copy: commentDictionary, previewLimit: 3 });
-      if (post.id) { panel.setDraft(commentDrafts.get(post.id)); panel.setExpanded(expandedComments.has(post.id)); }
-      const section = { id: post.id, panel, setService: next => panel.setService(next), updateCopy: () => panel.setCopy(commentDictionary) };
-      commentsSection.append(commentRoot); article.append(commentsSection); commentSections.add(section);
+      let section = post.id ? reusableComments.get(post.id) : null;
+      if (section) {
+        reusableComments.delete(post.id);
+        section.panel.setLanguage(locale);
+      } else {
+        const commentRoot = element('div', 'personal-post-comments-content');
+        const panel = createAnonymousComments({ container: commentRoot, service: commentService, targetType: 'note', targetId: post.id, language: locale, copy: commentDictionary, previewLimit: 3 });
+        if (post.id) { panel.setDraft(commentDrafts.get(post.id)); panel.setExpanded(expandedComments.has(post.id)); }
+        section = { id: post.id, root: commentRoot, panel, setService: next => panel.setService(next), updateCopy: () => panel.setCopy(commentDictionary) };
+      }
+      commentsSection.append(section.root); article.append(commentsSection); commentSections.add(section);
       return article;
     };
     const renderPagination = () => {
@@ -273,13 +283,19 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     renderEntries(); renderPagination();
   }
 
-  function render() {
+  function render({ preserveComments = false } = {}) {
     cancelPageMotion(); cancelPageMotion = () => {};
-    disposeComments();
+    const reusableComments = new Map();
+    if (preserveComments) {
+      for (const section of commentSections) {
+        if (section.id) reusableComments.set(section.id, section); else disposeComment(section);
+      }
+      commentSections.clear();
+    } else disposeComments();
     closeViewer(); closeViewer = () => {};
     const copy = dictionary[locale];
     const shell = element('div', 'personal-card');
-    const eyebrow = element('p', 'personal-eyebrow personal-reveal', copy.eyebrow);
+    const eyebrow = languageText('p', 'personal-eyebrow personal-reveal', copy.eyebrow);
     const avatarWrap = element('div', 'personal-avatar-wrap personal-reveal');
     const avatar = element('div', 'personal-avatar');
     const fallback = () => avatar.replaceChildren(glyph('personal-avatar-fallback'));
@@ -290,9 +306,9 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       avatar.append(image);
     } else { avatar.setAttribute('role', 'img'); avatar.setAttribute('aria-label', copy.avatar); fallback(); }
     avatarWrap.append(glyph('personal-avatar-clover'), avatar, glyph('personal-avatar-sprout'));
-    const name = element('h2', 'personal-name personal-reveal', localizeOwnerText(data.name, locale) || localizeOwnerText(DEFAULT_OWNER_PROFILE.name, locale));
+    const name = languageText('h2', 'personal-name personal-reveal', localizeOwnerText(data.name, locale) || localizeOwnerText(DEFAULT_OWNER_PROFILE.name, locale));
     name.id = 'personal-heading';
-    const bio = element('p', 'personal-bio personal-reveal', localizeOwnerText(data.bio, locale)); bio.hidden = !bio.textContent;
+    const bio = languageText('p', 'personal-bio personal-reveal', localizeOwnerText(data.bio, locale)); bio.hidden = !bio.textContent;
     const links = element('div', 'personal-socials personal-reveal'); links.setAttribute('role', 'group'); links.setAttribute('aria-label', copy.links);
     for (const platform of PERSONAL_PLATFORMS) {
       const url = data.socials[platform.id];
@@ -303,29 +319,31 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       link.setAttribute('aria-label', url ? label : `${label} · ${copy.pending}`);
       const icon = element('span', `personal-social-icon icon-${platform.id}`); icon.setAttribute('aria-hidden', 'true');
       icon.style.setProperty('--platform-icon', `url("${platform.icon}")`);
-      const text = element('span', 'personal-social-label', label);
+      const text = languageText('span', 'personal-social-label', label);
       link.append(icon, text); links.append(link);
     }
     shell.append(eyebrow, avatarWrap, name, bio, links);
     if (data.journal.mode !== 'hidden') {
       const url = data.journal.mode === 'link' ? data.journal.url : null;
       const journal = element('aside', 'personal-journal personal-reveal'); journal.setAttribute('aria-label', copy.journal);
-      if (data.journal.mode !== 'link' && entries.length) createJournalFeed(journal, copy);
+      if (data.journal.mode !== 'link' && entries.length) createJournalFeed(journal, copy, reusableComments);
       else {
         const entry = element(url ? 'a' : 'button', 'personal-journal-entry');
         if (url) { entry.href = url; entry.target = '_blank'; entry.rel = 'noopener noreferrer'; }
         else { entry.type = 'button'; entry.disabled = true; entry.title = copy.journalEmpty; }
-        entry.append(glyph('personal-journal-clover'), element('span', '', copy.journal), element('small', '', url ? '↗' : copy.soon));
-        journal.append(entry, element('p', 'personal-journal-note', copy.journalNote));
+        entry.append(glyph('personal-journal-clover'), languageText('span', '', copy.journal), languageText('small', '', url ? '↗' : copy.soon));
+        journal.append(entry, languageText('p', 'personal-journal-note', copy.journalNote));
       }
       shell.append(journal);
     }
+    for (const section of reusableComments.values()) disposeComment(section);
+    reusableComments.clear();
     root.classList.add('personal-page'); root.replaceChildren(shell);
   }
   render();
   return {
-    setLanguage(next) { if (destroyed) return; locale = next === 'ja' ? 'ja' : 'zh'; render(); },
-    setCopy(next) { if (destroyed) return; dictionary = copyDictionary(next); render(); },
+    setLanguage(next) { if (destroyed) return; locale = next === 'ja' ? 'ja' : 'zh'; render({ preserveComments: true }); },
+    setCopy(next) { if (destroyed) return; dictionary = copyDictionary(next); render({ preserveComments: true }); },
     setCommentsService(next) { if (destroyed) return; commentService = next; commentSections.forEach(section => section.setService(next)); },
     setCommentsCopy(next) { if (destroyed) return; commentDictionary = normalizeCommentsCopy(next); commentSections.forEach(section => section.updateCopy()); },
     setPosts(next) { if (destroyed) return; entries = publishedPosts(next); pageIndex = Math.min(pageIndex, Math.max(0, Math.ceil(entries.length / JOURNAL_PAGE_SIZE) - 1)); render(); },

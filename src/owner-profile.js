@@ -78,6 +78,7 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
   const element = (tag, className) => {
     const node = doc.createElement(tag);
     node.className = className;
+    if (['owner-name', 'owner-bio', 'owner-contacts-heading', 'owner-empty', 'owner-contact-link'].includes(className)) node.setAttribute('data-language-text', '');
     return node;
   };
   const button = element('button', 'owner-avatar');

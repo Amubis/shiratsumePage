@@ -167,6 +167,9 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');
   const playerContent = element('div', 'album-player-content'); const playerStage = element('div', 'album-player-stage'); const playerComments = element('aside', 'album-player-comments');
   const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerDescription = element('p', 'album-player-description'); const playerCaption = element('figcaption', 'album-player-caption');
+  // Localized labels declare their text boundary where they are created, so
+  // new controls do not depend on a distant list of CSS class selectors.
+  for (const node of [title, coverSmall, filterButton, orderButton, groupCount, empty, sourceNote, previous, mode, next, playerDescription, playerCaption]) node.setAttribute('data-language-text', '');
   playerFigure.append(playerImage, playerDescription, playerCaption); playerStage.append(playerFigure); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent, playerPrevious, playerNext); doc.body.append(dialog);
   const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
   const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion,onRequestClose:()=>closePlayer()});

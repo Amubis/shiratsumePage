@@ -479,6 +479,9 @@ test('chronological sticker cycles directly like the model filter without a drop
  const sort = f.find('album-sort');
  assert.equal(sort.localName, 'button');
  assert.equal(sort.classList.contains('album-sort-tab'), true);
+ assert.equal(sort.getAttribute('data-language-text'), '', 'the real sort control declares its translated text boundary');
+ assert.equal(f.find('album-filter-tab').getAttribute('data-language-text'), '');
+ assert.equal(f.find('album-empty').getAttribute('data-language-text'), '');
  assert.equal(sort.parentElement, f.find('album-filter-tab').parentElement);
  assert.equal(f.container.all(node => node.localName === 'select' || node.localName === 'option').length, 0);
  assert.equal(sort.textContent, '由新到旧');

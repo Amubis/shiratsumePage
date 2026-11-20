@@ -195,12 +195,75 @@ test('an idle hint waits for the active chapter, appears once, and quietly expir
   f.doc.advanceTimers(1);
   assert.equal(f.cue.hidden, false);
   assert.equal(f.cue.classList.contains('is-hint-visible'), true);
+  assert.equal(f.cue.classList.contains('is-hint-static'), true);
+  assert.equal(f.pair.classList.contains('is-hint-demonstrating'), false);
   f.doc.advanceTimers(OUTFIT_HINT_TIMING.duration);
   assert.equal(f.cue.hidden, true);
+  assert.equal(f.cue.classList.contains('is-hint-static'), false);
   assert.equal(f.doc.pendingTimers(), 0);
   f.api.setHintActive(false); f.api.setHintActive(true); f.api.setLanguage('zh');
   f.doc.advanceTimers(20000);
   assert.equal(f.cue.hidden, true, 'the same page cannot repeatedly prompt an idle visitor');
+});
+
+test('the unclipped hand demonstrates a touch without changing either portrait or consuming a real press', async t => {
+  const f = fixture(t, { reducedMotion: () => false });
+  const anchor = f.container.find('outfit-cue-anchor'), cueArt = f.cue.find('outfit-cue-art');
+  assert.ok(f.pair.children.includes(anchor), 'the cue is outside both clipped image buttons');
+  assert.ok(!f.stage.children.includes(f.cue));
+  assert.equal(anchor.getAttribute('aria-hidden'), 'true');
+  assert.match(cueArt.innerHTML, /class="outfit-cue-icon"/);
+  assert.match(cueArt.innerHTML, /fill="#fff"/);
+  assert.doesNotMatch(cueArt.innerHTML, /clover/);
+  assert.equal(cueArt.all(node => node.classList.contains('outfit-cue-ripple')).length, 2);
+  const sources = [f.image.src, f.backImage.src];
+  f.api.setHintActive(true); f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay);
+  assert.equal(f.pair.classList.contains('is-hint-demonstrating'), true);
+  assert.equal(f.cue.classList.contains('is-hint-static'), false);
+  assert.deepEqual([f.image.src, f.backImage.src], sources);
+  assert.equal(f.api.index, 0); assert.deepEqual(f.changed, []);
+  assert.equal(f.doc.animations.length, 0, 'a hint does not invoke the real press or flip controller');
+  f.stage.emit('pointerdown', { pointerId: 1 });
+  assert.equal(f.cue.hidden, true);
+  assert.equal(f.pair.classList.contains('is-hint-demonstrating'), false);
+  assert.equal(f.stage.classList.contains('is-pressed'), true);
+  f.stage.emit('pointercancel');
+  assert.equal(await f.api.goTo(1, { animate: false }), true);
+  assert.equal(f.api.index, 1); assert.deepEqual(f.changed, [1]);
+  assert.deepEqual([f.image.src, f.backImage.src], [OUTFITS[1].front, OUTFITS[1].back]);
+});
+
+test('visible demonstrations release their state when the chapter, model, document or component is closed', t => {
+  for (const stop of [f => f.api.setHintActive(false), f => f.api.setEnabled(false), f => { f.doc.hidden = true; f.doc.emit('visibilitychange'); }, f => f.api.destroy()]) {
+    const f = fixture(t, { reducedMotion: () => false });
+    f.api.setHintActive(true); f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay);
+    assert.equal(f.pair.classList.contains('is-hint-demonstrating'), true);
+    stop(f);
+    assert.equal(f.cue.hidden, true);
+    assert.equal(f.pair.classList.contains('is-hint-demonstrating'), false);
+    assert.equal(f.doc.pendingTimers(), 0);
+  }
+});
+
+test('replacing outfit data cleans the old hint and retains the once-per-page reminder limit', async t => {
+  const f = fixture(t, { reducedMotion: () => false });
+  f.api.setHintActive(true); f.doc.advanceTimers(OUTFIT_HINT_TIMING.delay);
+  assert.equal(f.pair.classList.contains('is-hint-demonstrating'), true);
+  f.api.setOutfits(OUTFITS.map(outfit => ({ ...outfit, label: 'Updated outfit' })));
+  assert.equal(f.cue.hidden, true);
+  assert.equal(f.pair.classList.contains('is-hint-demonstrating'), false);
+  const nextCue = f.container.find('outfit-cue');
+  f.doc.advanceTimers(20000);
+  assert.equal(nextCue.hidden, true); assert.equal(f.doc.pendingTimers(), 0);
+  f.api.setOutfits([]); f.api.setOutfits(OUTFITS);
+  f.doc.advanceTimers(20000);
+  assert.equal(f.container.find('outfit-cue').hidden, true);
+
+  const used = fixture(t);
+  await used.api.goTo(1, { animate: false });
+  used.api.setHintActive(true); used.api.setOutfits(OUTFITS.slice().reverse());
+  used.doc.advanceTimers(20000);
+  assert.equal(used.container.find('outfit-cue').hidden, true, 'configuration edits do not re-prompt a visitor who already switched outfits');
 });
 
 test('hover and keyboard focus postpone the hint until a fresh quiet interval', (t) => {
@@ -410,7 +473,8 @@ test('both views decode before either displayed image or its shadow switches', a
 
 test('rear hover and keyboard focus inspect without advancing, while its label explains next-outfit activation', (t) => {
   const f = fixture(t);
-  assert.deepEqual(f.pair.children.map(node => node.localName), ['svg', 'button', 'button']);
+  assert.deepEqual(f.pair.children.map(node => node.localName), ['svg', 'button', 'button', 'span']);
+  assert.equal(f.pair.children.at(-1).classList.contains('outfit-cue-anchor'), true);
   assert.equal(f.stage.children.some(node => node.localName === 'button'), false);
   assert.equal(f.backStage.getAttribute('aria-pressed'), null, 'advancing is not a toggle action');
   assert.ok(f.backStage.getAttribute('aria-label').includes('背面'));
@@ -799,6 +863,7 @@ test('empty and single-outfit states remain readable and can grow back into a co
   assert.equal(f.api.index, -1);
   assert.equal(f.container.all(node => node.localName === 'img').length, 0);
   assert.equal(f.container.find('outfit-empty').textContent, '还没有服装展示。');
+  assert.equal(f.container.find('outfit-empty').getAttribute('data-language-text'), '');
   assert.equal(await f.api.next(), false);
   f.api.setLanguage('ja');
   assert.equal(f.container.find('outfit-empty').textContent, 'コーデはまだ登録されていません。');
@@ -806,6 +871,9 @@ test('empty and single-outfit states remain readable and can grow back into a co
   assert.equal(f.api.index, 0);
   assert.equal(f.container.find('outfit-stage').disabled, true);
   assert.equal(f.container.find('outfit-dots').hidden, true);
+  f.api.setHintActive(true); f.doc.advanceTimers(20000);
+  assert.equal(f.container.find('outfit-cue').hidden, true);
+  assert.equal(f.doc.pendingTimers(), 0);
   const rear = f.container.find('outfit-back-stage');
   assert.equal(rear.disabled, false);
   rear.emit('pointerenter', { pointerType: 'mouse' });

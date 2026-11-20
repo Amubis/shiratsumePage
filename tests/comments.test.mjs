@@ -100,6 +100,9 @@ test('unnamed comments use the visitor language without changing a chosen nickna
   const panel=createAnonymousComments({container:f.container,service:client,targetId:'photo',language:'ja'});t.after(()=>panel.destroy());
   await tick();
   assert.deepEqual(f.container.querySelectorAll('.comment-author').map(node=>node.textContent),[COMMENTS_COPY.ja.anonymous,'Amu']);
+  assert.equal(f.container.querySelectorAll('.comment-author')[0].getAttribute('data-language-text'), '');
+  assert.equal(f.container.querySelectorAll('.comment-author')[1].getAttribute('data-language-text'), null);
+  assert.equal(f.find('.comment-body').getAttribute('data-language-text'), null, 'visitor prose is not a translated UI label');
   panel.setLanguage('zh');
   assert.deepEqual(f.container.querySelectorAll('.comment-author').map(node=>node.textContent),[COMMENTS_COPY.zh.anonymous,'Amu']);
 });
@@ -176,7 +179,15 @@ test('journal comments follow five-post pages and preserve drafts and expansion 
   assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 5); assert.equal(client.calls.length, 5);
   assert.equal(f.find('.personal-post-comments').localName, 'section'); await tick();
   assert.equal(f.find('.comments-form').hidden, false); assert.equal(client.calls[0].targetType, 'note'); assert.equal(client.calls[0].targetId, 'note-0');
-  f.find('.comments-body').value = '切语言时保留'; f.find('.comments-more').emit('click'); page.setLanguage('ja'); await tick();
+  const originalPanel = f.find('.personal-post-comments-content'), originalInput = f.find('.comments-body');
+  f.find('.comments-body').value = '切语言时保留'; f.find('.comments-more').emit('click'); page.setLanguage('ja');
+  assert.equal(f.find('.personal-post-comments-content'), originalPanel, 'changing language moves the loaded panel rather than replacing it');
+  assert.equal(f.find('.comments-body'), originalInput);
+  assert.equal(client.calls.length, 5, 'language changes do not request the same comments again');
+  assert.equal(client.listeners.size, 5, 'language changes keep exactly one subscription per visible post');
+  assert.equal(f.find('.comments-submit').textContent, COMMENTS_COPY.ja.submit, 'new labels exist synchronously for the TV reveal');
+  assert.equal(f.find('.comment-date').getAttribute('data-language-text'), '');
+  await tick();
   assert.equal(f.find('.comments-body').value, '切语言时保留'); assert.equal(f.find('.comments-submit').textContent, COMMENTS_COPY.ja.submit);
   assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
   f.find('.personal-journal-next').emit('click'); await tick();
@@ -229,7 +240,12 @@ test('expanded journal threads and owner reply drafts survive language rendering
   const page = createPersonalPage({ root: f.container, commentsService: client, posts: [{ id: 'note', body: '正文', published: true }] }); t.after(() => page.destroy()); await tick();
   f.find('.comments-more').emit('click');
   f.container.querySelectorAll('.comment-reply-button')[3].emit('click'); f.find('.comments-body').value = '回复草稿';
-  page.setLanguage('ja'); await tick();
+  const callsBefore = client.calls.length, draftInput = f.find('.comments-body');
+  page.setLanguage('ja');
+  assert.equal(client.calls.length, callsBefore);
+  assert.equal(f.find('.comments-body'), draftInput);
+  assert.match(f.find('.comments-reply-target').textContent, /d/, 'loaded reply target stays available during the synchronous language swap');
+  await tick();
   assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
   assert.equal(f.find('.comments-body').value, '回复草稿');
   assert.match(f.find('.comments-reply-target').textContent, /d/);
@@ -238,6 +254,30 @@ test('expanded journal threads and owner reply drafts survive language rendering
   panel.setDraft({ body: '已保存回复', replyId: 'e' }); await tick();
   assert.equal(panel.expanded, true); assert.equal(g.container.querySelectorAll('.comment-reply-button').length, 5);
   assert.equal(g.find('.comments-submit').disabled, false);
+});
+
+test('language changes preserve pending owner threads and in-flight comment requests until their own completion', async t => {
+  const f = documentFixture(), client = serviceStub();
+  client.ownerSession = { authenticated: true, username: 'Amubis' };
+  client.moderateComment = async () => {};
+  let complete, request;
+  client.getComments = target => { client.calls.push(target); request = target; return new Promise(resolve => { complete = resolve; }); };
+  const page = createPersonalPage({ root: f.container, commentsService: client, posts: [{ id: 'note', body: { zh: '正文', ja: '本文' }, published: true }] });
+  t.after(() => page.destroy());
+  page.setLanguage('ja');
+  assert.equal(client.calls.length, 1);
+  assert.equal(request.signal.aborted, false, 'a language swap does not abort a still relevant request');
+  complete([comment('waiting', { status: 'pending' }), comment('approved')]); await tick();
+  assert.equal(f.find('.comment-review-state').textContent, COMMENTS_COPY.ja.pendingReview);
+  assert.equal(f.find('.comment-review-state').getAttribute('data-language-text'), '');
+  assert.equal(f.find('.comment-approve-button').getAttribute('data-language-text'), '');
+  assert.equal(f.find('.comments-retry').getAttribute('data-language-text'), '');
+  assert.equal(f.find('.comments-more').getAttribute('data-language-text'), '');
+  page.setLanguage('zh');
+  assert.equal(f.find('.comment-review-state').textContent, COMMENTS_COPY.zh.pendingReview);
+  assert.equal(client.calls.length, 1);
+  page.setPosts([]);
+  assert.equal(client.listeners.size, 0, 'removing the feed still disposes the retained panel');
 });
 
 test('editable album captions, world and small cover labels reach the visitor in both languages', t => {

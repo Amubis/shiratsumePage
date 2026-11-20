@@ -2,22 +2,24 @@ export const LANGUAGE_TRANSITION_TIMING = Object.freeze({ close: 220, open: 280 
 
 const TEXT_SELECTORS = [
   '[data-language-text]', '[data-i18n]', '#language-label', '.language-other', '.top-links small',
+  '#mobile-current', '#video-message', '#video-retry', '#video-open', '.outfit-empty',
   '.hero-copy > .eyebrow', '#model-heading', '.model-intro-eyebrow', '#hello-heading',
   '.model-intro-reading', '.model-intro-lead', '.model-intro-description', '.section-footer > span',
-  '.album-title', '.album-cover-note', '.album-filter-tab', '.album-tab', '.album-group-count',
+  '.album-title', '.album-cover-note', '.album-filter-tab', '.album-sort-tab', '.album-tab', '.album-group-count', '.album-empty',
   '.album-source-note', '.album-player-description', '.album-player-caption',
   '.owner-name', '.owner-bio', '.owner-contacts-heading', '.owner-contact-link', '.owner-empty',
   '.personal-eyebrow', '.personal-name', '.personal-bio', '.personal-social-label',
   '.personal-journal-heading', '.personal-journal-entry', '.personal-journal-note',
   '.personal-journal-more', '.personal-journal-title', '.personal-journal-body',
   '.personal-journal-date', '.personal-post-comments-summary',
-  '.comments-heading', '.comments-note', '.comments-load-state', '.comments-label-text',
+  '.comments-heading', '.comments-note', '.comments-load-state', '.comments-label-text', '.comments-retry', '.comments-more',
   '.comments-submit', '.comments-submit-state', '.comments-count', '.comments-cancel-reply',
-  '.comments-reply-target > span', '.comment-owner', '.comment-date', '.comment-reply-button',
+  '.comments-reply-target > span', '.comment-owner', '.comment-date', '.comment-reply-button', '.comment-review-state', '.comment-moderation-button',
+  '.owner-tools-manage', '.owner-tools-logout', '.owner-tools-heading', '.owner-tools-status', '.owner-tools-save', '.owner-tools-field > span',
 ].join(',');
 
-function visible(node, win) {
-  if (!node || node.isConnected === false || !String(node.textContent || '').trim()) return false;
+function visible(node, win, requireText = true) {
+  if (!node || node.isConnected === false || requireText && !String(node.textContent || '').trim()) return false;
   if (node.closest?.('[hidden], [aria-hidden="true"], .sr-only, dialog:not([open])')) return false;
   const style = win?.getComputedStyle?.(node);
   if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0)) return false;
@@ -49,6 +51,42 @@ export function languageTextTargets(root) {
   const candidates = Array.from(root?.querySelectorAll?.(TEXT_SELECTORS) || []).filter(node => visible(node, win)).flatMap(textParts);
   const nodes = [...new Set(candidates)].filter(node => visible(node, win));
   return nodes.filter(node => !nodes.some(parent => parent !== node && parent.contains?.(node)));
+}
+
+/** Native placeholders cannot scale independently of their input's border and value. */
+function placeholderTargets(root, entries) {
+  const doc = root.ownerDocument, win = doc.defaultView;
+  if (!doc.createElement || !doc.body || !win?.getComputedStyle) return [];
+  const fields = Array.from(root.querySelectorAll?.('input[placeholder], textarea[placeholder]') || []);
+  return fields.flatMap(field => {
+    if (field.value || !String(field.placeholder || '').trim() || !visible(field, win, false)) return [];
+    const rect = field.getBoundingClientRect?.();
+    if (!rect) return [];
+    const style = win.getComputedStyle(field), placeholder = win.getComputedStyle(field, '::placeholder');
+    const number = value => Number.parseFloat(value) || 0;
+    const left = number(style.borderLeftWidth) + number(style.paddingLeft);
+    const right = number(style.borderRightWidth) + number(style.paddingRight);
+    const top = number(style.borderTopWidth) + number(style.paddingTop);
+    const bottom = number(style.borderBottomWidth) + number(style.paddingBottom);
+    const overlay = doc.createElement('span');
+    overlay.className = 'language-placeholder-fragment';
+    overlay.textContent = field.placeholder;
+    overlay.setAttribute('aria-hidden', 'true');
+    Object.assign(overlay.style, {
+      position: 'fixed', left: `${rect.left + left}px`, top: `${rect.top + top}px`,
+      width: `${Math.max(0, rect.width - left - right)}px`, maxHeight: `${Math.max(0, rect.height - top - bottom)}px`,
+      fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
+      fontStyle: style.fontStyle, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing,
+      textAlign: style.textAlign, textTransform: style.textTransform, direction: style.direction,
+      color: placeholder.color || style.color, opacity: placeholder.opacity || '1',
+      whiteSpace: field.localName === 'textarea' ? 'pre-wrap' : 'pre', overflowWrap: style.overflowWrap || 'break-word',
+    });
+    const wasHidden = field.classList.contains('language-placeholder-hidden');
+    field.classList.add('language-placeholder-hidden');
+    (field.closest?.('dialog[open]') || doc.body).append(overlay);
+    entries.push({ field, overlay, wasHidden });
+    return [overlay];
+  });
 }
 
 function scaleOf(style) {
@@ -83,6 +121,10 @@ export function createLanguageTransition({ root, reducedMotion = () => false, ge
     current.nodes.splice(0).forEach(({ node, motion, inline }) => {
       if (!motion) node.classList.remove('language-text-motion');
       if (!inline) node.classList.remove('language-text-motion-inline');
+    });
+    current.placeholders.splice(0).forEach(({ field, overlay, wasHidden }) => {
+      if (!wasHidden) field.classList.remove('language-placeholder-hidden');
+      overlay.remove();
     });
   }
   function commit(current) {
@@ -131,7 +173,7 @@ export function createLanguageTransition({ root, reducedMotion = () => false, ge
       await animate(current, 'close', targets);
       if (operation !== current) return;
       release(current); commit(current);
-      const next = [...new Set(getTargets() || [])].filter(node => node?.isConnected !== false);
+      const next = [...new Set([...(getTargets() || []), ...placeholderTargets(root, current.placeholders)])].filter(node => node?.isConnected !== false);
       if (doc.hidden || reduced() || !next.length || next.some(node => typeof node.animate !== 'function')) { end(current, true); return; }
       await animate(current, 'open', next);
       if (operation === current) end(current, true);
@@ -143,10 +185,10 @@ export function createLanguageTransition({ root, reducedMotion = () => false, ge
     cancel();
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const current = { commit: nextCommit, committed: false, animations: [], nodes: [], frame: null, resolve, reject, promise };
+    const current = { commit: nextCommit, committed: false, animations: [], nodes: [], placeholders: [], frame: null, resolve, reject, promise };
     operation = current;
     try {
-      const targets = [...new Set(getTargets() || [])].filter(node => node?.isConnected !== false);
+      const targets = [...new Set([...(getTargets() || []), ...(!doc.hidden && !reduced() ? placeholderTargets(root, current.placeholders) : [])])].filter(node => node?.isConnected !== false);
       if (doc.hidden || reduced() || !targets.length || targets.some(node => typeof node.animate !== 'function')) { end(current, true, true); return promise; }
       monitor(current); void transition(current, targets);
     } catch (error) { end(current, false, false, error); }
@@ -154,6 +196,8 @@ export function createLanguageTransition({ root, reducedMotion = () => false, ge
   }
   bind(doc, 'visibilitychange', () => { if (doc.hidden) finish(); });
   bind(win, 'resize', finish);
+  bind(win, 'scroll', finish);
+  bind(root, 'input', finish);
   status('idle');
   return {
     run, finish, cancel,
