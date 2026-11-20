@@ -7,6 +7,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createAdminApi, sha256 } from './admin-api.mjs';
 import { createLocalCommentsStore } from './local-comments-storage.mjs';
+import { createLocalPhotoLikesStore } from './local-photo-likes-storage.mjs';
 import { embedOwnerProfileData } from '../scripts/owner-profile-data.mjs';
 import { embedGardenData } from '../scripts/garden-data.mjs';
 
@@ -139,7 +140,7 @@ export async function createLocalAdminServer({ rootDir = projectRoot, dataDir = 
   const root = await realpath(rootDir);
   const defaultContent = seed || JSON.parse(await readFile(resolve(root, 'data/garden.json'), 'utf8'));
   const storage = createLocalStorage(dataDir);
-  const handler = createAdminApi({ storage, commentsStore: createLocalCommentsStore(dataDir), seed: defaultContent, mode: 'local', publicSiteOrigins, clientAddress: () => 'local-loopback', onError });
+  const handler = createAdminApi({ storage, commentsStore: createLocalCommentsStore(dataDir), photoLikesStore: createLocalPhotoLikesStore(dataDir), seed: defaultContent, mode: 'local', publicSiteOrigins, clientAddress: () => 'local-loopback', onError });
   const server = createServer(async (incoming, outgoing) => {
     try {
       const origin = localRequestOrigin(incoming);

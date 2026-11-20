@@ -1,0 +1,18 @@
+.photo-like { display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:42px;min-height:30px;padding:5px 9px;border:1px solid color-mix(in srgb,var(--theme-dark) 25%,transparent);border-radius:999px;color:var(--theme-dark);background:color-mix(in srgb,var(--paper,#fffdf7) 94%,transparent);box-shadow:0 2px 6px #24271b17;cursor:pointer;font-family:var(--body);font-size:11px;line-height:1;user-select:none;transition:scale .3s cubic-bezier(.2,.75,.3,1.2),background-color .28s var(--water-easing,var(--easing)),box-shadow .3s var(--water-settle,var(--easing)),color .28s var(--water-easing,var(--easing)); }
+.photo-like:hover:not(:disabled),.photo-like:focus-visible { scale:1.1;box-shadow:0 3px 9px #24271b24; }
+.photo-like:active:not(:disabled) { scale:.92; }
+.photo-like:focus-visible { outline:2px solid var(--theme-dark);outline-offset:3px; }
+.photo-like:disabled { cursor:default; }
+.photo-like.is-liked { background:var(--theme);color:var(--ink,#25291d); }
+.photo-like[aria-busy="true"] { opacity:.65; }
+.photo-like-heart { display:block;width:15px;height:15px;flex:none; }
+.photo-like-heart svg { display:block;width:100%;height:100%;overflow:visible; }
+.photo-like-heart path { stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;fill:transparent;transition:fill .25s var(--water-easing,var(--easing)); }
+.photo-like.is-liked .photo-like-heart path { fill:currentColor; }
+.photo-like-count { font-variant-numeric:tabular-nums; }
+.photo-like-label,.photo-like-status { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0; }
+.album-photo > .photo-like { position:absolute;right:5px;bottom:5px;z-index:3;min-width:36px;min-height:27px;padding:4px 7px;font-size:10px; }
+.album-photo > .photo-like .photo-like-heart { width:13px;height:13px; }
+.album-player .photo-like { flex:none;align-self:flex-end;margin:10px 0 0;min-height:34px; }
+@media(max-width:760px) { .album-photo > .photo-like { right:1px;bottom:2px;min-height:30px; } }
+@media(prefers-reduced-motion:reduce) { .photo-like,.photo-like-heart path { transition:none; }.photo-like:hover:not(:disabled),.photo-like:focus-visible,.photo-like:active:not(:disabled) { scale:1; } }

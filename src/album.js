@@ -4,6 +4,8 @@ import { createAlbumPageMotion } from './album-page-motion.js';
 import { createAnonymousComments } from './comments.js';
 import { planAlbumLayout } from './album-layout.js';
 import { albumNeighborOffsets } from './album-neighbors.js';
+import { paginateAlbumGroup } from './album-pagination.js';
+import { createPhotoLikeButton } from './photo-likes.js';
 
 /** Public content records; a future CMS can replace this array through setMedia(). */
 export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) => Object.freeze({
@@ -17,6 +19,7 @@ export const ALBUM_MEDIA = Object.freeze(Array.from({ length: 4 }, (_, index) =>
 export const ALBUM_VIEWS = Object.freeze(['month', 'year']);
 export const ALBUM_ORDERS = Object.freeze(['desc', 'asc']);
 const PAGE_SIZES = Object.freeze({ month: 8, year: 12 });
+const popularitySnapshot = service => Object.fromEntries(Object.entries(service?.snapshot?.() || {}).filter(([, count]) => Number.isFinite(count) && count > 0));
 export const ALBUM_COPY = Object.freeze({
   zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', month: '按月', year: '按年', largerView: '更大视图', smallerView: '更小视图', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片', pagePosition: '相册页位置', dateOrder: '拍摄时间排序', newestFirst: '由新到旧', oldestFirst: '由旧到新' },
   ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', month: '月ごと', year: '年ごと', largerView: '大きく表示', smallerView: '小さく表示', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません', pagePosition: 'アルバムのページ位置', dateOrder: '撮影日時の並び順', newestFirst: '新しい順', oldestFirst: '古い順' },
@@ -52,7 +55,7 @@ export function normalizeAlbumMedia(media) {
   });
 }
 
-export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'all', view = 'month', order = 'desc' } = {}) {
+export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'all', view = 'month', order = 'desc', layout = null, likes = {} } = {}) {
   const mode = ALBUM_VIEWS.includes(view) ? view : 'month';
   const direction = order === 'asc' ? 1 : -1;
   const filtered = normalizeAlbumMedia(media).filter((item) => filter === 'all' || item.modelIds.includes(modelId));
@@ -66,6 +69,7 @@ export function buildAlbumPages(media, { modelId = 'shiratsume', filter = 'all',
   const keys = [...groups.keys()].sort((a, b) => a === 'undated' ? 1 : b === 'undated' ? -1 : direction * a.localeCompare(b));
   return keys.flatMap((key) => {
     const items = groups.get(key).sort((a, b) => direction * String(a.takenAt || '').localeCompare(String(b.takenAt || '')));
+    if (layout?.width > 0 && layout?.height > 0) return paginateAlbumGroup(items, { ...layout, view: mode, likes }).map((items, groupPage) => ({ key, items, groupPage }));
     const pages = [];
     for (let offset = 0; offset < items.length; offset += PAGE_SIZES[mode]) pages.push({ key, items: items.slice(offset, offset + PAGE_SIZES[mode]), groupPage: pages.length });
     return pages;
@@ -80,7 +84,7 @@ export function albumPhotoPose(id, slot = 0, count = 8) {
     rotation: (random() * 2 - 1) * 5.5, depth: 2 + Math.floor(random() * 8), scale: .9 + random() * .2 };
 }
 
-export function createAlbum({ container, language = 'zh', modelId = 'shiratsume', media = ALBUM_MEDIA, copy, commentsService = null, commentsCopy, reducedMotion = () => false, onReady = () => {} } = {}) {
+export function createAlbum({ container, language = 'zh', modelId = 'shiratsume', media = ALBUM_MEDIA, copy, commentsService = null, commentsCopy, likesService = null, reducedMotion = () => false, onReady = () => {} } = {}) {
   if (!container?.ownerDocument) throw new TypeError('An album container is required.');
   const doc = container.ownerDocument;
   const win = doc.defaultView;
@@ -109,6 +113,11 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let layoutFrame = null;
   let layoutObserver = null;
   let neighborLayout = [];
+  let packingGeometry = null;
+  let packingLikes = popularitySnapshot(likesService);
+  let playerLike = null;
+  const knownAspects = new Map();
+  let pageCache = null;
 
   const element = (tag, className = '') => { const node = doc.createElement(tag); node.className = className; return node; };
   const bind = (node, name, handler, list = bindings) => {
@@ -178,6 +187,42 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     return Boolean(section?.classList.contains('is-current') && !['album-entry-prepared','album-entry-playing','album-exit-playing','album-boundary-seeking'].some(name=>section.classList.contains(name)));
   }});
 
+  function measurePackingSpace() {
+    // client sizes exclude the entrance's transient transforms. A narrow page
+    // may grow, so use its viewport budget rather than its own packed height.
+    const width = grid.clientWidth, height = grid.clientHeight;
+    if (!(width > 0 && height > 0) || !Number.isFinite(win.innerWidth)) return packingGeometry;
+    const mobile = win.innerWidth <= 760;
+    const style = cards[0] ? win.getComputedStyle?.(cards[0]) || {} : {};
+    const edge = (padding, border, fallback) => {
+      const value = parseFloat(style[padding]), line = parseFloat(style[border]);
+      return Number.isFinite(value) ? value + (Number.isFinite(line) ? line : 0) : fallback;
+    };
+    return { width: Math.round(width), height: mobile ? Math.max(180, win.innerHeight * .6 || 400) : Math.round(height), mobile,
+      paper: { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', mobile ? 21 : 26) } };
+  }
+  function currentPages() {
+    const key = JSON.stringify([modelId, filter, view, order, packingGeometry, packingLikes]);
+    if (pageCache?.records === records && pageCache.key === key) return pageCache.pages;
+    const media = records.map(item => knownAspects.has(item.id) ? { ...item, width: knownAspects.get(item.id), height: 1 } : item);
+    const result = buildAlbumPages(media, { modelId, filter, view, order, layout: packingGeometry, likes: packingLikes });
+    pageCache = { records, key, pages: result };
+    return result;
+  }
+  function syncPacking(reason, preserveAnchor = false) {
+    const anchor = preserveAnchor ? pages[pageIndex]?.items[0]?.id : null;
+    packingGeometry = measurePackingSpace();
+    // Counts update immediately, but a click never moves its own photograph.
+    // A new composition adopts popularity at an explicit navigation boundary.
+    if (['initial', 'media', 'view', 'filter', 'order', 'model', 'likes', 'reflow'].includes(reason)) packingLikes = popularitySnapshot(likesService);
+    const result = currentPages();
+    if (anchor) {
+      const nextIndex = result.findIndex(page => page.items.some(item => item.id === anchor));
+      if (nextIndex >= 0) pageIndex = nextIndex;
+    }
+    return result;
+  }
+
   function updatePageRail(index, count) {
     const progress = count > 1 ? Math.max(0, Math.min(1, index / (count - 1))) : 0;
     const position = `${progress * 100}%`;
@@ -199,7 +244,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       return Number.isFinite(value) ? value + (Number.isFinite(line) ? line : 0) : fallback;
     };
     const paper = { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', mobile ? 21 : 26) };
-    const plan = planAlbumLayout({ aspects: photoAspects, width, height, mobile, view, paper });
+    const plan = planAlbumLayout({ aspects: photoAspects, width, height, mobile, view, paper, likes: (pages[pageIndex]?.items || []).map(item => packingLikes[item.id] || 0) });
     // Jitter belongs to the resting composition; inspection never feeds its
     // own lift, push or tilt back into the geometry of the next pointer frame.
     neighborLayout = plan.items.map(item => ({ ...item,
@@ -208,10 +253,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     }));
     grid.classList.add('is-packed');
     grid.setAttribute('data-layout-rows', String(plan.rowCount));
+    grid.setAttribute('data-layout-kind', plan.kind || 'rows');
     if (mobile) grid.style.setProperty('--album-packed-height', `${plan.height}px`);
     for (const item of plan.items) {
       const wrapper = wrappers[item.index];
       if (!wrapper) continue;
+      const pose = albumPhotoPose(pages[pageIndex].items[item.index].id, item.index, wrappers.length);
+      wrapper.style.setProperty('--photo-depth', String((item.z || 0) + pose.depth));
+      wrapper.classList.toggle('is-featured', Boolean(item.featured));
       for (const [name, value] of Object.entries({ left: item.x, top: item.y, width: item.width, height: item.height })) wrapper.style.setProperty(name, `${value.toFixed(3)}px`);
     }
     if (grid.classList.contains('is-layout-initializing')) {
@@ -226,7 +275,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   function queueLayout() {
     if (destroyed || layoutFrame !== null) return;
     if (typeof win.requestAnimationFrame === 'function') {
-      layoutFrame = win.requestAnimationFrame(() => { layoutFrame = null; layoutPhotos(); });
+      layoutFrame = win.requestAnimationFrame(() => {
+        layoutFrame = null;
+        if (pageMotion.busy) { layoutPhotos(); return; }
+        const before = pages.map(page => page.items.map(item => item.id).join(',')).join('|');
+        const next = syncPacking('reflow', true);
+        if (before !== next.map(page => page.items.map(item => item.id).join(',')).join('|')) render('reflow');
+        else { pages = next; layoutPhotos(); }
+      });
     } else layoutPhotos();
   }
   function clearInspection() {
@@ -287,6 +343,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const date = dateKey(item.takenAt, 'day');
     const caption = typeof item.caption === 'string' ? item.caption : item.caption?.[locale] || item.caption?.zh || '';
     playerDescription.textContent = caption; playerDescription.hidden = !caption;
+    if (likesService) {
+      if (!playerLike) {
+        playerLike = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion });
+        playerLike.element.classList.add('album-player-like'); playerFigure.append(playerLike.element);
+      } else { playerLike.setPhotoId(item.id); playerLike.setLanguage(locale); }
+    }
     playerCaption.textContent = [`${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')}`, date === 'undated' ? text().undated : groupLabel(date), item.worldName].filter(Boolean).join(' · ');
     playerPrevious.disabled = playerNext.disabled = playerItems.length < 2;
     commentPanel.setTarget('photo', item.id);
@@ -349,7 +411,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     ? { year: page.key.slice(0, 4), month: view === 'month' ? page.key.slice(5, 7) : '' }
     : { year: 'None', month: '' };
   function transitionPage(reason) {
-    const nextPages = buildAlbumPages(records, { modelId, filter, view, order });
+    const nextPages = syncPacking(reason);
     const nextPage = nextPages[Math.max(0, Math.min(pageIndex, nextPages.length - 1))];
     // A pending request already owns pageIndex. Compare the target against the
     // date actually rendered, including after a rapid cancelled page request.
@@ -360,7 +422,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   function render(reason = 'initial') {
     if (destroyed) return;
     clearInspection(); cardBindings.splice(0).forEach((dispose) => dispose());
-    pages = buildAlbumPages(records, { modelId, filter, view, order }); pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
+    pages = syncPacking(reason); pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
     const page = pages[pageIndex]; const total = pages.reduce((sum, page) => sum + page.items.length, 0);
     root.setAttribute('data-photo-count', String(page?.items.length || 0));
     root.style.setProperty('--album-photo-count', String(page?.items.length || 0));
@@ -403,13 +465,23 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
         for (const node of [wrapper, card]) { node.style.setProperty('--photo-aspect', ratio.toFixed(6)); node.style.setProperty('--photo-ratio', ratio.toFixed(6)); }
         wrapper.setAttribute('data-orientation', ratio < .9 ? 'portrait' : ratio > 1.1 ? 'landscape' : 'square');
         const changed = photoAspects[index] !== ratio; photoAspects[index] = ratio;
-        if (relayout && changed) queueLayout();
+        if (relayout && changed) { knownAspects.set(item.id, ratio); pageCache = null; queueLayout(); }
       }
-      setAspect(item.width, item.height);
+      const known = knownAspects.get(item.id);
+      setAspect(known || item.width, known ? 1 : item.height);
       bind(image, 'load', () => setAspect(image.naturalWidth, image.naturalHeight, true), cardBindings);
       if (image.complete && image.naturalWidth) setAspect(image.naturalWidth, image.naturalHeight);
       const label = element('span', 'album-photo-label'); label.textContent = `PHOTO ${String(pageIndex + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
       card.append(image, label); wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
+      wrapper.setAttribute('data-photo-id', item.id);
+      if (likesService) {
+        const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion });
+        wrapper.append(like.element); cardBindings.push(() => like.destroy());
+        bind(like.element, 'pointerenter', event => inspect(index, event), cardBindings);
+        bind(wrapper, 'pointerleave', clearInspection, cardBindings);
+        bind(like.element, 'focus', () => { if (keyboardFocus) inspect(index); }, cardBindings);
+        bind(like.element, 'blur', clearInspection, cardBindings);
+      }
       bind(card, 'pointerenter', (event) => inspect(index, event), cardBindings);
       bind(card, 'pointermove', (event) => queueInspection(index, event), cardBindings);
       bind(card, 'pointerleave', clearInspection, cardBindings);
@@ -428,6 +500,15 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   function goToPage(index) {
     if (!enabled || destroyed || !Number.isInteger(index) || index < 0 || index >= pages.length) return false;
     if(index===pageIndex)return true;
+    const anchor = pages[index]?.items[0]?.id;
+    const nextLikes = popularitySnapshot(likesService);
+    if (JSON.stringify(nextLikes) !== JSON.stringify(packingLikes)) {
+      // Adopt new popularity only as the visitor leaves. Follow the intended
+      // photograph if its chronological page boundary has changed.
+      packingLikes = nextLikes; pages = currentPages();
+      const nextIndex = pages.findIndex(page => page.items.some(item => item.id === anchor));
+      index = nextIndex >= 0 ? nextIndex : Math.min(index, pages.length - 1);
+    }
     pageIndex = index; updatePageRail(index, pages.length); transitionPage('page'); return true;
   }
   function redraw(reason){pageMotion.cancel({commitPending:false});render(reason);}
@@ -461,6 +542,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   });
   if (typeof win.ResizeObserver === 'function') { layoutObserver = new win.ResizeObserver(queueLayout); layoutObserver.observe(grid); }
   else bind(win, 'resize', queueLayout);
+  if (likesService?.subscribe) bindings.push(likesService.subscribe(event => {
+    if (event?.type !== 'refresh' || destroyed) return;
+    if (!dialog.open && !pageMotion.busy) {
+      const before = JSON.stringify(packingLikes);
+      const next = popularitySnapshot(likesService);
+      if (before !== JSON.stringify(next)) { syncPacking('likes', true); render('likes'); }
+    }
+  }));
   render();
   return {
     get state() { return { pageIndex, pageCount: pages.length, view, filter, order, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
@@ -476,7 +565,8 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       if (!preservePlayer) closePlayer(true);
       records = normalizeAlbumMedia(nextMedia);
       if (preservePlayer) {
-        const nextPages = buildAlbumPages(records, { modelId, filter, view, order });
+        pageCache = null;
+        const nextPages = syncPacking('inline-edit');
         const nextItems = nextPages.flatMap(page => page.items);
         const nextIndex = selectedId ? nextItems.findIndex(item => item.id === selectedId) : -1;
         if (selectedId && nextIndex >= 0) { playerItems = nextItems; playerIndex = nextIndex; }
@@ -488,6 +578,6 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; transitionPage('view'); return true; },
     setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; transitionPage('filter'); return true; },
     setOrder, goToPage, openPlayer, closePlayer,
-    destroy() { if (destroyed) return; layoutObserver?.disconnect(); if (layoutFrame !== null) win.cancelAnimationFrame?.(layoutFrame); layoutFrame = null; closePlayer(true); commentPanel.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
+    destroy() { if (destroyed) return; layoutObserver?.disconnect(); if (layoutFrame !== null) win.cancelAnimationFrame?.(layoutFrame); layoutFrame = null; closePlayer(true); commentPanel.destroy(); playerLike?.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

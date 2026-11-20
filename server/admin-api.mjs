@@ -1,6 +1,7 @@
 import { normalizeGardenContent, publicGardenContent, validateGardenContent } from '../src/garden-content.js';
 import { inspectImage } from './image-format.mjs';
 import { createCommentsApi, isCommentsPath } from './comments-api.mjs';
+import { createPhotoLikesApi } from './photo-likes-api.mjs';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_JSON_BYTES = 4 * 1024 * 1024;
@@ -129,7 +130,7 @@ function applyLiveText(record, locale, fields) {
 }
 
 /** Portable Fetch API handler. Storage adapters implement conditional state writes and immutable objects. */
-export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cloud', adminUsername = 'Amubis', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onError = () => {} }) {
+export function createAdminApi({ storage, commentsStore = null, photoLikesStore = null, seed, mode = 'cloud', adminUsername = 'Amubis', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onError = () => {} }) {
   if (!storage || !seed) throw new Error('Storage and seed content are required.');
   const local = mode === 'local';
   const loginName = typeof adminUsername === 'string' ? adminUsername.trim().toLowerCase() : '';
@@ -195,11 +196,16 @@ export function createAdminApi({ storage, commentsStore = null, seed, mode = 'cl
     requireAuth: async request => { assertSameOrigin(request); return requireAuth(request); },
     requireWrite, publicSiteOrigins, now, clientAddress, rateLimitSecret: sessionSecret, onError,
   });
+  const handlePhotoLikes = createPhotoLikesApi({
+    store: photoLikesStore, getPublishedContent: async () => publicGardenContent((await readState()).state.published.content),
+    mode, identitySecret: sessionSecret, now, onError,
+  });
 
   return async function handle(request) {
     const url = new URL(request.url);
     const path = url.pathname;
     if (isCommentsPath(path)) return handleComments(request);
+    if (path === '/api/photo-likes') return handlePhotoLikes(request);
     const publicRoute = path === '/api/content' || path.startsWith('/media/');
     if (!publicRoute && !path.startsWith('/api/admin/')) return null;
     try {

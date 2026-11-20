@@ -27,6 +27,7 @@ import { createModelSwitchMotion, modelSpacePose } from './model-switch-motion.j
 import { createLanguageTransition, languageTextTargets } from './language-transition.js';
 import { createOwnerTools } from './owner-tools.js';
 import { createContentAvailability } from './content-availability.js';
+import { createPhotoLikesService } from './photo-likes.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -41,6 +42,7 @@ const previewToken = new URLSearchParams(location.search).get('editor-preview');
 let previewReceived = false;
 let publicSceneStarted = false;
 const commentsService = createCommentService({baseUrl:null});
+const photoLikesService = createPhotoLikesService({baseUrl:null});
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = () => motionPreference.matches;
 let { model: modelId, language } = getSelection(location.search);
@@ -722,9 +724,9 @@ const refreshOutfitHint=()=>outfitShowcase?.setHintActive?.(outfitHintSection.cl
 const outfitHintObserver=new MutationObserver(refreshOutfitHint);
 outfitHintObserver.observe(outfitHintSection,{attributes:true,attributeFilter:['class']});
 refreshOutfitHint();
-album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,reducedMotion,onReady({reason}){
+album=createAlbum({container:$('#album-showcase'),language,modelId,media:activeGarden.media,copy:activeGarden.texts.album,commentsService,commentsCopy:activeGarden.texts.comments,likesService:photoLikesService,reducedMotion,onReady({reason}){
   $('.album-title').id='album-heading';
-  if (albumTransition && !['page','view','filter','order','language','copy','player-return','inline-edit'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
+  if (albumTransition && !['page','view','filter','order','language','copy','player-return','inline-edit','reflow','likes'].includes(reason)) albumTransition.reset({prepare:currentIndex !== 2});
 }});
 albumTransition=createAlbumTransition({section:$('#moments'),previous:$('#hello'),reducedMotion});
 albumScroll=createAlbumScroll({
@@ -805,7 +807,7 @@ function applyGardenContent(next,{inline=false}={}) {
 window.addEventListener('message',event=>{
   const content=acceptGardenPreview(event,{token:previewToken,origin:location.origin,parent:window.parent===window?null:window.parent,defaults:gardenDefaults});
   if(content){
-    previewReceived=true;commentsService.setBaseUrl(null);
+    previewReceived=true;commentsService.setBaseUrl(null);photoLikesService.setBaseUrl(null);
     const nextLanguage=event.data.language;
     const languageChanged=['zh','ja'].includes(nextLanguage)&&nextLanguage!==language;
     if(languageChanged){languageTransition?.cancel();language=nextLanguage;requestedLanguage=language;}
@@ -829,7 +831,9 @@ function refreshPublishedGarden(){
     if(previewReceived)return;
     if(!connected){contentAvailability.error();return;}
     commentsService.setBaseUrl(runtime.apiBaseUrl || new URL('/',location.href).href);
+    photoLikesService.setBaseUrl(runtime.apiBaseUrl || new URL('/',location.href).href);
     applyGardenContent(content);
+    void photoLikesService.refresh().catch(() => {});
     contentAvailability.ready();
     beginPublicScene();
   }).catch(()=>{

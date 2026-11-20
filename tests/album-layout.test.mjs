@@ -83,3 +83,53 @@ test('layout is deterministic and stays within compact, wide and tall presentati
     }
   }
 });
+
+test('eight mostly portrait prints use the sheet height instead of a single narrow strip', () => {
+  for (const aspects of [Array(8).fill(9 / 16), [9 / 16, 9 / 16, 9 / 16, 16 / 9, 9 / 16, 9 / 16, 9 / 16, 9 / 16]]) {
+    const plan = planAlbumLayout({ aspects, width: 1450, height: 650 });
+    assert.equal(plan.items.length, 8);
+    assert.equal(plan.rowCount, 2);
+    const top = Math.min(...plan.items.map(item => item.y));
+    const bottom = Math.max(...plan.items.map(item => item.y + item.height));
+    assert.ok(bottom - top > 650 * .72, 'use both the upper and lower part of the interaction area');
+    assert.ok(plan.items.every(item => item.imageHeight > 170));
+    assertContained(plan);
+  }
+});
+
+test('mixed rows can share a tall side print without isolating it across a large central gap', () => {
+  const aspects = [9 / 16, 9 / 16, 9 / 16, 16 / 9, 9 / 16, 9 / 16, 9 / 16, 9 / 16];
+  const plan = planAlbumLayout({ aspects, width: 1450, height: 650 });
+  assert.equal(plan.kind, 'feature-left');
+  const feature = plan.items.find(item => item.featured);
+  assert.ok(feature.height > Math.max(...plan.items.filter(item => !item.featured).map(item => item.height)) * 1.3);
+  assert.ok(feature.z < 0, 'supporting oversized print sits behind the other papers');
+  for (const row of plan.rows) assert.ok(Math.abs(row.x - (feature.x + feature.width)) < feature.width * .4);
+  for (const item of plan.items) {
+    const imageWidth = item.width - plan.paper.left - plan.paper.right;
+    assert.ok(Math.abs(imageWidth / item.imageHeight - aspects[item.index]) < .00001);
+  }
+  assertContained(plan);
+});
+
+test('popular photographs gain bounded size and foreground depth without changing item order', () => {
+  const options = { aspects: Array(8).fill(16 / 9), width: 1450, height: 650 };
+  const ordinary = planAlbumLayout(options);
+  const popular = planAlbumLayout({ ...options, likes: [1000] });
+  assert.ok(popular.items[0].height > ordinary.items[0].height * 1.1);
+  assert.ok(popular.items[0].height > popular.items[1].height);
+  assert.ok(popular.items[0].z >= 12 && popular.items[0].z <= 38);
+  assert.deepEqual(popular.items.map(item => item.index), ordinary.items.map(item => item.index));
+  assertContained(popular);
+  const extreme = planAlbumLayout({ ...options, likes: [Number.MAX_SAFE_INTEGER] });
+  assert.deepEqual(extreme, popular, 'popularity saturates instead of producing an unbounded photograph');
+});
+
+test('a handful of votes remains a subtle accent, and a tall featured portrait can still grow', () => {
+  const options = { aspects: [9 / 16, 9 / 16, 9 / 16, 16 / 9, 9 / 16, 9 / 16, 9 / 16, 9 / 16], width: 1450, height: 650 };
+  const ordinary = planAlbumLayout(options), oneVote = planAlbumLayout({ ...options, likes: [1] }), popular = planAlbumLayout({ ...options, likes: [1000] });
+  assert.ok(oneVote.items[0].height < ordinary.items[0].height * 1.02);
+  assert.ok(popular.items[0].height > ordinary.items[0].height * 1.1);
+  assert.ok(popular.items[0].z >= 25);
+  assertContained(popular);
+});

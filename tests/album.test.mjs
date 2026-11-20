@@ -38,12 +38,17 @@ class Element {
   close() { this.open = false; this.emit('close'); }
 }
 
-function fixture(t, { animated = false, ...options } = {}) {
+function fixture(t, { animated = false, packing = null, ...options } = {}) {
   const doc = new Element('document'); doc.ownerDocument = doc; doc.body = new Element('body', doc); doc.append(doc.body);
   if (animated) doc.animations = [];
   const frames = new Map(); let serial = 0;
   doc.defaultView = { requestAnimationFrame(fn) { const id = ++serial; frames.set(id, fn); return id; }, cancelAnimationFrame(id) { frames.delete(id); },addEventListener(){},removeEventListener(){},getComputedStyle(){return {opacity:'1',transform:'none'};} };
-  doc.createElement = (tag) => new Element(tag, doc);
+  if (packing) Object.assign(doc.defaultView, { innerWidth: packing.width + 400, innerHeight: packing.height + 300 });
+  doc.createElement = (tag) => {
+    const node = new Element(tag, doc);
+    if (packing) { node.clientWidth = packing.width; node.clientHeight = packing.height; }
+    return node;
+  };
   doc.querySelector = (selector) => selector === 'dialog[open]' ? doc.body.all((node) => node.localName === 'dialog' && node.open)[0] || null : null;
   const container = doc.createElement('div');
   if (animated) { const section = doc.createElement('section'); section.className = 'page-section is-current'; section.append(container); doc.body.append(section); }
@@ -488,4 +493,86 @@ test('chronological sticker cycles directly like the model filter without a drop
  sort.emit('click'); assert.equal(f.api.state.order, 'asc'); assert.equal(sort.getAttribute('aria-pressed'), 'true'); assert.equal(sort.textContent, '由旧到新');
  sort.emit('click'); assert.equal(f.api.state.order, 'desc'); assert.equal(sort.getAttribute('aria-pressed'), 'false');
  f.api.setEnabled(false); sort.emit('click'); assert.equal(f.api.state.order, 'desc');
+});
+
+function albumLikesFixture(initial = {}) {
+  const counts = { ...initial }, liked = new Set(), listeners = new Set();
+  const notify = (type, photoId = null) => { for (const listener of listeners) listener({ type, photoId, likes: { ...counts } }); };
+  return {
+    listeners, enabled: true, snapshot: () => ({ ...counts }),
+    get: photoId => ({ photoId, count: counts[photoId] || 0, liked: liked.has(photoId), pending: false, loaded: true, canLike: true, error: '' }),
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    async toggle(photoId) {
+      if (liked.has(photoId)) { liked.delete(photoId); counts[photoId]--; }
+      else { liked.add(photoId); counts[photoId] = (counts[photoId] || 0) + 1; }
+      notify('toggle', photoId);
+    },
+    refresh(next) { Object.assign(counts, next); notify('refresh'); },
+  };
+}
+
+test('liking a photo updates its card and open viewer without moving or replacing the prints', async t => {
+  const likesService = albumLikesFixture({ one: 3 });
+  const f = fixture(t, { likesService, media: [sample('one', null), sample('two', null)] });
+  const wrappers = f.container.findAll('album-photo');
+  const rectangles = wrappers.map(node => [...node.style.values]);
+  const cardLike = wrappers[0].find('photo-like');
+  assert.equal(cardLike.parentElement, wrappers[0], 'like is a sibling, never a nested photo button');
+  assert.equal(cardLike.find('photo-like-count').textContent, '3');
+  f.api.openPlayer('one');
+  const viewerLike = f.dialog.find('photo-like');
+  const ready = f.ready.length;
+  viewerLike.emit('click'); await microtick();
+  assert.equal(viewerLike.getAttribute('aria-pressed'), 'true');
+  assert.equal(cardLike.getAttribute('aria-pressed'), 'true');
+  assert.equal(cardLike.find('photo-like-count').textContent, '4');
+  assert.equal(viewerLike.find('photo-like-count').textContent, '4');
+  assert.equal(f.api.state.playerOpen, true);
+  assert.equal(f.ready.length, ready, 'an acknowledged own vote does not redraw the paper');
+  assert.deepEqual(f.container.findAll('album-photo'), wrappers);
+  assert.deepEqual(wrappers.map(node => [...node.style.values]), rectangles);
+  f.api.setLanguage('ja');
+  assert.equal(f.dialog.find('photo-like').title, 'いいねを取り消す');
+  assert.equal(f.container.findAll('photo-like')[0].title, 'いいねを取り消す');
+  f.api.destroy(); assert.equal(likesService.listeners.size, 0, 'card and viewer subscriptions are released');
+});
+
+test('adaptive album pagination preserves every photograph, chronological order and month/year boundaries', () => {
+  const media = [
+    ...Array.from({ length: 25 }, (_, index) => ({ ...sample(`nov-${index}`, `2026-11-${String(index + 1).padStart(2, '0')}`), width: index % 6 ? 600 : 1600, height: 900 })),
+    ...Array.from({ length: 3 }, (_, index) => ({ ...sample(`old-${index}`, `2025-09-0${index + 1}`), width: 600, height: 900 })),
+    { ...sample('unknown', null), width: 600, height: 900 },
+  ];
+  const layout = { width: 1360, height: 620, mobile: false };
+  for (const view of ['month', 'year']) for (const order of ['asc', 'desc']) {
+    const pages = buildAlbumPages(media, { view, order, layout, likes: { 'nov-12': 250 } });
+    const ids = pages.flatMap(page => page.items.map(item => item.id));
+    assert.equal(ids.length, media.length); assert.equal(new Set(ids).size, media.length);
+    assert.deepEqual([...ids].sort(), media.map(item => item.id).sort());
+    assert.equal(pages.at(-1).key, 'undated');
+    for (const page of pages) {
+      assert.ok(page.items.length <= (view === 'month' ? 12 : 18));
+      assert.ok(page.items.every(item => page.key === 'undated' ? item.takenAt === null : item.takenAt.startsWith(page.key)));
+    }
+    const dated = pages.flatMap(page => page.items).filter(item => item.takenAt).map(item => item.takenAt);
+    assert.deepEqual(dated, [...dated].sort((a, b) => (order === 'asc' ? 1 : -1) * a.localeCompare(b)));
+  }
+});
+
+test('closing a player after adaptive multi-page browsing lands on the selected photograph and restores focus', t => {
+  const packing = { width: 1240, height: 590 };
+  const media = Array.from({ length: 28 }, (_, index) => ({ ...sample(`adaptive-${index}`, `2026-11-${String(index + 1).padStart(2, '0')}`), width: index % 5 ? 600 : 1600, height: 900 }));
+  const likesService = albumLikesFixture({ 'adaptive-17': 400 });
+  const f = fixture(t, { packing, likesService, media, reducedMotion: () => true });
+  const expected = buildAlbumPages(media, { layout: { ...packing, mobile: false, paper: { left: 9, right: 9, top: 9, bottom: 26 } }, likes: likesService.snapshot() });
+  assert.equal(f.api.state.pageCount, expected.length);
+  assert.ok(expected.length > 1);
+  const selected = expected.at(-1).items.at(-1).id;
+  assert.equal(f.api.openPlayer(selected), true);
+  assert.equal(f.dialog.getAttribute('data-photo-id'), selected);
+  f.api.closePlayer();
+  assert.equal(f.api.state.playerOpen, false);
+  const target = f.container.findAll('album-photo').find(node => node.getAttribute('data-photo-id') === selected);
+  assert.ok(target); assert.equal(f.doc.activeElement, target.find('album-photo-card'));
+  assert.ok(f.ready.some(event => event.reason === 'player-return'));
 });
