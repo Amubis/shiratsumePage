@@ -133,3 +133,55 @@ test('a handful of votes remains a subtle accent, and a tall featured portrait c
   assert.ok(popular.items[0].z >= 25);
   assertContained(popular);
 });
+
+test('landscape-heavy groups stay close to their side portrait on either side of the sheet', () => {
+  const sequence = [9 / 16, 16 / 9, 16 / 9, 16 / 9, 16 / 9, 16 / 9, 16 / 9, 9 / 16, 16 / 9, 16 / 9, 16 / 9, 16 / 9];
+  const paper = { left: 9, right: 9, top: 9, bottom: 41 };
+  for (const [width, height] of [[900, 480], [1240, 590], [1450, 650]]) for (const mirrored of [false, true]) {
+    const aspects = mirrored ? sequence.toReversed() : sequence;
+    const plan = planAlbumLayout({ aspects, width, height, paper });
+    assert.equal(plan.kind, mirrored ? 'feature-right' : 'feature-left');
+    const support = plan.items.find(item => item.featured);
+    const rows = plan.rows.map(row => row.indices.map(index => plan.items[index]));
+    const gaps = rows.map(items => mirrored
+      ? support.x - Math.max(...items.map(item => item.x + item.width))
+      : Math.min(...items.map(item => item.x)) - support.x - support.width);
+    assert.ok(Math.min(...gaps) >= 13.9, 'support and foreground paper remain distinct');
+    assert.ok(Math.max(...gaps) <= 36, 'conservative tilt envelopes must not isolate the supporting photograph');
+    const area = plan.items.reduce((sum, item) => sum + item.imageHeight ** 2 * aspects[item.index], 0);
+    const center = plan.items.reduce((sum, item) => sum + (item.x + item.width / 2) * item.imageHeight ** 2 * aspects[item.index], 0) / area;
+    assert.ok(Math.abs(center - width / 2) <= width * .045 + .01, 'the actual image area stays visually balanced');
+    assert.deepEqual(plan.items.map(item => item.index), aspects.map((_, index) => index));
+    for (const item of plan.items) assert.ok(Math.abs((item.width - paper.left - paper.right) / item.imageHeight - aspects[item.index]) < .00001);
+    assertContained(plan);
+  }
+});
+
+test('ordinary rows retain their centered alignment instead of receiving side-feature corrections', () => {
+  for (const mobile of [false, true]) {
+    const plan = planAlbumLayout({ aspects: Array(12).fill(16 / 9), width: mobile ? 340 : 1450, height: 650, mobile });
+    assert.equal(plan.kind, 'rows');
+    for (const row of plan.rows) assert.ok(Math.abs(row.x + row.width / 2 - plan.width / 2) < .00001);
+    assertContained(plan);
+  }
+});
+
+test('narrow mobile rows grow separately so a portrait footer stays readable beside landscapes', () => {
+  const paper = { left: 6, right: 6, top: 6, bottom: 43 };
+  for (const width of [211, 220, 270]) for (const aspects of [[9 / 16, 16 / 9], Array.from({ length: 8 }, (_, index) => index % 2 ? .4 : 3)]) {
+    const plan = planAlbumLayout({ aspects, width, height: 504, mobile: true, paper });
+    assert.equal(plan.items.length, aspects.length);
+    assert.ok(plan.items.every(item => item.width >= 79.99), 'keep room for the unchanged heart and multi-digit count');
+    assert.ok(plan.items.filter(item => aspects[item.index] < 1).every(item => item.imageHeight >= 100));
+    assert.ok(plan.rowCount > Math.ceil(aspects.length / 2), 'break mixed rows instead of shrinking the portrait');
+    if (aspects.length === 8) assert.ok(plan.height > 504, 'allow native vertical scrolling');
+    for (const item of plan.items) assert.ok(Math.abs((item.width - paper.left - paper.right) / item.imageHeight - aspects[item.index]) < .00001);
+    assertContained(plan);
+  }
+});
+
+test('extreme mobile aspect ratios use a single-print physical fit rather than an impossible minimum', () => {
+  const plan = planAlbumLayout({ aspects: [.05, 12, .1], width: 211, height: 504, mobile: true, paper: { left: 6, right: 6, top: 6, bottom: 43 } });
+  assert.equal(plan.items.length, 3);
+  assertContained(plan);
+});

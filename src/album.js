@@ -200,7 +200,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       return Number.isFinite(value) ? value + (Number.isFinite(line) ? line : 0) : fallback;
     };
     return { width: Math.round(width), height: mobile ? Math.max(180, win.innerHeight * .6 || 400) : Math.round(height), mobile,
-      paper: { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', mobile ? 21 : 26) } };
+      paper: { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', likesService ? (mobile ? 37 : 41) : (mobile ? 21 : 26)) } };
   }
   function currentPages() {
     const key = JSON.stringify([modelId, filter, view, order, packingGeometry, packingLikes]);
@@ -244,7 +244,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       const value = parseFloat(style[padding]), line = parseFloat(style[border]);
       return Number.isFinite(value) ? value + (Number.isFinite(line) ? line : 0) : fallback;
     };
-    const paper = { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', mobile ? 21 : 26) };
+    const paper = { left: edge('paddingLeft', 'borderLeftWidth', mobile ? 6 : 9), right: edge('paddingRight', 'borderRightWidth', mobile ? 6 : 9), top: edge('paddingTop', 'borderTopWidth', mobile ? 6 : 9), bottom: edge('paddingBottom', 'borderBottomWidth', likesService ? (mobile ? 37 : 41) : (mobile ? 21 : 26)) };
     const plan = planAlbumLayout({ aspects: photoAspects, width, height, mobile, view, paper, likes: (pages[pageIndex]?.items || []).map(item => packingLikes[item.id] || 0) });
     // Jitter belongs to the resting composition; inspection never feeds its
     // own lift, push or tilt back into the geometry of the next pointer frame.
@@ -483,12 +483,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       bind(image, 'load', () => setAspect(image.naturalWidth, image.naturalHeight, true), cardBindings);
       if (image.complete && image.naturalWidth) setAspect(image.naturalWidth, image.naturalHeight);
       const label = element('span', 'album-photo-label'); label.textContent = `PHOTO ${String(pageIndex + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
-      card.append(image, label); if (!likesService) wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
+      card.append(image); if (!likesService) { card.append(label); wrapper.append(card); }
+      nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
       prints.push(null);
       wrapper.setAttribute('data-photo-id', item.id);
       if (likesService) {
         const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion });
-        const print = element('div', 'album-print'); print.append(card, like.element); wrapper.append(print);
+        const print = element('div', 'album-print'), footer = element('div', 'album-photo-footer');
+        footer.append(label, like.element); print.append(card, footer); wrapper.append(print);
         prints[index] = print; syncPrintPose(index);
         cardBindings.push(() => like.destroy());
         bind(like.element, 'pointerenter', event => inspect(index, event), cardBindings);

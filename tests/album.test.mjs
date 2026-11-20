@@ -517,9 +517,9 @@ test('liking a photo updates its card and open viewer without moving or replacin
   const wrappers = f.container.findAll('album-photo');
   const rectangles = wrappers.map(node => [...node.style.values]);
   const cardLike = wrappers[0].find('photo-like');
-  assert.equal(cardLike.parentElement.classList.contains('album-print'), true, 'like and photo share the same paper pose');
-  assert.equal(cardLike.parentElement === wrappers[0].find('album-photo-card').parentElement, true, 'the independent buttons share one transform surface');
-  const card = wrappers[0].find('album-photo-card'), print = cardLike.parentElement;
+  assert.equal(cardLike.parentElement.classList.contains('album-photo-footer'), true, 'like belongs in the reserved paper footer');
+  assert.equal(cardLike.parentElement.parentElement === wrappers[0].find('album-photo-card').parentElement, true, 'the independent buttons share one transform surface');
+  const card = wrappers[0].find('album-photo-card'), print = cardLike.parentElement.parentElement;
   card.emit('pointerenter', { pointerType: 'mouse', clientX: 140, clientY: 70 });
   assert.equal(print.style.getPropertyValue('--inspect-rx'), card.style.getPropertyValue('--inspect-rx'), 'the complete paper tilts with its attached like control');
   assert.equal(print.style.getPropertyValue('--inspect-lift'), '-12px');
@@ -571,7 +571,7 @@ test('closing a player after adaptive multi-page browsing lands on the selected 
   const media = Array.from({ length: 28 }, (_, index) => ({ ...sample(`adaptive-${index}`, `2026-11-${String(index + 1).padStart(2, '0')}`), width: index % 5 ? 600 : 1600, height: 900 }));
   const likesService = albumLikesFixture({ 'adaptive-17': 400 });
   const f = fixture(t, { packing, likesService, media, reducedMotion: () => true });
-  const expected = buildAlbumPages(media, { layout: { ...packing, mobile: false, paper: { left: 9, right: 9, top: 9, bottom: 26 } }, likes: likesService.snapshot() });
+  const expected = buildAlbumPages(media, { layout: { ...packing, mobile: false, paper: { left: 9, right: 9, top: 9, bottom: 41 } }, likes: likesService.snapshot() });
   assert.equal(f.api.state.pageCount, expected.length);
   assert.ok(expected.length > 1);
   const selected = expected.at(-1).items.at(-1).id;

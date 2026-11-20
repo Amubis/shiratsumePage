@@ -30,6 +30,15 @@ export function planAlbumLayout({ aspects = [], likes = [], width = 1000, height
   if (!ratios.length || availableWidth <= horizontalBorder || (!mobile && availableHeight <= verticalBorder)) return empty;
   const factors = counts.map(albumPhotoProminence);
   const indices = ratios.map((_, index) => index);
+  const mobileMinimumHeights = mobile ? ratios.map((ratio, index) => {
+    const slope = 1.1 * (ratio * cosine + sine) + 2 * jitter * ratio;
+    const frame = 1.1 * (horizontalBorder * cosine + verticalBorder * sine) + 2 * jitter * horizontalBorder;
+    const soloHeight = Math.max(0, (availableWidth - frame) / slope - .01);
+    // A narrow portrait needs a usable paper footer too. Let its row grow
+    // independently instead of shrinking it beside a wide landscape. Very
+    // wide/thin originals still fit the sheet's physical width on their own.
+    return Math.min(soloHeight, Math.max(100, Math.max(0, 80 - horizontalBorder) / ratio)) / factors[index];
+  }) : [];
   function envelope(index, imageHeight) {
     const h = imageHeight * factors[index], w = h * ratios[index] + horizontalBorder, height = h + verticalBorder;
     return { width: w, height, imageHeight: h,
@@ -41,11 +50,13 @@ export function planAlbumLayout({ aspects = [], likes = [], width = 1000, height
     const groups = Array.from({ length: list.length }, () => []);
     const totalWeight = list.reduce((sum, index) => sum + ratios[index] * factors[index], 0);
     for (let start = 0; start < list.length; start++) {
-      let rowWeight = 0;
+      let rowWeight = 0, minimumHeight = 0;
       for (let end = start + 1; end <= Math.min(list.length, start + maxPerRow); end++) {
         const index = list[end - 1];
         rowWeight += ratios[index] * factors[index];
-        const rowFactor = !mobile && ratios.length >= 6 ? clamp(Math.sqrt(totalWeight / rowCount / rowWeight), .84, 1.22) : 1;
+        if (mobile) minimumHeight = Math.max(minimumHeight, mobileMinimumHeights[index]);
+        const rowFactor = mobile ? Math.max(1, minimumHeight / Math.max(.0001, imageHeight))
+          : ratios.length >= 6 ? clamp(Math.sqrt(totalWeight / rowCount / rowWeight), .84, 1.22) : 1;
         let offset = 0, left = Infinity, right = -Infinity, height = 0, extraY = 0;
         for (let slot = start; slot < end; slot++) {
           const index = list[slot], h = imageHeight * rowFactor * factors[index];
@@ -160,6 +171,38 @@ export function planAlbumLayout({ aspects = [], likes = [], width = 1000, height
         z: counts[featureIndex] >= 20 ? Math.min(38, 25 + Math.round((factors[featureIndex] - 1) * 24)) : -12, featured: true };
       selected = { ...rest, ...placed, items: [...placed.items, featureItem], score, area, kind: isLeft ? 'feature-left' : 'feature-right', referenceHeight: rest.imageHeight };
     }
+  }
+  if (selected.kind !== 'rows') {
+    const feature = selected.items.find(item => item.featured);
+    const neighbors = selected.items.filter(item => item !== feature);
+    const isLeft = selected.kind === 'feature-left';
+    // Packing reserves the worst tilt and jitter for every print. Those safe
+    // envelopes may overlap, but they must not turn into a conspicuous empty
+    // column between the supporting portrait and the rest of the photographs.
+    const seam = isLeft
+      ? Math.min(...neighbors.map(item => item.x)) - feature.x - feature.width
+      : feature.x - Math.max(...neighbors.map(item => item.x + item.width));
+    const desiredSeam = clamp(stageWidth * .014, 14, 24);
+    const closure = clamp(seam - desiredSeam, 0, Math.min(stageWidth * .06, feature.width * .32));
+    const groupShift = (isLeft ? -1 : 1) * closure;
+    for (const item of neighbors) item.x += groupShift;
+    for (const row of selected.rows) row.x += groupShift;
+
+    // Only correct a material imbalance: exact recentring would open that seam
+    // again in compositions whose many small prints outweigh the tall support.
+    const areas = selected.items.map(item => item.imageHeight ** 2 * ratios[item.index]);
+    const area = areas.reduce((sum, value) => sum + value, 0);
+    const center = selected.items.reduce((sum, item, index) => sum + (item.x + item.width / 2) * areas[index], 0) / area;
+    const target = clamp(center, stageWidth * .455, stageWidth * .545);
+    const envelopes = selected.items.map(item => {
+      const outside = envelope(item.index, item.imageHeight / factors[item.index]).outerWidth;
+      return { left: item.x - (outside - item.width) / 2, right: item.x + (outside + item.width) / 2 };
+    });
+    const shift = clamp(target - center,
+      paddingX - Math.min(...envelopes.map(item => item.left)),
+      stageWidth - paddingX - Math.max(...envelopes.map(item => item.right)));
+    for (const item of selected.items) item.x += shift;
+    for (const row of selected.rows) row.x += shift;
   }
   selected.items.sort((a, b) => a.index - b.index);
   return { ...empty, height: actualHeight, photoHeight: selected.referenceHeight + verticalBorder,
