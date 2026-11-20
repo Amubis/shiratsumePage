@@ -105,6 +105,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let pendingPointer = null;
   let keyboardFocus = false;
   let cards = [];
+  let prints = [];
   let wrappers = [];
   let playerItems = [];
   let playerIndex = 0;
@@ -291,7 +292,15 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     cards.forEach((card, index) => {
       card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); card.style.setProperty('--inspect-lift', '0px'); card.style.setProperty('--neighbor-x', '0px'); card.style.setProperty('--neighbor-y', '0px');
       wrappers[index].classList.remove('is-inspected');
+      syncPrintPose(index);
     });
+  }
+  function syncPrintPose(index) {
+    const print = prints[index], card = cards[index];
+    if (!print || !card) return;
+    for (const key of ['--jitter-x', '--jitter-y', '--jitter-rotation', '--photo-scale', '--inspect-rx', '--inspect-ry', '--inspect-lift', '--neighbor-x', '--neighbor-y']) {
+      print.style.setProperty(key, card.style.getPropertyValue(key) || (key.endsWith('rx') || key.endsWith('ry') || key.endsWith('rotation') ? '0deg' : key === '--photo-scale' ? '1' : '0px'));
+    }
   }
   function updateInspectionNeighbors(index) {
     const offsets = albumNeighborOffsets(neighborLayout, index);
@@ -301,6 +310,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       card.style.setProperty('--neighbor-x', `${(offsets[cardIndex]?.x || 0).toFixed(3)}px`);
       card.style.setProperty('--neighbor-y', `${(offsets[cardIndex]?.y || 0).toFixed(3)}px`);
       if (cardIndex !== index) { card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); }
+      syncPrintPose(cardIndex);
     });
   }
   function inspect(index, event) {
@@ -313,6 +323,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const y = Math.max(-1, Math.min(1, (event.clientY - bounds.top) / (bounds.height || 1) * 2 - 1));
     cards[index].style.setProperty('--inspect-rx', `${(-y * 5).toFixed(2)}deg`);
     cards[index].style.setProperty('--inspect-ry', `${(x * 5).toFixed(2)}deg`);
+    syncPrintPose(index);
   }
   function paintPointer() {
     pointerFrame = null;
@@ -377,7 +388,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       const slot = pages[pageIndex]?.items.findIndex(item => item.id === selectedId) ?? -1;
       const card = cards[slot];
       if (card && card.isConnected !== false) {
-        target = card;
+        target = prints[slot] || card;
         if (card.children[0]) card.children[0].loading = 'eager';
         try { card.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'instant'}); }
         catch { card.scrollIntoView?.({block:'nearest',inline:'nearest'}); }
@@ -396,7 +407,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     const existing = doc.querySelector?.('dialog[open]'); if (existing && existing !== dialog) return false;
     clearInspection(); returnFocus = doc.activeElement; renderPlayer(); commentPanel.setActive(true);
     const card = cards[current.items.findIndex(item=>item.id===id)];
-    void playerMotion.open({source:card,image:card?.children[0],show(){
+    void playerMotion.open({source:prints[current.items.findIndex(item=>item.id===id)] || card,image:card?.children[0],show(){
       if (!dialog.open) dialog.showModal();
       doc.body.classList.add('modal-open');playerClose.focus?.();
     }});
@@ -451,7 +462,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     dateMonth.hidden = !dateMonth.textContent;
     sourceNote.textContent = records.every((item) => item.sourceKind === 'video-still' && !item.takenAt) ? text().source : text().mixedSource;
     empty.hidden = Boolean(page?.items.length); empty.textContent = text().empty;
-    wrappers = []; cards = []; photoAspects = []; neighborLayout = []; const nodes = [];
+    wrappers = []; cards = []; prints = []; photoAspects = []; neighborLayout = []; const nodes = [];
     for (const [index, item] of (page?.items || []).entries()) {
       const wrapper = element('div', 'album-photo'); const card = button('album-photo-card');
       const pose = albumPhotoPose(item.id,index,page.items.length);
@@ -472,11 +483,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       bind(image, 'load', () => setAspect(image.naturalWidth, image.naturalHeight, true), cardBindings);
       if (image.complete && image.naturalWidth) setAspect(image.naturalWidth, image.naturalHeight);
       const label = element('span', 'album-photo-label'); label.textContent = `PHOTO ${String(pageIndex + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
-      card.append(image, label); wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
+      card.append(image, label); if (!likesService) wrapper.append(card); nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
+      prints.push(null);
       wrapper.setAttribute('data-photo-id', item.id);
       if (likesService) {
         const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion });
-        wrapper.append(like.element); cardBindings.push(() => like.destroy());
+        const print = element('div', 'album-print'); print.append(card, like.element); wrapper.append(print);
+        prints[index] = print; syncPrintPose(index);
+        cardBindings.push(() => like.destroy());
         bind(like.element, 'pointerenter', event => inspect(index, event), cardBindings);
         bind(wrapper, 'pointerleave', clearInspection, cardBindings);
         bind(like.element, 'focus', () => { if (keyboardFocus) inspect(index); }, cardBindings);

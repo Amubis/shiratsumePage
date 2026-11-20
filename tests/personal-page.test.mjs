@@ -12,7 +12,8 @@ class Element {
   get className() { return [...this.classes].join(' '); }
   set textContent(value) { this.text = value; this.children = []; }
   get textContent() { return this.text ?? this.children.map(child => child.textContent).join(''); }
-  append(...nodes) { for (const node of nodes) { node.parentElement = this; this.children.push(node); } }
+  append(...nodes) { for (const node of nodes) { if (node.parentElement) node.parentElement.children = node.parentElement.children.filter(child => child !== node); node.parentElement = this; this.children.push(node); } }
+  remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(node => node !== this); this.parentElement = null; }
   replaceChildren(...nodes) { this.children.forEach(node => { node.parentElement = null; }); this.children = []; this.text = undefined; this.append(...nodes); }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
@@ -246,7 +247,7 @@ test('journal images open an accessible viewer, close it on data changes and rel
   viewer.querySelector('img').emit('error');
   assert.equal(viewer.querySelector('.personal-image-error').hidden, false);
   f.component.setPosts([]);
-  assert.equal(viewer.open, false); assert.equal(f.root.querySelector('dialog'), null);
+  assert.equal(viewer.open, false); assert.equal(viewer.querySelector('img').src, '');
   assert.equal(f.doc.body.classList.contains('modal-open'), false);
   f.component.setPosts(posts); f.root.querySelector('.personal-journal-image-button').emit('click');
   f.component.destroy();
@@ -266,4 +267,74 @@ test('personal hint dictionaries are editable plain text with defaults for omitt
   f.component.setCopy(null);
   assert.equal(f.root.querySelector('.personal-journal-note').textContent, PERSONAL_COPY.ja.journalNote);
   assert.equal(PERSONAL_COPY.zh.journal, '碎碎念', 'instance overrides leave default dictionaries unchanged');
+});
+
+test('journal image groups use square-grid metadata while a single photograph keeps its intrinsic layout', t => {
+  const f = fixture(t, { posts: [1, 2, 4, 5].map((count, index) => ({ id: `gallery-${count}`, body: '图片', images: Array.from({ length: count }, (_, image) => ({ url: `./image-${image}.jpg` })), createdAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(), published: true })) });
+  const galleries = f.root.querySelectorAll('.personal-journal-images');
+  assert.deepEqual(galleries.map(node => node.getAttribute('data-image-count')), ['5', '4', '2', '1']);
+  assert.equal(galleries.at(-1).classList.contains('is-single'), true);
+  assert.equal(galleries[0].style['--journal-image-columns'], '3');
+  assert.equal(galleries[1].style['--journal-image-columns'], '2');
+});
+
+test('journal detail browses across feed pages then returns to the selected entry and title focus', t => {
+  const posts = journalPosts(12).map(post => ({ ...post, title: `标题 ${post.id}` }));
+  const commentsService = { enabled: true, getComments: async () => [], subscribe: () => () => {} };
+  const f = fixture(t, { posts, commentsService });
+  f.root.querySelectorAll('.personal-journal-open')[4].emit('click');
+  const detail = f.doc.body.querySelector('.journal-detail-viewer');
+  assert.equal(detail.open, true);
+  assert.equal(detail.getAttribute('data-journal-id'), 'note-7');
+  assert.equal(detail.querySelector('.comments-form').hidden, false);
+  detail.querySelector('.journal-detail-next').emit('click');
+  assert.equal(detail.getAttribute('data-journal-id'), 'note-6');
+  detail.querySelector('.journal-detail-close').emit('click');
+  assert.equal(detail.open, false);
+  assert.equal(selectedPage(f.root).textContent, '2');
+  const article = f.root.querySelectorAll('.personal-journal-post')[0];
+  assert.equal(article.getAttribute('data-journal-id'), 'note-6');
+  assert.equal(f.doc.activeElement, article.querySelector('.personal-journal-open'));
+  assert.equal(f.doc.body.classList.contains('modal-open'), false);
+});
+
+test('detail, feed and language changes share one comment form and retain the journal draft', t => {
+  const posts = [{ id: 'same-note', title: { zh: '标题', ja: 'タイトル' }, body: { zh: '正文', ja: '本文' }, published: true }];
+  const f = fixture(t, { posts });
+  const panel = f.root.querySelector('.personal-post-comments-content');
+  const body = panel.querySelector('.comments-body'); body.value = '尚未发送的草稿'; body.emit('input');
+  f.root.querySelector('.comments-open-thread').emit('click');
+  const detail = f.doc.body.querySelector('.journal-detail-viewer');
+  assert.equal(detail.querySelector('.personal-post-comments-content'), panel);
+  assert.equal(body.value, '尚未发送的草稿');
+  f.component.setLanguage('ja');
+  assert.equal(detail.open, true);
+  assert.equal(detail.querySelector('.personal-journal-title').textContent, 'タイトル');
+  assert.equal(detail.querySelector('.personal-post-comments-content'), panel);
+  assert.equal(body.value, '尚未发送的草稿');
+  f.component.setPosts(posts.map(post => ({ ...post, body: { ja: '更新された本文' } })));
+  assert.equal(detail.open, true);
+  assert.equal(detail.querySelector('.personal-journal-body').textContent, '更新された本文');
+  detail.querySelector('.journal-detail-close').emit('click');
+  assert.equal(f.root.querySelector('.personal-post-comments-content'), panel);
+  assert.equal(body.value, '尚未发送的草稿');
+  assert.equal(panel.querySelector('.comments-form').hidden, true);
+});
+
+test('an image can be viewed above journal detail without losing its open thread or scroll lock', t => {
+  const f = fixture(t, { posts: [{ id: 'images', title: '图片', body: '正文', images: [{ url: './one.jpg', alt: '一' }, { url: './two.jpg', alt: '二' }], published: true }] });
+  f.root.querySelector('.personal-journal-open').emit('click');
+  const detail = f.doc.body.querySelector('.journal-detail-viewer');
+  const button = detail.querySelector('.personal-journal-image-button'); button.emit('click');
+  const imageViewer = f.root.querySelector('.personal-image-viewer');
+  assert.equal(imageViewer.open, true); assert.equal(detail.open, true);
+  imageViewer.querySelector('.personal-image-next').emit('click');
+  assert.equal(imageViewer.querySelector('.personal-image-full').src, './two.jpg');
+  imageViewer.querySelector('.personal-image-close').emit('click');
+  assert.equal(imageViewer.open, false); assert.equal(detail.open, true);
+  assert.equal(f.doc.body.classList.contains('modal-open'), true);
+  assert.equal(f.doc.activeElement, button);
+  f.component.setPosts([]);
+  assert.equal(detail.open, false);
+  assert.equal(f.doc.body.classList.contains('modal-open'), false);
 });

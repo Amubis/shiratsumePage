@@ -517,7 +517,14 @@ test('liking a photo updates its card and open viewer without moving or replacin
   const wrappers = f.container.findAll('album-photo');
   const rectangles = wrappers.map(node => [...node.style.values]);
   const cardLike = wrappers[0].find('photo-like');
-  assert.equal(cardLike.parentElement, wrappers[0], 'like is a sibling, never a nested photo button');
+  assert.equal(cardLike.parentElement.classList.contains('album-print'), true, 'like and photo share the same paper pose');
+  assert.equal(cardLike.parentElement === wrappers[0].find('album-photo-card').parentElement, true, 'the independent buttons share one transform surface');
+  const card = wrappers[0].find('album-photo-card'), print = cardLike.parentElement;
+  card.emit('pointerenter', { pointerType: 'mouse', clientX: 140, clientY: 70 });
+  assert.equal(print.style.getPropertyValue('--inspect-rx'), card.style.getPropertyValue('--inspect-rx'), 'the complete paper tilts with its attached like control');
+  assert.equal(print.style.getPropertyValue('--inspect-lift'), '-12px');
+  card.emit('pointerleave');
+  assert.equal(print.style.getPropertyValue('--inspect-lift'), '0px');
   assert.equal(cardLike.find('photo-like-count').textContent, '3');
   f.api.openPlayer('one');
   const viewerLike = f.dialog.find('photo-like');

@@ -1,6 +1,7 @@
 import { cloverSVG } from './scene.js';
 import { DEFAULT_OWNER_PROFILE, localizeOwnerText, safeOwnerURL } from './owner-profile.js';
 import { createAnonymousComments, normalizeCommentsCopy } from './comments.js';
+import { createJournalViewer } from './journal-viewer.js';
 
 export const PERSONAL_PLATFORMS = Object.freeze([
   Object.freeze({ id: 'xiaohongshu', label: Object.freeze({ zh: '小红书', ja: 'RED / 小紅書' }), icon: './assets/icons/xiaohongshu.svg' }),
@@ -14,8 +15,8 @@ export const DEFAULT_PERSONAL_PROFILE = Object.freeze({
   journal: Object.freeze({ mode: 'placeholder', url: null }),
 });
 export const PERSONAL_COPY = Object.freeze({
-  zh: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '作者头像', links: '在别处找到我', pending: '个人主页链接待补充', journal: '碎碎念', journalNote: '想到什么，就写一点。', journalEmpty: '还没有公开的文章', soon: '准备中', journalMore: '加载更多', journalLoaded: '已显示全部碎碎念', journalPagination: '碎碎念分页', journalPrevious: '上一页', journalNext: '下一页', journalPage: '第 {page} 页，共 {pages} 页', viewImage: '查看图片', closeImage: '关闭图片', imageUnavailable: '图片暂时无法加载' }),
-  ja: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '庭の主のアイコン', links: 'ほかの場所でも', pending: 'プロフィールのリンクは準備中です', journal: 'ひとりごと', journalNote: '思いついたことを、少しずつ。', journalEmpty: '公開された記事はまだありません', soon: '準備中', journalMore: 'もっと見る', journalLoaded: 'すべてのひとりごとを表示しました', journalPagination: 'ひとりごとのページ', journalPrevious: '前のページ', journalNext: '次のページ', journalPage: '{page}ページ、全{pages}ページ', viewImage: '画像を見る', closeImage: '画像を閉じる', imageUnavailable: '画像を読み込めませんでした' }),
+  zh: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '作者头像', links: '在别处找到我', pending: '个人主页链接待补充', journal: '碎碎念', journalNote: '想到什么，就写一点。', journalEmpty: '还没有公开的文章', soon: '准备中', journalMore: '加载更多', journalLoaded: '已显示全部碎碎念', journalPagination: '碎碎念分页', journalPrevious: '上一页', journalNext: '下一页', journalPage: '第 {page} 页，共 {pages} 页', viewImage: '查看图片', closeImage: '关闭图片', viewPost: '查看碎碎念', closePost: '关闭碎碎念', previousPost: '上一条碎碎念', nextPost: '下一条碎碎念', previousImage: '上一张图片', nextImage: '下一张图片', imageUnavailable: '图片暂时无法加载' }),
+  ja: Object.freeze({ eyebrow: 'ABOUT THE CREATOR.', avatar: '庭の主のアイコン', links: 'ほかの場所でも', pending: 'プロフィールのリンクは準備中です', journal: 'ひとりごと', journalNote: '思いついたことを、少しずつ。', journalEmpty: '公開された記事はまだありません', soon: '準備中', journalMore: 'もっと見る', journalLoaded: 'すべてのひとりごとを表示しました', journalPagination: 'ひとりごとのページ', journalPrevious: '前のページ', journalNext: '次のページ', journalPage: '{page}ページ、全{pages}ページ', viewImage: '画像を見る', closeImage: '画像を閉じる', viewPost: 'ひとりごとを開く', closePost: 'ひとりごとを閉じる', previousPost: '前のひとりごと', nextPost: '次のひとりごと', previousImage: '前の画像', nextImage: '次の画像', imageUnavailable: '画像を読み込めませんでした' }),
 });
 const copyDictionary = (input) => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(PERSONAL_COPY[locale]).map(([key, fallback]) =>
@@ -76,16 +77,18 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
   let entries = publishedPosts(posts);
   let pageIndex = 0;
   let cancelPageMotion = () => {};
-  let closeViewer = () => {};
+  let returnToPost = () => null;
   let destroyed = false;
   let commentService = commentsService;
   let commentDictionary = normalizeCommentsCopy(commentsCopy);
   const commentSections = new Set();
   const commentDrafts = new Map();
   const expandedComments = new Set();
+  const commentReplies = new Map();
   function disposeComment(section) {
     if (section.id && section.panel) {
       commentDrafts.set(section.id, section.panel.draft);
+      commentReplies.set(section.id, section.panel.replyExpansion || []);
       if (section.panel.expanded) expandedComments.add(section.id); else expandedComments.delete(section.id);
     }
     section.panel?.destroy();
@@ -108,7 +111,74 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     return node;
   };
 
-  function createJournalFeed(journal, words, reusableComments = new Map()) {
+  function findSection(post) {
+    return [...commentSections].find(section => post.id ? section.id === post.id : section.post === post) || null;
+  }
+  function getSection(post) {
+    let section = findSection(post);
+    if (!section) {
+      const commentRoot = element('div', 'personal-post-comments-content');
+      const panel = createAnonymousComments({ container: commentRoot, service: commentService, targetType: 'note', targetId: post.id, language: locale, copy: commentDictionary, previewLimit: 3, compact: true, onOpenThread: () => viewer.open(post) });
+      if (post.id) { panel.setDraft(commentDrafts.get(post.id)); panel.setExpanded(expandedComments.has(post.id)); panel.setReplyExpansion?.(commentReplies.get(post.id) || []); }
+      section = { id: post.id, post, root: commentRoot, panel, host: null, locale, setService: next => panel.setService(next), updateCopy: () => panel.setCopy(commentDictionary) };
+      commentSections.add(section);
+    }
+    section.post = post;
+    section.panel.setOpenThreadHandler?.(() => viewer.open(post));
+    if (section.locale !== locale) { section.panel.setLanguage(locale); section.locale = locale; }
+    return section;
+  }
+  function createPost(post, { detail = false } = {}) {
+    const words = dictionary[locale], postTitle = localizeOwnerText(post.title, locale), postBody = localizeOwnerText(post.body, locale);
+    const article = element('article', `personal-journal-post${detail ? ' journal-detail-post' : ''}`);
+    article.setAttribute('data-journal-id', post.id || '');
+    if (post.dated) {
+      const date = new Date(post.timestamp);
+      const time = languageText('time', 'personal-journal-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
+      time.dateTime = date.toISOString(); article.append(time);
+    }
+    if (postTitle.trim()) {
+      const title = element('h4', 'personal-journal-title');
+      if (detail) { title.setAttribute('data-language-text', ''); title.textContent = postTitle; }
+      else {
+        const open = languageText('button', 'personal-journal-open', postTitle); open.type = 'button';
+        open.setAttribute('aria-haspopup', 'dialog'); open.addEventListener('click', () => viewer.open(post, open)); title.append(open);
+      }
+      article.append(title);
+    }
+    if (postBody.trim()) article.append(languageText('p', 'personal-journal-body', postBody));
+    if (post.images.length) {
+      const gallery = element('div', `personal-journal-images${post.images.length === 1 ? ' is-single' : ''}`);
+      gallery.setAttribute('data-image-count', String(post.images.length));
+      gallery.style.setProperty('--journal-image-columns', post.images.length === 2 || post.images.length === 4 ? '2' : '3');
+      for (const [index, source] of post.images.entries()) {
+        const alt = localizeOwnerText(source.alt, locale), button = element('button', 'personal-journal-image-button');
+        button.type = 'button'; button.setAttribute('aria-label', alt ? `${words.viewImage} · ${alt}` : words.viewImage);
+        button.setAttribute('aria-haspopup', 'dialog');
+        const thumbnail = element('img', 'personal-journal-image'); thumbnail.src = source.url; thumbnail.alt = alt;
+        thumbnail.loading = 'lazy'; thumbnail.decoding = 'async'; thumbnail.draggable = false;
+        button.append(thumbnail); button.addEventListener('click', () => viewer.openImage(post, index, button)); gallery.append(button);
+      }
+      article.append(gallery);
+    }
+    if (!detail) {
+      if (!postTitle.trim()) {
+        const open = languageText('button', 'personal-journal-open personal-journal-open-untitled', words.viewPost); open.type = 'button';
+        open.setAttribute('aria-haspopup', 'dialog'); open.addEventListener('click', () => viewer.open(post, open)); article.append(open);
+      }
+      const host = element('section', 'personal-post-comments'), section = getSection(post);
+      section.panel.setCompact?.(true); section.host = host; host.append(section.root); article.append(host);
+    }
+    return article;
+  }
+  const viewer = createJournalViewer({ document: doc, mount: root, getEntries: () => entries, getWords: () => dictionary[locale], getLocale: () => locale,
+    renderArticle: createPost,
+    takeComments(post) { const section = getSection(post); section.panel.setCompact?.(false); return section.root; },
+    releaseComments(post) { const section = findSection(post); if (!section) return; section.panel.setCompact?.(true); section.host?.append(section.root); },
+    onReturn(post) { return returnToPost(post); },
+  });
+
+  function createJournalFeed(journal, words) {
     journal.classList.add('has-feed');
     const heading = element('h3', 'personal-journal-heading');
     heading.append(glyph('personal-journal-clover'), languageText('span', '', words.journal));
@@ -126,100 +196,6 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     const reducedMotion = () => Boolean(win?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     cancelPageMotion = () => { ++motionSequence; pageAnimation?.cancel(); pageAnimation = null; pageBusy = false; };
 
-    let dialog = null;
-    let opener = null;
-    let image = null;
-    let errorMessage = null;
-    let keyHandler = null;
-    let viewerActive = false;
-    const clearViewer = () => {
-      if (!dialog || !viewerActive) return;
-      viewerActive = false;
-      doc.body?.classList.remove('modal-open');
-      if (keyHandler) doc.removeEventListener('keydown', keyHandler);
-      keyHandler = null;
-      if (image) image.removeAttribute('src');
-      opener?.focus?.({ preventScroll: true });
-      opener = null;
-    };
-    closeViewer = () => {
-      if (!dialog) return;
-      if (dialog.open && typeof dialog.close === 'function') dialog.close();
-      else dialog.removeAttribute('open');
-      clearViewer();
-    };
-    const openViewer = (picture, button) => {
-      if (destroyed) return;
-      if (!dialog) {
-        dialog = element('dialog', 'personal-image-viewer');
-        dialog.setAttribute('aria-label', words.viewImage);
-        const close = element('button', 'personal-image-close', '×');
-        close.type = 'button'; close.setAttribute('aria-label', words.closeImage);
-        image = element('img', 'personal-image-full'); image.decoding = 'async';
-        errorMessage = languageText('p', 'personal-image-error', words.imageUnavailable);
-        errorMessage.hidden = true; errorMessage.setAttribute('role', 'status');
-        image.addEventListener('error', () => { errorMessage.hidden = false; image.hidden = true; });
-        close.addEventListener('click', closeViewer);
-        dialog.addEventListener('close', () => { if (!dialog.open) clearViewer(); });
-        dialog.addEventListener('click', event => { if (event.target === dialog) closeViewer(); });
-        dialog.append(close, image, errorMessage);
-        root.append(dialog);
-      }
-      opener = button;
-      viewerActive = true;
-      image.hidden = false; errorMessage.hidden = true;
-      image.src = picture.url; image.alt = picture.alt;
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-      else {
-        dialog.setAttribute('open', '');
-        dialog.setAttribute('role', 'dialog');
-        dialog.setAttribute('aria-modal', 'true');
-        keyHandler = event => { if (event.key === 'Escape') closeViewer(); };
-        doc.addEventListener('keydown', keyHandler);
-      }
-      doc.body?.classList.add('modal-open');
-    };
-    const createPost = post => {
-      const postTitle = localizeOwnerText(post.title, locale);
-      const postBody = localizeOwnerText(post.body, locale);
-      const article = element('article', 'personal-journal-post');
-      article.setAttribute('data-journal-id',post.id);
-      if (post.dated) {
-        const date = new Date(post.timestamp);
-        const time = languageText('time', 'personal-journal-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
-        time.dateTime = date.toISOString(); article.append(time);
-      }
-      if (postTitle.trim()) article.append(languageText('h4', 'personal-journal-title', postTitle));
-      if (postBody.trim()) article.append(languageText('p', 'personal-journal-body', postBody));
-      if (post.images.length) {
-        const gallery = element('div', 'personal-journal-images');
-        for (const source of post.images) {
-          const picture = { ...source, alt: localizeOwnerText(source.alt, locale) };
-          const button = element('button', 'personal-journal-image-button');
-          button.type = 'button'; button.setAttribute('aria-label', picture.alt ? `${words.viewImage} · ${picture.alt}` : words.viewImage);
-          const thumbnail = element('img', 'personal-journal-image');
-          thumbnail.src = picture.url; thumbnail.alt = picture.alt;
-          thumbnail.loading = 'lazy'; thumbnail.decoding = 'async';
-          button.append(thumbnail);
-          button.addEventListener('click', () => openViewer(picture, button));
-          gallery.append(button);
-        }
-        article.append(gallery);
-      }
-      const commentsSection = element('section', 'personal-post-comments');
-      let section = post.id ? reusableComments.get(post.id) : null;
-      if (section) {
-        reusableComments.delete(post.id);
-        section.panel.setLanguage(locale);
-      } else {
-        const commentRoot = element('div', 'personal-post-comments-content');
-        const panel = createAnonymousComments({ container: commentRoot, service: commentService, targetType: 'note', targetId: post.id, language: locale, copy: commentDictionary, previewLimit: 3 });
-        if (post.id) { panel.setDraft(commentDrafts.get(post.id)); panel.setExpanded(expandedComments.has(post.id)); }
-        section = { id: post.id, root: commentRoot, panel, setService: next => panel.setService(next), updateCopy: () => panel.setCopy(commentDictionary) };
-      }
-      commentsSection.append(section.root); article.append(commentsSection); commentSections.add(section);
-      return article;
-    };
     const renderPagination = () => {
       const pageButton = (target, label, className, accessibleLabel) => {
         const button = element('button', `personal-journal-page${className ? ` ${className}` : ''}`, label);
@@ -247,8 +223,15 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       pagination.setAttribute('aria-busy', String(pageBusy));
     };
     const renderEntries = () => {
-      disposeComments();
-      list.replaceChildren(...entries.slice(pageIndex * JOURNAL_PAGE_SIZE, (pageIndex + 1) * JOURNAL_PAGE_SIZE).map(createPost));
+      list.replaceChildren(...entries.slice(pageIndex * JOURNAL_PAGE_SIZE, (pageIndex + 1) * JOURNAL_PAGE_SIZE).map(post => createPost(post)));
+    };
+    returnToPost = post => {
+      const index = entries.findIndex(item => item === post || item.id && item.id === post.id);
+      if (index < 0 || destroyed) return null;
+      pageIndex = Math.floor(index / JOURNAL_PAGE_SIZE); cancelPageMotion(); renderEntries(); renderPagination();
+      const article = [...list.querySelectorAll('.personal-journal-post')].find(node => node.getAttribute('data-journal-id') === (post.id || ''));
+      article?.scrollIntoView?.({ block: 'nearest', behavior: reducedMotion() ? 'instant' : 'smooth' });
+      return article?.querySelector('.personal-journal-open') || list;
     };
     function changePage(next) {
       if (destroyed || pageBusy || next < 0 || next >= pageCount || next === pageIndex) return;
@@ -258,7 +241,7 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       let committed = false;
       const commit = () => {
         if (!active()) return;
-        closeViewer(); pageIndex = next; renderEntries(); renderPagination(); committed = true;
+        viewer.closeImage(true); pageIndex = next; renderEntries(); renderPagination(); committed = true;
         list.focus?.({ preventScroll: true });
         list.scrollIntoView?.({ block: 'start', behavior: reducedMotion() ? 'instant' : 'smooth' });
       };
@@ -283,16 +266,11 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     renderEntries(); renderPagination();
   }
 
-  function render({ preserveComments = false } = {}) {
+  function render() {
     cancelPageMotion(); cancelPageMotion = () => {};
-    const reusableComments = new Map();
-    if (preserveComments) {
-      for (const section of commentSections) {
-        if (section.id) reusableComments.set(section.id, section); else disposeComment(section);
-      }
-      commentSections.clear();
-    } else disposeComments();
-    closeViewer(); closeViewer = () => {};
+    viewer.closeImage(true);
+    const ids = new Set(entries.map(post => post.id));
+    for (const section of [...commentSections]) if (!ids.has(section.id)) { disposeComment(section); commentSections.delete(section); }
     const copy = dictionary[locale];
     const shell = element('div', 'personal-card');
     const eyebrow = languageText('p', 'personal-eyebrow personal-reveal', copy.eyebrow);
@@ -326,7 +304,7 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     if (data.journal.mode !== 'hidden') {
       const url = data.journal.mode === 'link' ? data.journal.url : null;
       const journal = element('aside', 'personal-journal personal-reveal'); journal.setAttribute('aria-label', copy.journal);
-      if (data.journal.mode !== 'link' && entries.length) createJournalFeed(journal, copy, reusableComments);
+      if (data.journal.mode !== 'link' && entries.length) createJournalFeed(journal, copy);
       else {
         const entry = element(url ? 'a' : 'button', 'personal-journal-entry');
         if (url) { entry.href = url; entry.target = '_blank'; entry.rel = 'noopener noreferrer'; }
@@ -336,9 +314,7 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       }
       shell.append(journal);
     }
-    for (const section of reusableComments.values()) disposeComment(section);
-    reusableComments.clear();
-    root.classList.add('personal-page'); root.replaceChildren(shell);
+    root.classList.add('personal-page'); root.replaceChildren(shell); viewer.mount(root); viewer.refresh();
   }
   render();
   return {
@@ -348,6 +324,6 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
     setCommentsCopy(next) { if (destroyed) return; commentDictionary = normalizeCommentsCopy(next); commentSections.forEach(section => section.updateCopy()); },
     setPosts(next) { if (destroyed) return; entries = publishedPosts(next); pageIndex = Math.min(pageIndex, Math.max(0, Math.ceil(entries.length / JOURNAL_PAGE_SIZE) - 1)); render(); },
     update(next) { if (destroyed) return; data = normalizePersonalProfile(next); render(); },
-    destroy() { if (destroyed) return; cancelPageMotion(); closeViewer(); disposeComments(); commentDrafts.clear(); expandedComments.clear(); destroyed = true; root.replaceChildren(); root.classList.remove('personal-page'); },
+    destroy() { if (destroyed) return; cancelPageMotion(); viewer.destroy(); disposeComments(); commentDrafts.clear(); expandedComments.clear(); commentReplies.clear(); destroyed = true; root.replaceChildren(); root.classList.remove('personal-page'); },
   };
 }

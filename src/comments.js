@@ -42,6 +42,20 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
   const sameOrigin = () => { try { return new URL(endpoint || '/', pageURL).origin === new URL(pageURL).origin; } catch { return false; } };
   let endpoint = normalizeBaseUrl(baseUrl);
   const listeners = new Set();
+  const threadCache = new Map();
+  const keyFor = (type, id) => JSON.stringify([type, String(id)]);
+  const copyThread = records => records.map(record => ({ ...record }));
+  function invalidateThread(type, id) { threadCache.delete(keyFor(type, id)); }
+  function waitForThread(promise, signal) {
+    if (!signal) return promise.then(copyThread);
+    if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    return new Promise((resolve, reject) => {
+      const abort = () => { cleanup(); reject(new DOMException('Aborted', 'AbortError')); };
+      const cleanup = () => signal.removeEventListener('abort', abort);
+      signal.addEventListener('abort', abort, { once: true });
+      promise.then(records => { cleanup(); resolve(copyThread(records)); }, error => { cleanup(); reject(error); });
+    });
+  }
   const request = async (path, options) => {
     if (endpoint === null || typeof fetchImpl !== 'function') throw commentError('comments_unavailable', 503);
     const response = await fetchImpl(`${endpoint}/api/comments${path}`, { ...options, credentials: 'omit', mode: 'cors' });
@@ -50,7 +64,7 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
     if (!response.ok) throw commentError(data?.code || 'request_failed', response.status);
     return data;
   };
-  const clearOwner = () => { owner = null; sessionVersion++; listeners.forEach(listener => listener()); };
+  const clearOwner = () => { owner = null; sessionVersion++; threadCache.clear(); listeners.forEach(listener => listener()); };
   const ownerRequest = async (path, { method = 'GET', body, signal } = {}) => {
     if (endpoint === null || typeof fetchImpl !== 'function') throw commentError('comments_unavailable', 503);
     if (!owner || !sameOrigin()) throw commentError('owner_required', 401);
@@ -68,8 +82,11 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
     get baseUrl() { return endpoint; },
     get ownerSession() { return endpoint !== null && owner && sameOrigin() ? { authenticated: true, username: owner.username } : { authenticated: false }; },
     setOwnerSession(value) {
-      owner = value?.authenticated === true && typeof value.csrfToken === 'string' && value.csrfToken && sameOrigin() ? { csrfToken: value.csrfToken, username: typeof value.username === 'string' ? value.username.slice(0, 40) : 'Amubis' } : null;
+      const next = value?.authenticated === true && typeof value.csrfToken === 'string' && value.csrfToken && sameOrigin() ? { csrfToken: value.csrfToken, username: typeof value.username === 'string' ? value.username.slice(0, 40) : 'Amubis' } : null;
+      if (next?.csrfToken === owner?.csrfToken && next?.username === owner?.username) return;
+      owner = next;
       sessionVersion++;
+      threadCache.clear();
       listeners.forEach(listener => listener());
     },
     setBaseUrl(value) {
@@ -77,39 +94,62 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
       if (next === endpoint) { if (next === null && owner) clearOwner(); return; }
       endpoint = next;
       sessionVersion++;
+      threadCache.clear();
       if (endpoint === null || !sameOrigin()) owner = null;
       listeners.forEach(listener => listener());
     },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    async getComments({ targetType, targetId, signal } = {}) {
+    async getComments({ targetType, targetId, signal, force = false } = {}) {
       if (!['photo', 'note'].includes(targetType) || !targetId) throw commentError('invalid_target');
-      const query = new URLSearchParams({ targetType, targetId: String(targetId) });
-      if (owner && sameOrigin()) {
-        query.set('limit', '500');
-        const data = await ownerRequest(`?${query}`, { signal });
-        const matching = (Array.isArray(data) ? data : data?.comments || []).filter(item => item.targetType === targetType && item.targetId === String(targetId));
-        return normalizeComments(matching, { owner: true });
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const key = keyFor(targetType, targetId);
+      if (force) threadCache.delete(key);
+      let entry = threadCache.get(key);
+      if (!entry) {
+        const version = sessionVersion;
+        entry = { type: targetType, id: String(targetId), records: null, promise: null };
+        // A panel closing must not cancel a read shared by a second panel.
+        entry.promise = (async () => {
+          const query = new URLSearchParams({ targetType, targetId: String(targetId) });
+          let records;
+          if (owner && sameOrigin()) {
+            query.set('limit', '500');
+            const data = await ownerRequest(`?${query}`);
+            const matching = (Array.isArray(data) ? data : data?.comments || []).filter(item => item.targetType === targetType && item.targetId === String(targetId));
+            records = normalizeComments(matching, { owner: true });
+          } else {
+            const data = await request(`?${query}`, { method: 'GET', headers: { Accept: 'application/json' } });
+            if (data?.available === false) throw commentError('comments_unavailable', 503);
+            records = normalizeComments(Array.isArray(data) ? data : data?.comments);
+          }
+          if (version !== sessionVersion) throw commentError('owner_session_changed', 401);
+          entry.records = records;
+          return records;
+        })().catch(error => { if (threadCache.get(key) === entry) threadCache.delete(key); throw error; });
+        threadCache.set(key, entry);
       }
-      const data = await request(`?${query}`, { method: 'GET', signal, headers: { Accept: 'application/json' } });
-      if (data?.available === false) throw commentError('comments_unavailable', 503);
-      return normalizeComments(Array.isArray(data) ? data : data?.comments);
+      return waitForThread(entry.promise, signal);
     },
     async postComment(payload, { signal } = {}) {
       if (owner && sameOrigin()) {
         if (!payload?.parentId) throw commentError('owner_reply_required', 400);
-        return ownerRequest(`/${encodeURIComponent(payload.parentId)}/reply`, { method: 'POST', signal, body: { body: payload.body } });
+        const result = await ownerRequest(`/${encodeURIComponent(payload.parentId)}/reply`, { method: 'POST', signal, body: { body: payload.body } });
+        invalidateThread(payload.targetType, payload.targetId); return result;
       }
-      return request('', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
+      const result = await request('', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
+      invalidateThread(payload.targetType, payload.targetId); return result;
     },
     async moderateComment(commentId, status, { signal } = {}) {
       if (typeof commentId !== 'string' || !commentId || !['approved', 'rejected', 'deleted'].includes(status)) throw commentError('invalid_moderation', 400);
-      return ownerRequest(`/${encodeURIComponent(commentId)}`, { method: 'PATCH', signal, body: { status, read: true } });
+      const result = await ownerRequest(`/${encodeURIComponent(commentId)}`, { method: 'PATCH', signal, body: { status, read: true } });
+      for (const [key, entry] of threadCache) if (entry.records?.some(comment => comment.id === commentId)) threadCache.delete(key);
+      return result;
     },
   };
 }
 
 /** One panel owns a single visible thread; changing its target aborts stale work. */
-export function createAnonymousComments({ container, service = null, targetType = 'photo', targetId = null, language = 'zh', copy, active = true, previewLimit = 0 } = {}) {
+export function createAnonymousComments({ container, service = null, targetType = 'photo', targetId = null, language = 'zh', copy, active = true, previewLimit = 0, compact = false, onOpenThread = null } = {}) {
   if (!container?.ownerDocument) throw new TypeError('A comments container is required.');
   const doc = container.ownerDocument;
   let locale = language === 'ja' ? 'ja' : 'zh';
@@ -130,8 +170,11 @@ export function createAnonymousComments({ container, service = null, targetType 
   let submitting = false;
   let replyId = null;
   let wasOwner = false, anonymousNickname = '';
-  const limit = Number.isFinite(Number(previewLimit)) ? Math.max(0, Math.floor(Number(previewLimit))) : 0;
+  const configuredLimit = Number.isFinite(Number(previewLimit)) ? Math.max(0, Math.floor(Number(previewLimit))) : 0;
+  let isCompact = Boolean(compact), openThreadHandler = typeof onOpenThread === 'function' ? onOpenThread : null;
+  let limit = configuredLimit || (isCompact ? 3 : 0);
   let expanded = false, listAnimation = null;
+  const expandedReplies = new Set();
   const ownerMode = () => client?.ownerSession?.authenticated === true;
   const canModerate = () => ownerMode() && typeof client?.moderateComment === 'function';
   const selectedReply = () => comments.find(comment => comment.id === replyId && !comment.parentId);
@@ -153,6 +196,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   const list = element('div', 'comments-list');
   list.tabIndex = -1;
   const more = button('comments-more'); more.hidden = true;
+  const openThread = button('comments-open-thread'); openThread.hidden = true;
   const form = element('form', 'comments-form');
   const nicknameLabel = element('label', 'comments-label comments-nickname-label'); const nicknameText = element('span', 'comments-label-text');
   const nickname = element('input', 'comments-nickname'); nickname.type = 'text'; nickname.name = 'nickname'; nickname.autocomplete = 'nickname';
@@ -165,15 +209,17 @@ export function createAnonymousComments({ container, service = null, targetType 
   const reply = element('div', 'comments-reply-target'); const replyText = element('span', ''); const cancelReply = button('comments-cancel-reply'); reply.append(replyText, cancelReply);
   const footer = element('div', 'comments-form-footer'); const count = element('span', 'comments-count'); const submit = element('button', 'comments-submit'); submit.type = 'submit'; footer.append(count, submit);
   const status = element('p', 'comments-submit-state'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-  [heading, note, loadMessage, retry, more, nicknameText, bodyText, replyText, cancelReply, count, submit, status].forEach(languageText);
+  [heading, note, loadMessage, retry, more, openThread, nicknameText, bodyText, replyText, cancelReply, count, submit, status].forEach(languageText);
   form.append(nicknameLabel, reply, bodyLabel, trap, footer, status);
-  root.append(heading, note, loadMessage, retry, list, more, form); container.replaceChildren(root);
+  root.append(heading, note, loadMessage, retry, list, more, openThread, form); container.replaceChildren(root);
 
   const draftKey = () => `${type}:${id}`;
-  function saveDraft() { if (id) drafts.set(draftKey(), { body: body.value || '', nickname: ownerMode() ? anonymousNickname : nickname.value || '', website: website.value || '', replyId }); }
+  function saveDraft() { if (id) drafts.set(draftKey(), { body: body.value || '', nickname: ownerMode() ? anonymousNickname : nickname.value || '', website: website.value || '', replyId, expanded, expandedReplies: [...expandedReplies] }); }
   function restoreDraft() {
     const draft = drafts.get(draftKey());
     body.value = draft?.body || ''; nickname.value = draft?.nickname || ''; website.value = draft?.website || ''; replyId = draft?.replyId || null;
+    expanded = draft?.expanded === true; expandedReplies.clear();
+    for (const parentId of draft?.expandedReplies || []) expandedReplies.add(parentId);
   }
   function abort() {
     generation++;
@@ -202,7 +248,11 @@ export function createAnonymousComments({ container, service = null, targetType 
         const replyButton = languageText(button('comment-reply-button')); replyButton.textContent = words().reply;
         replyButton.disabled = Boolean(moderating) || !canReplyTo(comment);
         if (!canReplyTo(comment)) replyButton.title = words().reviewFirst;
-        replyButton.addEventListener('click', () => { replyId = comment.id; submitState = ''; update(); body.focus?.(); });
+        replyButton.addEventListener('click', () => {
+          replyId = comment.id; submitState = ''; saveDraft(); update();
+          if (isCompact) requestOpenThread();
+          else body.focus?.();
+        });
         actions.append(replyButton);
       }
       if (canModerate()) {
@@ -217,7 +267,21 @@ export function createAnonymousComments({ container, service = null, targetType 
       if (actions.children.length) article.append(actions);
       if (!comment.parentId) {
         const children = comments.filter(child => child.parentId === comment.id);
-        if (children.length) { const replies = element('div', 'comment-replies'); replies.append(...children.map(createComment)); article.append(replies); }
+        if (children.length) {
+          const replies = element('div', 'comment-replies');
+          const open = expandedReplies.has(comment.id);
+          // Pending replies remain visible to their moderator even in a short preview.
+          const visible = !isCompact || open ? children : children.filter((child, index) => index === 0 || (ownerMode() && child.status === 'pending'));
+          replies.append(...visible.map(createComment));
+          if (isCompact && children.length > 1 && (open || visible.length < children.length)) {
+            const toggle = languageText(button('comment-replies-more'));
+            toggle.textContent = open ? (locale === 'ja' ? '返信を折りたたむ' : '收起回复') : (locale === 'ja' ? `残り${children.length - visible.length}件の返信を見る` : `展开其余 ${children.length - visible.length} 条回复`);
+            toggle.setAttribute('aria-expanded', String(open)); toggle.setAttribute('data-parent-id', comment.id);
+            toggle.addEventListener('click', () => setRepliesExpanded(comment.id, !open, true));
+            replies.append(toggle);
+          }
+          article.append(replies);
+        }
       }
       return article;
     };
@@ -228,6 +292,8 @@ export function createAnonymousComments({ container, service = null, targetType 
     more.setAttribute('aria-expanded', String(expanded));
     root.classList.toggle('comments-expanded', expanded || ownerMode());
     root.classList.toggle('comments-owner-mode', ownerMode());
+    root.classList.toggle('comments-compact', isCompact);
+    root.classList.toggle('comments-preview', Boolean(limit));
   }
   function revealReply() {
     if (limit && comments.filter(comment => !comment.parentId).findIndex(comment => comment.id === replyId) >= limit) expanded = true;
@@ -237,12 +303,35 @@ export function createAnonymousComments({ container, service = null, targetType 
     if (destroyed || value === expanded) return;
     const previousHeight = list.getBoundingClientRect?.().height;
     listAnimation?.cancel(); listAnimation = null;
-    expanded = value; renderComments(); update();
+    expanded = value; renderComments(); update(); saveDraft();
+    animateListHeight(previousHeight, animate);
+  }
+  function animateListHeight(previousHeight, animate = false) {
     const nextHeight = list.getBoundingClientRect?.().height;
     if (!animate || !list.animate || doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches || !previousHeight || previousHeight === nextHeight) return;
     const animation = list.animate([{ height: `${previousHeight}px`, overflow: 'hidden' }, { height: `${nextHeight}px`, overflow: 'hidden' }], { duration: 280, easing: 'cubic-bezier(.2,.7,.3,1)' });
     listAnimation = animation;
     animation.finished.then(() => { if (listAnimation === animation) listAnimation = null; }, () => {});
+  }
+  function setRepliesExpanded(parentId, value, animate = false) {
+    if (destroyed) return;
+    const previousHeight = list.getBoundingClientRect?.().height;
+    if (value) expandedReplies.add(parentId); else expandedReplies.delete(parentId);
+    renderComments(); update(); saveDraft(); animateListHeight(previousHeight, animate);
+    if (animate) [...list.querySelectorAll('.comment-replies-more')].find(node => node.getAttribute('data-parent-id') === parentId)?.focus?.({ preventScroll: true });
+  }
+  function requestOpenThread() {
+    if (destroyed) return;
+    saveDraft();
+    if (openThreadHandler) openThreadHandler({ targetType: type, targetId: id, replyId });
+    else setCompact(false);
+    if (!isCompact) body.focus?.({ preventScroll: true });
+  }
+  function setCompact(next) {
+    const value = Boolean(next);
+    if (destroyed || value === isCompact) return;
+    saveDraft(); isCompact = value; limit = value ? configuredLimit || 3 : 0;
+    renderComments(); update();
   }
   function update() {
     if (destroyed) return;
@@ -253,8 +342,10 @@ export function createAnonymousComments({ container, service = null, targetType 
     if (!loggedIn && wasOwner) nickname.value = anonymousNickname;
     if (loggedIn) nickname.value = client.ownerSession.username || 'Amubis';
     wasOwner = loggedIn;
-    note.textContent = loggedIn ? words()[canModerate() ? 'ownerModerationNote' : 'ownerNote'] : words().note; note.hidden = !enabled || loadState === 'unavailable';
-    form.hidden = !enabled || loadState === 'unavailable'; list.hidden = !enabled;
+    note.textContent = loggedIn ? words()[canModerate() ? 'ownerModerationNote' : 'ownerNote'] : words().note; note.hidden = isCompact || !enabled || loadState === 'unavailable';
+    form.hidden = isCompact || !enabled || loadState === 'unavailable'; list.hidden = !enabled;
+    openThread.hidden = !isCompact || !enabled || loadState === 'unavailable';
+    openThread.textContent = locale === 'ja' ? 'コメントを書く／会話を見る' : '写留言／查看讨论';
     nicknameText.textContent = words().nickname; nickname.placeholder = words().nicknamePlaceholder;
     bodyText.textContent = words().body; body.placeholder = words().bodyPlaceholder; trapText.textContent = words().website;
     const message = !enabled || loadState === 'unavailable' ? 'unavailable' : loadState === 'loading' ? 'loading' : loadState === 'error' ? 'loadError' : !comments.length ? 'empty' : '';
@@ -269,12 +360,12 @@ export function createAnonymousComments({ container, service = null, targetType 
     nickname.disabled = submitting || loggedIn; body.disabled = submitting; cancelReply.disabled = submitting;
     status.textContent = words()[submitState] || ''; status.hidden = !submitState;
   }
-  async function load() {
+  async function load({ force = false } = {}) {
     abort(); comments = []; submitState = ''; loadState = 'idle'; renderComments(); update();
     if (!isActive || !available()) return;
     const current = generation; loadController = new AbortController(); loadState = 'loading'; update();
     try {
-      const result = await client.getComments({ targetType: type, targetId: id, signal: loadController.signal });
+      const result = await client.getComments({ targetType: type, targetId: id, signal: loadController.signal, force });
       if (destroyed || current !== generation) return;
       comments = normalizeComments(result, { owner: ownerMode() }); loadState = 'loaded'; revealReply(); renderComments();
     } catch (error) {
@@ -297,7 +388,7 @@ export function createAnonymousComments({ container, service = null, targetType 
       const result = await client.postComment(payload, { signal: submitController.signal });
       if (destroyed || current !== generation) return;
       const publishedReply = ownerMode() && result?.comment?.verified === true && result.comment.status === 'approved';
-      if (publishedReply) { comments = normalizeComments([...comments, result.comment], { owner: true }); renderComments(); }
+      if (publishedReply) { comments = normalizeComments([...comments, result.comment], { owner: true }); if (parent) expandedReplies.add(parent.id); renderComments(); }
       body.value = ''; website.value = ''; replyId = null; submitState = publishedReply ? 'ownerSent' : 'pending'; saveDraft();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
@@ -332,14 +423,20 @@ export function createAnonymousComments({ container, service = null, targetType 
   bind(form, 'submit', send);
   bind(body, 'input', () => { saveDraft(); update(); }); bind(nickname, 'input', saveDraft);
   bind(cancelReply, 'click', () => { replyId = null; saveDraft(); update(); });
-  bind(retry, 'click', () => { void load(); });
+  bind(retry, 'click', () => { void load({ force: true }); });
   bind(more, 'click', () => setExpanded(!expanded, true));
+  bind(openThread, 'click', requestOpenThread);
   setService(service);
   return {
     get draft() { return { body: body.value || '', nickname: nickname.value || '', website: website.value || '', replyId }; },
     setDraft(next) { if (destroyed || !next) return; body.value = typeof next.body === 'string' ? next.body : ''; nickname.value = typeof next.nickname === 'string' ? next.nickname : ''; website.value = typeof next.website === 'string' ? next.website : ''; replyId = typeof next.replyId === 'string' ? next.replyId : null; revealReply(); saveDraft(); renderComments(); update(); },
     get expanded() { return expanded; },
     setExpanded(next) { setExpanded(next); },
+    get compact() { return isCompact; },
+    setCompact,
+    get replyExpansion() { return [...expandedReplies]; },
+    setReplyExpansion(next) { if (destroyed) return; expandedReplies.clear(); for (const parentId of Array.isArray(next) ? next : []) if (typeof parentId === 'string') expandedReplies.add(parentId); saveDraft(); renderComments(); update(); },
+    setOpenThreadHandler(next) { if (!destroyed) openThreadHandler = typeof next === 'function' ? next : null; },
     setTarget(nextType, nextId) {
       if (destroyed) return;
       if (nextType && typeof nextType === 'object') { nextId = nextType.targetId; nextType = nextType.targetType; }

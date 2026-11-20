@@ -155,7 +155,7 @@ function railPositionAtX(x, count) {
   return (lower + upper) / 2;
 }
 
-export const OUTFIT_HINT_TIMING = Object.freeze({ delay: 4000, duration: 2800 });
+export const OUTFIT_HINT_TIMING = Object.freeze({ delay: 2200, duration: 2800, repeatDelay: 6000 });
 
 /** One selected outfit with independently accessible front and rear views. */
 function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = () => false, onChange = () => {}, outfits = OUTFITS, initialIndex = 0, copy = OUTFIT_COPY, preloadEnabled = true, hintConsumed = false } = {}) {
@@ -178,9 +178,10 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   let enabled = true;
   let busy = false;
   let warmEnabled = Boolean(preloadEnabled), warming = false;
-  let interacted = false;
+  // A demonstration is not interaction: only a real activation retires it.
+  let interacted = Boolean(hintConsumed);
   let hintActive = false;
-  let hintShown = Boolean(hintConsumed);
+  let hintShown = false;
   let hintHovered = false;
   let hintFocused = false;
   let hintTimer = null;
@@ -618,12 +619,12 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   }
 
   function canWaitForHint() {
-    return !destroyed && enabled && records.length > 1 && hintActive && !doc.hidden && !interacted && !hintShown && !busy && !pressed && !hintHovered && !hintFocused;
+    return !destroyed && enabled && records.length > 1 && hintActive && !doc.hidden && !interacted && !(hintShown && reducedMotion() && cue.hidden) && !busy && !pressed && !hintHovered && !hintFocused;
   }
 
   function refreshHint() {
     if (!canWaitForHint()) { hideHint(); return; }
-    if (hintTimer !== null) return;
+    if (hintTimer !== null || hintEndTimer !== null || !cue.hidden) return;
     const generation = hintSerial;
     hintTimer = win.setTimeout(() => {
       if (generation !== hintSerial) return;
@@ -634,8 +635,13 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
       cue.classList.add('is-hint-visible');
       cue.classList.toggle('is-hint-static', Boolean(reducedMotion()));
       pair.classList.toggle('is-hint-demonstrating', !reducedMotion());
-      hintEndTimer = win.setTimeout(() => { if (generation === hintSerial) hideHint(); }, OUTFIT_HINT_TIMING.duration);
-    }, OUTFIT_HINT_TIMING.delay);
+      hintEndTimer = win.setTimeout(() => {
+        if (generation !== hintSerial) return;
+        hideHint();
+        // Queue the next quiet interval only while this chapter is eligible.
+        refreshHint();
+      }, OUTFIT_HINT_TIMING.duration);
+    }, hintShown ? OUTFIT_HINT_TIMING.repeatDelay : OUTFIT_HINT_TIMING.delay);
   }
 
   async function decodeImage(loaded) {
@@ -871,6 +877,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
     bind(target, 'pointerdown', (event) => {
       const bounds = target.getBoundingClientRect?.();
       if ((event.button ?? 0) !== 0 || !holdPress(target)) return;
+      markInteracted();
       pressBounds = bounds;
       suppressClick = false;
       pressPointer = event.pointerId ?? null;
@@ -903,7 +910,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
       if (event.key === ' ' || event.key === 'Spacebar') {
         event.preventDefault();
         event.stopPropagation();
-        if (!event.repeat && holdPress(target)) keyboardHeld = true;
+        if (!event.repeat && holdPress(target)) { markInteracted(); keyboardHeld = true; }
         return;
       }
       const targets = { ArrowLeft: currentIndex - 1, ArrowRight: currentIndex + 1, Home: 0, End: records.length - 1 };
@@ -979,7 +986,7 @@ function createOutfitShowcaseView({ container, language = 'zh', reducedMotion = 
   return {
     get index() { return currentIndex; },
     get outfitId() { return records[currentIndex].id; },
-    get hintConsumed() { return hintShown || interacted; },
+    get hintConsumed() { return interacted || (hintShown && reducedMotion()); },
     goTo,
     next() { return goTo(currentIndex + 1); },
     previous() { return goTo(currentIndex - 1); },

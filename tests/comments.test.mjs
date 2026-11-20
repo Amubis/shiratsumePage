@@ -178,7 +178,7 @@ test('journal comments follow five-post pages and preserve drafts and expansion 
   const page = createPersonalPage({ root: f.container, commentsService: client, posts: Array.from({ length: 8 }, (_, index) => ({ id: `note-${index}`, body: `正文 ${index}`, published: true })) }); t.after(() => page.destroy());
   assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 5); assert.equal(client.calls.length, 5);
   assert.equal(f.find('.personal-post-comments').localName, 'section'); await tick();
-  assert.equal(f.find('.comments-form').hidden, false); assert.equal(client.calls[0].targetType, 'note'); assert.equal(client.calls[0].targetId, 'note-0');
+  assert.equal(f.find('.comments-form').hidden, true); assert.equal(f.find('.comments-open-thread').hidden, false); assert.equal(client.calls[0].targetType, 'note'); assert.equal(client.calls[0].targetId, 'note-0');
   const originalPanel = f.find('.personal-post-comments-content'), originalInput = f.find('.comments-body');
   f.find('.comments-body').value = '切语言时保留'; f.find('.comments-more').emit('click'); page.setLanguage('ja');
   assert.equal(f.find('.personal-post-comments-content'), originalPanel, 'changing language moves the loaded panel rather than replacing it');
@@ -192,7 +192,7 @@ test('journal comments follow five-post pages and preserve drafts and expansion 
   assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
   f.find('.personal-journal-next').emit('click'); await tick();
   assert.equal(f.container.querySelectorAll('.personal-post-comments').length, 3);
-  assert.equal(client.listeners.size, 3, 'off-page comment listeners are released');
+  assert.equal(client.listeners.size, 8, 'visited post panels stay cached once per post');
   assert.equal(f.find('.personal-journal-post').getAttribute('data-journal-id'), 'note-5');
   assert.equal(f.find('.comments-body').value, '');
   f.find('.comments-body').value = '第二页的草稿';
@@ -202,6 +202,7 @@ test('journal comments follow five-post pages and preserve drafts and expansion 
   assert.equal(f.find('.comments-more').getAttribute('aria-expanded'), 'true');
   f.find('.personal-journal-next').emit('click'); await tick();
   assert.equal(f.find('.comments-body').value, '第二页的草稿');
+  assert.equal(client.calls.length, 8, 'returning to a visited journal page reuses its comments');
   page.setCommentsService(null); assert.equal(f.find('.comments-form').hidden, true);
   assert.equal(f.find('.comments-load-state').textContent, COMMENTS_COPY.ja.unavailable);
   assert.equal(f.find('.personal-post-comments-summary'), null);
@@ -409,4 +410,88 @@ test('logout and target changes remove pending comments immediately and ignore a
   client.ownerSession = { authenticated: false }; client.listeners.forEach(listener => listener());
   assert.equal(f.find('.comment-body'), null, 'private DOM clears synchronously at logout'); await tick();
   assert.equal(f.find('.comment-review-state'), null); assert.equal(f.find('.comment-delete-button'), null);
+});
+
+test('compact journal previews one reply per thread and preserves expansion and drafts across detail and language changes', async t => {
+  const records = [comment('a'), comment('a1', { parentId: 'a' }), comment('a2', { parentId: 'a' }), comment('a3', { parentId: 'a' }), ...['b', 'c', 'd', 'e'].map(id => comment(id))];
+  const f = documentFixture(), client = serviceStub(records);
+  const panel = createAnonymousComments({ container: f.container, service: client, targetType: 'note', targetId: 'note', compact: true });
+  t.after(() => panel.destroy()); await tick();
+  assert.deepEqual(f.container.querySelectorAll('.comment-body').map(node => node.textContent), ['留言 a', '留言 a1', '留言 b', '留言 c']);
+  assert.equal(f.find('.comments-form').hidden, true); assert.equal(f.find('.comments-note').hidden, true);
+  assert.equal(f.find('.comments-open-thread').hidden, false); assert.equal(f.find('.comments-open-thread').getAttribute('data-language-text'), '');
+  assert.equal(f.find('.comment-replies-more').textContent, '展开其余 2 条回复');
+  f.find('.comment-replies-more').emit('click');
+  assert.deepEqual(panel.replyExpansion, ['a']);
+  assert.equal(f.find('.comment-replies-more').getAttribute('aria-expanded'), 'true');
+  panel.setDraft({ body: '打开详情时保留的文字', nickname: '我', replyId: 'a' });
+  panel.setCompact(false);
+  assert.equal(f.find('.comments-form').hidden, false); assert.equal(f.find('.comments-open-thread').hidden, true);
+  assert.equal(f.container.querySelectorAll('.comment-body').length, records.length);
+  assert.equal(f.container.querySelectorAll('.comment-replies-more').length, 0);
+  panel.setLanguage('ja'); panel.setCompact(true);
+  assert.equal(f.find('.comment-replies-more').textContent, '返信を折りたたむ');
+  assert.equal(f.find('.comments-open-thread').textContent, 'コメントを書く／会話を見る');
+  assert.equal(panel.draft.body, '打开详情时保留的文字'); assert.equal(panel.draft.replyId, 'a');
+  assert.equal(client.calls.length, 1, 'moving between preview/detail or changing language does not refetch');
+  f.find('.comment-replies-more').emit('click'); assert.deepEqual(panel.replyExpansion, []);
+  assert.equal(f.container.querySelectorAll('.comment-reply').length, 1);
+});
+
+test('compact reply and discussion actions open the same thread with the chosen reply target', async t => {
+  const f = documentFixture(), client = serviceStub([comment('parent')]);
+  const opened = [];
+  const panel = createAnonymousComments({ container: f.container, service: client, targetType: 'note', targetId: 'journal', compact: true,
+    onOpenThread(target) { opened.push(target); panel.setCompact(false); } });
+  t.after(() => panel.destroy()); await tick();
+  f.find('.comment-reply-button').emit('click');
+  assert.deepEqual(opened, [{ targetType: 'note', targetId: 'journal', replyId: 'parent' }]);
+  assert.equal(panel.compact, false); assert.equal(panel.draft.replyId, 'parent');
+  assert.equal(f.find('.comments-form').hidden, false); assert.equal(f.doc.activeElement, f.find('.comments-body'));
+  panel.setCompact(true); panel.setOpenThreadHandler(null);
+  f.find('.comments-open-thread').emit('click');
+  assert.equal(panel.compact, false, 'without a modal handler the composer remains reachable');
+  assert.equal(client.calls.length, 1);
+});
+
+test('reply expansion belongs to its comment target and full photo threads remain uncollapsed', async t => {
+  const records = [comment('parent'), comment('first', { parentId: 'parent' }), comment('second', { parentId: 'parent' })];
+  const f = documentFixture(), panel = createAnonymousComments({ container: f.container, service: serviceStub(records), targetType: 'note', targetId: 'one', compact: true });
+  t.after(() => panel.destroy()); await tick();
+  f.find('.comment-replies-more').emit('click'); panel.setDraft({ body: '第一条草稿' });
+  panel.setTarget('note', 'two'); await tick();
+  assert.deepEqual(panel.replyExpansion, []); assert.equal(panel.draft.body, '');
+  panel.setTarget('note', 'one'); await tick();
+  assert.deepEqual(panel.replyExpansion, ['parent']); assert.equal(panel.draft.body, '第一条草稿');
+  const photo = documentFixture(), full = createAnonymousComments({ container: photo.container, service: serviceStub(records), targetId: 'photo' });
+  t.after(() => full.destroy()); await tick();
+  assert.equal(photo.container.querySelectorAll('.comment-reply').length, 2);
+  assert.equal(photo.container.querySelectorAll('.comment-replies-more').length, 0);
+  assert.equal(photo.find('.comments-form').hidden, false);
+});
+
+test('compact previews keep pending owner replies visible and reveal a newly published owner reply', async t => {
+  const records = [comment('parent'), comment('first', { parentId: 'parent' }), comment('second', { parentId: 'parent' }), comment('pending', { parentId: 'parent', status: 'pending' })];
+  const f = documentFixture(), client = serviceStub(records);
+  client.ownerSession = { authenticated: true, username: 'Amubis' };
+  client.moderateComment = async () => ({ comment: comment('pending', { parentId: 'parent', status: 'approved' }) });
+  client.postComment = async payload => ({ comment: comment('new-owner-reply', { parentId: payload.parentId, body: payload.body, verified: true }) });
+  const panel = createAnonymousComments({ container: f.container, service: client, targetType: 'note', targetId: 'owner-note', compact: true });
+  t.after(() => panel.destroy()); await tick();
+  assert.deepEqual(f.container.querySelectorAll('.comment-reply').map(node => node.getAttribute('data-comment-id')), ['first', 'pending']);
+  assert.ok(f.find('.comment-approve-button')); assert.ok(f.find('.comment-delete-button'));
+  panel.setCompact(false); f.find('.comment-reply-button').emit('click');
+  f.find('.comments-body').value = '站长新回复'; await f.find('.comments-form').emit('submit').completed;
+  panel.setCompact(true);
+  assert.ok(f.container.querySelectorAll('.comment-body').some(node => node.textContent === '站长新回复'));
+  assert.deepEqual(panel.replyExpansion, ['parent']);
+});
+
+test('explicit comment retry bypasses the service cache while ordinary target loads do not', async t => {
+  const f = documentFixture(), client = serviceStub();
+  client.getComments = async request => { client.calls.push(request); if (client.calls.length === 1) throw new Error('temporary'); return []; };
+  const panel = createAnonymousComments({ container: f.container, service: client, targetId: 'retry-photo' }); t.after(() => panel.destroy()); await tick();
+  assert.equal(client.calls[0].force, false); assert.equal(f.find('.comments-retry').hidden, false);
+  f.find('.comments-retry').emit('click'); await tick();
+  assert.equal(client.calls[1].force, true); assert.equal(f.find('.comments-retry').hidden, true);
 });

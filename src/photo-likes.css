@@ -11,8 +11,11 @@
 .photo-like.is-liked .photo-like-heart path { fill:currentColor; }
 .photo-like-count { font-variant-numeric:tabular-nums; }
 .photo-like-label,.photo-like-status { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0; }
-.album-photo > .photo-like { position:absolute;right:5px;bottom:5px;z-index:3;min-width:36px;min-height:27px;padding:4px 7px;font-size:10px; }
-.album-photo > .photo-like .photo-like-heart { width:13px;height:13px; }
-.album-player .photo-like { flex:none;align-self:flex-end;margin:10px 0 0;min-height:34px; }
-@media(max-width:760px) { .album-photo > .photo-like { right:1px;bottom:2px;min-height:30px; } }
-@media(prefers-reduced-motion:reduce) { .photo-like,.photo-like-heart path { transition:none; }.photo-like:hover:not(:disabled),.photo-like:focus-visible,.photo-like:active:not(:disabled) { scale:1; } }
+.album-print { position:relative;width:100%;height:100%;transform:translate(calc(var(--jitter-x,0%) + var(--neighbor-x,0px)),calc(var(--jitter-y,0%) + var(--inspect-lift,0px) + var(--neighbor-y,0px))) rotate(var(--jitter-rotation,0deg)) perspective(700px) rotateX(var(--inspect-rx,0deg)) rotateY(var(--inspect-ry,0deg));scale:var(--photo-scale,1);transform-origin:center;transition:transform .32s var(--water-settle,var(--easing)); }
+.primary-album .album-print .album-photo-card { transform:none;scale:1; }
+.album-print > .photo-like { position:absolute;right:5px;bottom:5px;z-index:3;min-width:36px;min-height:27px;padding:4px 7px;font-size:10px; }
+.album-print > .photo-like .photo-like-heart { width:13px;height:13px; }
+.album-photo:hover,.album-photo:focus-within { z-index:50; }
+.album-player .photo-like { flex:none;align-self:flex-end;margin:12px 20px 20px;min-height:34px; }
+@media(max-width:760px) { .album-print > .photo-like { right:1px;bottom:2px;min-height:30px; } }
+@media(prefers-reduced-motion:reduce) { .album-print,.photo-like,.photo-like-heart path { transition:none; }.photo-like:hover:not(:disabled),.photo-like:focus-visible,.photo-like:active:not(:disabled) { scale:1; } }

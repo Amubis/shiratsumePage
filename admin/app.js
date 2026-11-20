@@ -60,6 +60,7 @@ function cohortTabs(kind, items) {
       button([label, node('span', { class: 'content-cohort-count' }, count)], () => { state[key] = value; render(); }, `content-cohort-tab${(state[key] || 'all') === value ? ' active' : ''}`, { 'aria-pressed': String((state[key] || 'all') === value) })));
 }
 function recordSession(session) {
+  if (state.session?.authenticated !== session.authenticated || state.session?.csrfToken !== session.csrfToken) clearMessageCache();
   state.session = session;
   if (session.mode === 'cloud') state.cloudMode = true;
   else if (session.mode === 'local') state.cloudMode = false;
@@ -86,7 +87,7 @@ function clearPrivateContent() {
   state.additions = { media: new Set(), journal: new Set() }; state.photoCohort = state.journalCohort = 'all';
   state.photoSearch = state.textSearch = ''; state.jobs = []; state.running = 0;
   state.comments = []; state.notifications = []; state.replyDrafts = {}; state.unreadCount = state.pendingCount = 0;
-  state.messagesLoaded = false; state.messagesError = ''; messagesRequest++;
+  clearMessageCache();
   $('#json-import').value = '';
   try { localStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(COHORT_KEY); } catch { /* The page still drops all in-memory references. */ }
   lockPrivateView();
@@ -743,6 +744,43 @@ function renderPhotoDetail(item) {
     node('details', {}, node('summary', {}, '图片地址与导入信息'), field('展示图', item.url, value => { item.url = value; }), field('缩略图', item.thumbnail, value => { item.thumbnail = value; }), node('p', { class: 'metadata-note' }, `原文件：${item.originalName || '无'}\n时间来源：${item.metadataSource?.takenAt || '手动或未知'}\n世界来源：${item.metadataSource?.world || '手动或未知'}\n时区：${item.timeZone || '未提供'}`), item.warnings?.length ? node('p', { class: 'metadata-note metadata-warning' }, item.warnings.join('\n')) : null),
     node('div', { class: 'photo-detail-footer' }, node('div', { class: 'row-actions' }, item.originalKey && state.authenticated ? node('a', { class: 'button secondary', href: `/api/admin/original?key=${encodeURIComponent(item.originalKey)}`, download: item.originalName || '' }, '下载私有原图') : null, reorderButtons(state.content.media, index, '照片'), button('删除这张照片', async () => { if (!await confirmAction('删除这张照片？', '从草稿移除内容引用，原图与展示图文件保留。', '删除照片')) return; state.content.media.splice(state.content.media.indexOf(item), 1); state.selectedPhotos.delete(item.id); closePhotoEditor({ immediate: true }); changed(); render(); }, 'danger'))));
 }
+function journalImageCard(current, entry) {
+  const index = current.images.indexOf(entry);
+  return node('div', { class: 'journal-image' }, image(entry.url, localizedValue(entry.alt), ''), localizedFields('图片描述', entry, 'alt'), reorderButtons(current.images, index, '图片'), button('移除图片', () => { const at = current.images.indexOf(entry); if (at < 0) return; current.images.splice(at, 1); changed(); render(); }, 'danger small'));
+}
+function clipboardImages(event) {
+  const data = event.clipboardData;
+  if (!data) return [];
+  // Clipboard implementations expose the same file in both collections.
+  // Prefer image items and use files only as a fallback, never merge them.
+  const items = [...data.items || []].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(file => file && /^image\//i.test(file.type));
+  return items.length ? items : [...data.files || []].filter(file => /^image\//i.test(file.type));
+}
+function queueJournalImages(current, files) {
+  if (!files.length) return;
+  queueFiles(files, { kind: 'journal', onComplete: result => {
+    if (!state.content?.journal.includes(current)) throw new Error('原碎碎念已被移除，图片未加入其他内容。可移除此导入任务。');
+    const entry = { url: result.reference, alt: '' };
+    current.images.push(entry); changed();
+    const images = state.section === 'journal' ? $('#editor .journal-images') : null;
+    if (images?.getAttribute('data-journal-id') !== current.id) return;
+    // Upload completion must not rebuild the text fields: their focus,
+    // selection, composition and unsaved edits stay exactly where they are.
+    images.append(journalImageCard(current, entry));
+    for (const [index, card] of [...images.children].entries()) {
+      const down = card.querySelector('button[aria-label="下移图片"]');
+      if (down) down.disabled = index === current.images.length - 1;
+    }
+    $('#editor .journal-empty-warning')?.remove();
+  } });
+}
+function pasteJournalImages(event, current) {
+  const files = clipboardImages(event);
+  if (!files.length) return;
+  queueJournalImages(current, files);
+  // Textareas already ignore image payloads. Keep the native paste so plain
+  // text (including mixed text/image clipboards) retains normal cursor rules.
+}
 function renderJournal() {
   const journal = state.content.journal;
   const add = () => { const item = { id: identifier('note'), title: '', body: '', images: [], createdAt: new Date().toISOString(), published: false }; journal.unshift(item); markCreated('journal', item.id); state.journalCohort = 'new'; state.selectedPost = item.id; changed(); render(); };
@@ -751,11 +789,13 @@ function renderJournal() {
   const list = node('div', { class: 'item-list' }, ...visible.map((item) => node('div', {}, node('button', { type: 'button', class: `item-button journal-item${item === current ? ' active' : ''}`, onclick: () => { state.selectedPost = item.id; render(); } }, item.images[0] ? image(item.images[0].url, '', '') : node('span', { class: 'nav-icon', 'aria-hidden': 'true' }, '✎'), node('span', { class: 'item-label' }, node('strong', {}, localizedValue(item.title) || localizedValue(item.body).slice(0, 24) || '图片碎碎念'), node('small', {}, item.published ? '已勾选发布' : '草稿', cohortBadge('journal', item)))), reorderButtons(journal, journal.indexOf(item), '碎碎念'))));
   const result = [intro('把小小的心情放在这里', '可以不写标题：纯文字、纯图片，或一起留下。图片与正文至少保留一项。', button('＋ 写一条碎碎念', add, 'primary')), cohortTabs('journal', journal)];
   if (!current) return [...result, empty(journal.length ? '这个分类暂无碎碎念' : '还没有碎碎念', journal.length ? '切换「已有记录」或「本次新增」，也可以继续新建。' : '不必准备长篇，留下一句话或一张图就好。', button('写一条', add))];
-  const images = node('div', { class: 'journal-images' }, ...current.images.map((entry, index) => node('div', { class: 'journal-image' }, image(entry.url, localizedValue(entry.alt), ''), localizedFields('图片描述', entry, 'alt'), reorderButtons(current.images, index, '图片'), button('移除图片', () => { current.images.splice(index, 1); changed(); render(); }, 'danger small'))));
+  const images = node('div', { class: 'journal-images', 'data-journal-id': current.id }, ...current.images.map(entry => journalImageCard(current, entry)));
   const details = panel(check('勾选发布这条碎碎念', current.published, value => { current.published = value; }), localizedFields('标题（可留空）', current, 'title'), localizedFields('正文', current, 'body', { multiline: true, rows: 7 }), field('记录时间', current.createdAt, value => { current.createdAt = value || null; }, { help: '支持 YYYY-MM-DD 或完整时间，保留原始时区' }), node('h3', {}, '图片'), images,
-    uploadPicker('＋ 添加图片', 'image/png,image/jpeg,image/webp', files => queueFiles(files, { kind: 'journal', onComplete: result => { if (!journal.includes(current)) return; current.images.push({ url: result.reference, alt: '' }); changed(); if (state.section === 'journal') render(); } }), true),
-    !localizedValue(current.body).trim() && !current.images.length ? node('p', { class: 'metadata-warning small-note' }, '这条还没有正文或图片，公开页面会暂时略过。') : null,
+    uploadPicker('＋ 添加图片', 'image/png,image/jpeg,image/webp', files => queueJournalImages(current, files), true),
+    node('p', { class: 'small-note' }, '也可以在此编辑区直接粘贴截图或复制的图片，上传完成后会加入草稿；保存、发布仍需手动操作。'),
+    !localizedValue(current.body).trim() && !current.images.length ? node('p', { class: 'metadata-warning small-note journal-empty-warning' }, '这条还没有正文或图片，公开页面会暂时略过。') : null,
     node('div', { class: 'row-actions' }, button('删除这条碎碎念', async () => { if (!await confirmAction('删除这条碎碎念？', '从草稿移除这条内容，已上传图片仍保留。', '删除碎碎念')) return; journal.splice(journal.indexOf(current), 1); state.selectedPost = null; changed(); render(); }, 'danger')));
+  details.addEventListener('paste', event => pasteJournalImages(event, current));
   return [...result, node('div', { class: 'collection-layout' }, list, details)];
 }
 function renderSettings() {
@@ -904,40 +944,62 @@ function postPreview() {
 
 const commentStatusNames = { pending: '待审核', approved: '已通过', rejected: '已拒绝', spam: '垃圾', deleted: '已删除' };
 let messagesRequest = 0;
+const messageCache = new Map();
 const messageActions = new Set();
-async function refreshMessages({ quiet = false } = {}) {
-  if (!state.authenticated || !state.connected || document.hidden) return;
-  if (state.messagesBusy) { state.messagesRefreshQueued = true; return; }
+function clearMessageCache() {
+  messageCache.clear(); messagesRequest++;
+  state.messagesLoaded = false; state.messagesError = ''; state.messagesRefreshQueued = false; state.messagesForceQueued = false;
+  state.comments = []; state.notifications = []; state.unreadCount = state.pendingCount = 0;
+}
+async function refreshMessages({ quiet = false, force = false } = {}) {
+  if (!state.authenticated || !state.connected) return;
+  if (state.messagesBusy) { state.messagesRefreshQueued = true; state.messagesForceQueued ||= force; return; }
+  const section = state.section;
+  const query = new URLSearchParams({ status: state.messageStatus, limit: '200' }); if (state.messageUnread) query.set('unread', 'true');
+  const key = section === 'messages' ? `comments:${query}` : 'summary';
+  if (force) messageCache.clear();
+  const cached = messageCache.get(key);
+  if (cached) {
+    Object.assign(state, cached, { messagesLoaded: true, messagesError: '' }); navigation();
+    if (section === 'messages') renderMessagesBody();
+    return;
+  }
   state.messagesBusy = true; const request = ++messagesRequest;
   try {
-    const query = new URLSearchParams({ status: state.messageStatus, limit: '200' }); if (state.messageUnread) query.set('unread', 'true');
-    const notificationRequest = api(`/api/admin/notifications?limit=${state.section === 'messages' ? 200 : 1}`);
-    const [notifications, comments] = await Promise.all([notificationRequest, state.section === 'messages' ? api(`/api/admin/comments?${query}`) : Promise.resolve(null)]);
+    const notificationRequest = api(`/api/admin/notifications?limit=${section === 'messages' ? 200 : 1}`);
+    const [notifications, comments] = await Promise.all([notificationRequest, section === 'messages' ? api(`/api/admin/comments?${query}`) : Promise.resolve(null)]);
     if (request !== messagesRequest) return;
-    state.notifications = notifications.notifications || []; state.unreadCount = Number(notifications.unreadCount) || 0;
-    state.pendingCount = Number(comments?.pendingCount ?? notifications.pendingCount) || 0;
-    if (comments) state.comments = comments.comments || [];
+    const snapshot = { notifications: notifications.notifications || [], unreadCount: Number(notifications.unreadCount) || 0,
+      pendingCount: Number(comments?.pendingCount ?? notifications.pendingCount) || 0, ...(comments ? { comments: comments.comments || [] } : {}) };
+    messageCache.set(key, snapshot); Object.assign(state, snapshot);
     state.messagesLoaded = true; state.messagesError = ''; navigation();
     const editingReply = document.activeElement?.closest('.message-reply');
     if (state.section === 'messages' && !(quiet && editingReply)) renderMessagesBody();
   } catch (error) {
+    if (request !== messagesRequest) return;
     state.messagesError = error.message;
     if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error);
     else if (!quiet) toast(`读取消息失败：${error.message}`, true);
     if (state.section === 'messages') renderMessagesBody();
-  } finally { state.messagesBusy = false; if (state.messagesRefreshQueued) { state.messagesRefreshQueued = false; refreshMessages({ quiet: true }); } }
+  } finally {
+    state.messagesBusy = false;
+    if (state.messagesRefreshQueued) {
+      const force = Boolean(state.messagesForceQueued); state.messagesRefreshQueued = state.messagesForceQueued = false;
+      refreshMessages({ quiet: true, force });
+    }
+  }
 }
 function renderMessages() {
   if (!state.authenticated) return [intro('消息中心', '登录后可查看留言、处理审核和回复。通知只会出现在管理端，不会发送邮件。'), empty('登录后查看消息', '先连接管理服务并登录管理员账号。', button('连接与登录', () => selectSection('settings')))];
   const container = node('div', { id: 'message-content' });
   queueMicrotask(() => renderMessagesBody());
-  return [intro('留言与通知', '审核相册与碎碎念下的留言。管理员回复会在公开页面标记；消息与已读状态即时保存。', button('刷新消息', () => refreshMessages())), container];
+  return [intro('留言与通知', '审核相册与碎碎念下的留言。管理员回复会在公开页面标记；消息与已读状态即时保存。', button('刷新消息', () => refreshMessages({ force: true }))), container];
 }
 function renderMessagesBody() {
   if (cloudLocked()) return;
   const container = $('#message-content'); if (!container) return;
   const view = node('div', { class: 'message-tabs', role: 'tablist', 'aria-label': '消息类别' }, ...[['comments', '留言审核'], ['notifications', '未读通知']].map(([key, label]) => button(label, () => { state.messageView = key; renderMessagesBody(); }, state.messageView === key ? 'primary' : 'secondary', { role: 'tab', 'aria-selected': state.messageView === key })));
-  const stats = node('div', { class: 'message-summary' }, node('span', { class: 'pill draft' }, `待审核 ${state.pendingCount}`), node('span', { class: 'pill published' }, `未读 ${state.unreadCount}`), node('span', { class: 'small-note' }, '页面可见时每 30 秒更新；输入回复时保留编辑。'));
+  const stats = node('div', { class: 'message-summary' }, node('span', { class: 'pill draft' }, `待审核 ${state.pendingCount}`), node('span', { class: 'pill published' }, `未读 ${state.unreadCount}`), node('span', { class: 'small-note' }, '已读取的消息会保留；点击「刷新消息」获取最新留言。'));
   const status = node('select', { 'aria-label': '留言审核状态' }, ...[['all', '全部状态'], ...Object.entries(commentStatusNames)].map(([value, label]) => node('option', { value }, label)));
   status.value = state.messageStatus;
   status.addEventListener('change', async () => { state.messageStatus = status.value; await refreshMessages(); });
@@ -946,7 +1008,7 @@ function renderMessagesBody() {
   const filters = state.messageView === 'comments' ? node('div', { class: 'toolbar' }, status, node('label', { class: 'selection-label' }, unread, '只看未读')) : node('div', { class: 'toolbar' }, button('将全部通知标为已读', () => mutateMessages('notifications', () => api('/api/admin/notifications/read', { method: 'POST', body: { all: true } })), 'secondary', { disabled: !state.unreadCount || messageActions.has('notifications') }));
   const records = state.messageView === 'comments' ? state.comments : state.notifications.filter(item => !item.readAt);
   container.replaceChildren(...[view, stats, filters,
-    state.messagesError ? panel(node('p', { class: 'metadata-warning' }, `消息暂时无法读取：${state.messagesError}`), button('重试', () => refreshMessages())) : null,
+    state.messagesError ? panel(node('p', { class: 'metadata-warning' }, `消息暂时无法读取：${state.messagesError}`), button('重试', () => refreshMessages({ force: true }))) : null,
     ...records.map(commentCard),
     !records.length ? empty(state.messagesLoaded ? '这里暂时很安静' : '正在读取消息', state.messageView === 'comments' ? '当前筛选下没有留言。' : '所有通知都已读。') : null,
     records.length >= 200 ? node('p', { class: 'small-note' }, '当前最多展示 200 条，请按状态或未读筛选处理。') : null].filter(Boolean));
@@ -994,7 +1056,7 @@ async function mutateMessages(id, action) {
     const result = await action();
     if (result.unreadCount !== undefined) state.unreadCount = Number(result.unreadCount) || 0;
     if (result.pendingCount !== undefined) state.pendingCount = Number(result.pendingCount) || 0;
-    messageActions.delete(id); toast('消息处理已保存。'); await refreshMessages(); return true;
+    messageActions.delete(id); toast('消息处理已保存。'); await refreshMessages({ force: true }); return true;
   } catch (error) {
     if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error); else if (!error.stale) toast(`消息处理失败：${error.message}`, true);
     return false;
@@ -1020,10 +1082,7 @@ $('#logout').addEventListener('click', async () => {
 window.addEventListener('beforeunload', event => {
   if (Object.values(state.replyDrafts).some(value => value.trim()) || state.dirty || state.jobs.some(job => ['queued', 'running', 'error'].includes(job.status))) { persistLocal(); event.preventDefault(); event.returnValue = ''; }
 });
-window.addEventListener('focus', () => refreshMessages({ quiet: true }));
 window.addEventListener('offline', () => { if (state.cloudMode) reportError(Object.assign(new Error('网络连接已中断。'), { offline: true })); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshMessages({ quiet: true }); });
-setInterval(() => refreshMessages({ quiet: true }), 30000);
 try { restoreCohort(JSON.parse(sessionStorage.getItem(COHORT_KEY) || 'null')); } catch { /* Optional session labels never block content loading. */ }
 try {
   state.localBackup = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
