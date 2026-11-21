@@ -1,3 +1,7 @@
+const CROSSFADE_MS = 700;
+const CROSSFADE_LEAD_SECONDS = 0.9;
+const LOOP_PRELOAD_LEAD_SECONDS = 4;
+
 /** Two managed layers; sources are assigned only after choosing the active model. */
 export function createVideoPlayer({ container, playlist = [], poster, reducedMotion = () => false, onStatus = () => {}, loadingTimeout = 8000 }) {
   const doc = container.ownerDocument;
@@ -20,7 +24,7 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     video.preload = 'auto';
     Object.assign(video.style, {
       position: 'absolute', inset: '0', width: '100%', height: '100%',
-      objectFit: 'cover', opacity: '0', transition: 'opacity 700ms ease', pointerEvents: 'none',
+      objectFit: 'cover', opacity: '0', transition: `opacity ${CROSSFADE_MS}ms ease`, pointerEvents: 'none',
     });
     container.append(video);
   });
@@ -69,6 +73,10 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     else video.src = url;
     video.load();
   }
+  function rewind(video) {
+    video.pause();
+    if (video.readyState && video.currentTime > 0) video.currentTime = 0;
+  }
   function cancelRequest() {
     if (!request) return;
     clearTimeout(request.timer);
@@ -85,11 +93,9 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
       previous.previous.style.opacity = '0';
       previous.previous.style.zIndex = '0';
       previous.next.style.zIndex = '1';
-      previous.previous.pause();
-      // A canceled fade still leaves a reusable next layer at its beginning.
-      if (previous.previous.readyState) previous.previous.currentTime = 0;
+      rewind(previous.previous);
     } else {
-      previous.next.pause();
+      rewind(previous.next);
       previous.next.style.opacity = '0';
     }
   }
@@ -104,7 +110,10 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
   function confirmPlaying(video) {
     if (destroyed || configuring) return;
     if (!canPlay()) { video.pause(); return; }
-    if (transition?.next === video && !transition.committed) { commitTransition(transition); return; }
+    if (transition?.next === video && !transition.committed) {
+      if (video.readyState >= 2 && !video.seeking && !video.paused) commitTransition(transition);
+      return;
+    }
     if (video !== videos[active]) { video.pause(); return; }
     // A timed-out attempt remains eligible to recover on a real playing event.
     if (request?.video === video) {
@@ -168,10 +177,12 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     cancelRequest();
     active = operation.nextIndex;
     const { next, previous } = operation;
+    const duration = reducedMotion() ? 0 : CROSSFADE_MS;
     showVideo();
+    previous.loop = false;
     next.style.zIndex = '2';
     previous.style.zIndex = '1';
-    next.style.transition = reducedMotion() ? 'none' : 'opacity 700ms ease';
+    next.style.transition = duration ? `opacity ${duration}ms ease` : 'none';
     next.style.opacity = '1';
     // A new top layer fades over an opaque old frame, avoiding a dark midpoint.
     previous.style.opacity = '1';
@@ -181,10 +192,10 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
       previous.style.opacity = '0';
       previous.style.zIndex = '0';
       next.style.zIndex = '1';
-      load(previous, choose(next.dataset.clip));
-      previous.loop = false;
+      if (list.length === 1) rewind(previous);
+      else load(previous, choose(next.dataset.clip));
       transition = null;
-    }, reducedMotion() ? 0 : 700);
+    }, duration);
   }
   function failTransition(operation, markFailed = true) {
     if (transition !== operation || operation.generation !== generation || operation.committed) return;
@@ -193,31 +204,40 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     if (canPlay()) void repeatCurrent();
   }
   function advance(force = false) {
-    if (transition || !canPlay() || list.length < 2) return;
+    if (transition || !canPlay() || !list.length) return;
     const previous = videos[active];
     const nextIndex = 1 - active;
     const next = videos[nextIndex];
+    if (!next.dataset.clip) load(next, choose(previous.dataset.clip));
     if (next.dataset.failed) { if (force) void repeatCurrent(); return; }
-    if (!force && next.readyState < 2) return;
+    if (!force && (next.readyState < 2 || next.seeking)) return;
     const operation = { previous, next, nextIndex, generation, committed: false, timer: null };
     transition = operation;
     operation.timer = setTimeout(() => failTransition(operation, false), timeout);
     try {
       Promise.resolve(next.play()).then(() => {
         if (transition !== operation || operation.committed || generation !== operation.generation || !canPlay()) return;
-        if (next.readyState >= 2 && !next.paused) commitTransition(operation);
+        confirmPlaying(next);
       }, () => failTransition(operation));
     } catch { failTransition(operation); }
   }
   const listeners = videos.map((video, index) => {
     const handlers = {
       timeupdate() {
-        if (index === active && Number.isFinite(video.duration) && video.duration - video.currentTime <= 0.9) advance();
+        if (index !== active || !canPlay() || !Number.isFinite(video.duration)) return;
+        const remaining = video.duration - video.currentTime;
+        const standby = videos[1 - active];
+        // Buffer the loop's first frame near the end, keeping initial playback to one layer.
+        if (list.length === 1 && remaining <= LOOP_PRELOAD_LEAD_SECONDS && !standby.dataset.clip) load(standby, list[0]);
+        if (remaining <= CROSSFADE_LEAD_SECONDS) advance();
       },
       ended() { if (index === active) advance(true); },
       playing() { confirmPlaying(video); },
       loadeddata() {
-        if (request?.video === video && video.readyState >= 2 && !video.paused) confirmPlaying(video);
+        if ((request?.video === video || transition?.next === video) && video.readyState >= 2 && !video.paused) confirmPlaying(video);
+      },
+      seeked() {
+        if (transition?.next === video && !transition.committed) confirmPlaying(video);
       },
       error() {
         if (configuring || destroyed || !video.dataset.clip) return;
@@ -257,7 +277,7 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     videos.forEach((video, index) => {
       video.style.opacity = '0';
       video.style.zIndex = index === 0 ? '1' : '0';
-      video.loop = list.length === 1;
+      video.loop = false;
       if (poster) video.poster = poster;
     });
     showPoster();

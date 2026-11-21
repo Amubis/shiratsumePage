@@ -25,12 +25,12 @@
   <meta name="theme-color" content="#B7BB5A">
 
   <style>@font-face{font-family:"Shiratsume Album Display";src:url("./assets/fonts/dela-gothic-one-album.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}@font-face{font-family:"Shiratsume Album CJK";src:url("./assets/fonts/noto-sans-sc-album-black.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
-  <meta name="demo-version" content="0.9.7">
+  <meta name="demo-version" content="0.9.8">
   <meta name="description" content="しらつめ的模型展示与日常影像。">
   <title>しらつめ · Avatar Portfolio</title>
   <style>@font-face{font-family:"Shiratsume Display";src:url("./assets/fonts/dela-gothic-one-display.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}</style>
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
-  <link rel="preload" as="image" href="./assets/poster.jpg">
+  <link rel="preload" as="image" href="./assets/hero-loop-poster.jpg">
   <link rel="stylesheet" href="./assets/fonts/text-fonts.css">
   <link rel="stylesheet" href="./src/styles.css">
   <link rel="stylesheet" href="./src/refinements.css">
@@ -112,7 +112,7 @@
 
   <main>
     <section id="home" class="page-section hero is-current" aria-labelledby="hero-heading">
-      <div class="hero-media"><video class="hero-video hero-native" data-hero-primary poster="./assets/poster.jpg" muted loop playsinline controls preload="metadata" aria-label="首页测试视频"></video><img class="poster" src="./assets/poster.jpg" alt="" fetchpriority="high"></div>
+      <div class="hero-media"><video class="hero-video hero-native" data-hero-primary poster="./assets/hero-loop-poster.jpg" muted loop playsinline controls preload="metadata" aria-label="首页视频"></video><img class="poster" src="./assets/hero-loop-poster.jpg" alt="" fetchpriority="high"></div>
       <div class="hero-treatment" aria-hidden="true"></div>
       <div class="hero-wash" aria-hidden="true"></div>
       <div class="halftone-vignette" aria-hidden="true"></div>
@@ -129,7 +129,7 @@
       </div>
       <button class="scroll-cue" data-go="1" data-contrast aria-label="向下探索"><span data-i18n="scrollHint">轻滚一下，翻开下一页</span><svg class="icon"><use href="#icon-down"/></svg></button>
       <div class="hero-coordinate" aria-hidden="true">SHIRATSUME / AVATAR ARCHIVE <span>01 — 04</span></div>
-      <div id="video-fallback" class="video-fallback" role="status" hidden><p id="video-message"></p><div><button id="video-retry" type="button" data-i18n="play">播放视频</button><a id="video-open" href="./assets/clip-01.mp4" target="_blank" rel="noopener" data-i18n="openVideo">单独打开视频</a></div></div>
+      <div id="video-fallback" class="video-fallback" role="status" hidden><p id="video-message"></p><div><button id="video-retry" type="button" data-i18n="play">播放视频</button><a id="video-open" href="./assets/hero-loop.mp4" target="_blank" rel="noopener" data-i18n="openVideo">单独打开视频</a></div></div>
     </section>
 
     <section id="hello" class="page-section hello-section" aria-labelledby="hello-heading">

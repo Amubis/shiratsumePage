@@ -3,8 +3,8 @@
 export const MODELS = {
   shiratsume: {
     name: 'しらつめ', theme: '#B7BB5A', dark: '#686D2F', rgb: '183,187,90',
-    paper: '#F6F3EF', poster: './assets/poster.jpg',
-    playlist: ['./assets/clip-01.mp4', './assets/clip-02.mp4', './assets/clip-03.mp4'],
+    paper: '#F6F3EF', poster: './assets/hero-loop-poster.jpg',
+    playlist: ['./assets/hero-loop.mp4'],
     preview: false,
     switchArt: null,
   },

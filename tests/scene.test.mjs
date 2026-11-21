@@ -427,8 +427,8 @@ function mediaFixture(play = () => Promise.resolve(), { nativePrimary = false } 
     createElement() {
       const events = new Map();
       const video = {
-        style: {}, dataset: {}, duration: 10, currentTime: 0, readyState: 4, pauseCalls: 0, paused: true,
-        setAttribute() {}, removeAttribute(name) { delete this[name]; }, load() {},
+        style: {}, dataset: {}, duration: 10, currentTime: 0, readyState: 4, pauseCalls: 0, loadCalls: 0, paused: true,
+        setAttribute() {}, removeAttribute(name) { delete this[name]; }, load() { this.loadCalls += 1; },
         play() { this.paused = false; return play(this); }, pause() { this.paused = true; this.pauseCalls += 1; }, remove() {},
         addEventListener: (name, callback) => events.set(name, callback),
         removeEventListener: (name) => events.delete(name),
@@ -461,6 +461,41 @@ test('video player requests exactly two non-repeating layers and keeps an opaque
   assert.equal(fixture.layers[0].style.opacity, '1');
   assert.equal(fixture.layers[1].style.opacity, '1');
   player.destroy();
+});
+
+test('a single video preloads near the end and crossfades back to its own first frame', async () => {
+  const fixture = mediaFixture();
+  const player = createVideoPlayer({ container: fixture.container, playlist: ['finished.mp4'] });
+  const [outgoing, incoming] = fixture.layers;
+  try {
+    assert.equal(await player.start(), true);
+    assert.equal(outgoing.loop, false);
+    assert.equal(incoming.src, undefined);
+    outgoing.currentTime = 7;
+    outgoing.emit('timeupdate');
+    assert.equal(incoming.src, outgoing.src);
+    assert.equal(incoming.paused, true);
+
+    incoming.readyState = 1;
+    outgoing.currentTime = 9.5;
+    outgoing.emit('timeupdate');
+    assert.equal(incoming.style.opacity, '0');
+    incoming.readyState = 4;
+    outgoing.emit('timeupdate');
+    await Promise.resolve();
+    assert.equal(incoming.style.zIndex, '2');
+    assert.equal(outgoing.style.opacity, '1');
+    assert.equal(incoming.style.opacity, '1');
+    assert.equal(fixture.poster.style.opacity, '0');
+
+    await new Promise((resolve) => setTimeout(resolve, 720));
+    assert.equal(outgoing.currentTime, 0);
+    assert.equal(outgoing.paused, true);
+    assert.equal(outgoing.loadCalls, 1);
+    assert.equal(incoming.style.zIndex, '1');
+  } finally {
+    player.destroy();
+  }
 });
 
 test('autoplay rejection leaves the poster usable without a rejected start promise', async () => {
