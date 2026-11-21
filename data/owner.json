@@ -3,7 +3,9 @@
   "avatar": "./assets/owner-avatar.png",
   "name": "Amubis",
   "bio": "Chaotic Good",
-  "contacts": [],
+  "contacts": [
+    { "label": "amubisxv@gmail.com", "url": "mailto:amubisxv@gmail.com" }
+  ],
   "socials": {
     "xiaohongshu": "https://xhslink.cn/o/5Edl2I5FOIJ",
     "x": "https://x.com/amubis1",

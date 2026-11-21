@@ -1,4 +1,5 @@
 import { cloverSVG } from './scene.js';
+import { emailContactAddress } from './garden-content.js';
 
 /** Replace this one data object with CMS-provided owner information later. */
 export const DEFAULT_OWNER_PROFILE = Object.freeze({
@@ -192,7 +193,7 @@ export function createOwnerProfile({ root, profile = DEFAULT_OWNER_PROFILE, lang
       const item = element('li', 'owner-contact');
       const link = element('a', 'owner-contact-link');
       link.href = url;
-      link.textContent = localizeOwnerText(contact.label, locale) || url;
+      link.textContent = localizeOwnerText(contact.label, locale) || emailContactAddress(url) || url;
       if (/^https?:/i.test(url)) {
         link.target = '_blank';
         link.rel = 'noopener noreferrer';

@@ -1,5 +1,8 @@
 const COLUMNS = 'id, target_type, target_id, parent_id, nickname, body, status, verified, created_at, updated_at, read_at';
 const STATUSES = new Set(['pending', 'approved', 'rejected', 'spam', 'deleted']);
+// Hidden or deleted parents also hide their replies.
+const PUBLIC_COMMENT = "c.status = 'approved' AND (c.parent_id IS NULL OR EXISTS (SELECT 1 FROM garden_comments p WHERE p.id = c.parent_id AND p.parent_id IS NULL AND p.status = 'approved' AND p.target_type = c.target_type AND p.target_id = c.target_id))";
+const INBOX_COMMENT = `${PUBLIC_COMMENT} AND c.verified = 0`;
 
 function commentFromRow(row) {
   if (!row) return null;
@@ -16,14 +19,12 @@ function changes(result) { return Number(result?.meta?.changes || 0); }
 export function createD1CommentsStore(db) {
   if (!db?.prepare) throw new Error('Bind a migrated D1 database as DB to enable comments.');
   return {
-    async list({ status, unread, targetType, targetId, publicOnly = false, limit = 200, before } = {}) {
+    async list({ status, unread, targetType, targetId, publicOnly = false, inbox = false, limit = 200, before } = {}) {
       const where = [];
       const values = [];
-      if (publicOnly) {
-        where.push("c.status = 'approved'");
-        // A moderated/deleted parent must not expose its previously approved replies.
-        where.push("(c.parent_id IS NULL OR EXISTS (SELECT 1 FROM garden_comments p WHERE p.id = c.parent_id AND p.parent_id IS NULL AND p.status = 'approved' AND p.target_type = c.target_type AND p.target_id = c.target_id))");
-      } else if (status) {
+      if (inbox) where.push(INBOX_COMMENT);
+      else if (publicOnly) where.push(PUBLIC_COMMENT);
+      else if (status) {
         if (!STATUSES.has(status)) throw new Error('Unsupported comment status.');
         where.push('c.status = ?'); values.push(status);
       }
@@ -35,7 +36,8 @@ export function createD1CommentsStore(db) {
       const boundedLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(500, Math.trunc(Number(limit)))) : 200;
       values.push(boundedLimit);
       const selected = COLUMNS.split(', ').map(column => `c.${column}`).join(', ');
-      const result = await db.prepare(`SELECT ${selected} FROM garden_comments c${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY c.created_at ASC, c.id ASC LIMIT ?`).bind(...values).all();
+      const direction = inbox ? 'DESC' : 'ASC';
+      const result = await db.prepare(`SELECT ${selected} FROM garden_comments c${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY c.created_at ${direction}, c.id ${direction} LIMIT ?`).bind(...values).all();
       return (result.results || []).map(commentFromRow);
     },
     async get(id) {
@@ -58,22 +60,23 @@ export function createD1CommentsStore(db) {
       values.push(id);
       return commentFromRow(await db.prepare(`UPDATE garden_comments SET ${fields.join(', ')} WHERE id = ? RETURNING ${COLUMNS}`).bind(...values).first());
     },
-    async markRead({ ids, all = false } = {}) {
+    async markRead({ ids, all = false, inbox = false } = {}) {
       const readAt = new Date().toISOString();
-      if (all) return changes(await db.prepare('UPDATE garden_comments SET read_at = ?, updated_at = ? WHERE read_at IS NULL').bind(readAt, readAt).run());
+      const updateUnread = `UPDATE garden_comments AS c SET read_at = ?, updated_at = ? WHERE c.read_at IS NULL${inbox ? ` AND ${INBOX_COMMENT}` : ''}`;
+      if (all) return changes(await db.prepare(updateUnread).bind(readAt, readAt).run());
       const uniqueIds = [...new Set(Array.isArray(ids) ? ids.filter(id => typeof id === 'string') : [])];
       if (!uniqueIds.length) return 0;
       // D1 limits bound parameters. Batches remain transactional and fit that limit.
       const statements = [];
       for (let index = 0; index < uniqueIds.length; index += 90) {
         const group = uniqueIds.slice(index, index + 90);
-        statements.push(db.prepare(`UPDATE garden_comments SET read_at = ?, updated_at = ? WHERE read_at IS NULL AND id IN (${group.map(() => '?').join(', ')})`).bind(readAt, readAt, ...group));
+        statements.push(db.prepare(`${updateUnread} AND id IN (${group.map(() => '?').join(', ')})`).bind(readAt, readAt, ...group));
       }
       if (statements.length === 1) return changes(await statements[0].run());
       return (await db.batch(statements)).reduce((total, result) => total + changes(result), 0);
     },
-    async unreadCount() {
-      const row = await db.prepare('SELECT COUNT(*) AS count FROM garden_comments WHERE read_at IS NULL').first();
+    async unreadCount({ inbox = false } = {}) {
+      const row = await db.prepare(`SELECT COUNT(*) AS count FROM garden_comments c WHERE c.read_at IS NULL${inbox ? ` AND ${INBOX_COMMENT}` : ''}`).first();
       return Number(row?.count || 0);
     },
     async pendingCount() {

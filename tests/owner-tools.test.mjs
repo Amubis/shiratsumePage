@@ -58,27 +58,50 @@ async function ownerFixture(t,{authenticated=false,crossOrigin=false,entryHidden
   const profile=doc.createElement('div');profile.className='owner-profile';const card=doc.createElement('section');card.className='owner-card';const entry=doc.createElement('a');entry.className='owner-admin-link';entry.hidden=entryHidden;entry.href='https://site.example/admin/';entry.innerHTML='<svg aria-hidden="true"></svg>';card.append(entry);profile.append(card);doc.body.append(profile);
   const photo=doc.createElement('dialog');photo.className='album-player';photo.setAttribute('data-photo-id','photo-a');const stage=doc.createElement('div');stage.className='album-player-stage';photo.append(stage);const note=doc.createElement('article');note.className='personal-journal-post';note.setAttribute('data-journal-id','note-a');doc.body.append(photo,note);
   let loggedIn=authenticated;const calls=[],sessions=[],published=[];
-  let content={owner:{name:'Amubis'},media:[{id:'photo-a',caption}],journal:[{id:'note-a',body:{zh:'正文'}}]};
-  const fetchImpl=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/login'))loggedIn=true;if(url.endsWith('/logout'))loggedIn=false;if(url.endsWith('/live-content')){const change=JSON.parse(options.body);if(change.targetType==='photo')content={...content,media:[{...content.media[0],caption:change.patch.caption}]};return {ok:true,status:200,json:async()=>({content})};}return {ok:true,status:200,json:async()=>loggedIn?{authenticated:true,csrfToken:'fixture-csrf'}:{authenticated:false}};};
+  let content={owner:{name:'Amubis'},media:[{id:'photo-a',caption}],journal:[{id:'note-a',title:'旧标题',body:{zh:'正文'}}]};
+  const fetchImpl=async(url,options={})=>{
+    calls.push({url,options});
+    if(url.endsWith('/login'))loggedIn=true;
+    if(url.endsWith('/logout'))loggedIn=false;
+    if(url.endsWith('/live-content')){
+      const {targetType,targetId,patch}=JSON.parse(options.body);
+      const collection=targetType==='photo'?'media':'journal';
+      content={...content,[collection]:content[collection].map(item=>item.id===targetId?{...item,...patch}:item)};
+      return {ok:true,status:200,json:async()=>({content})};
+    }
+    return {ok:true,status:200,json:async()=>loggedIn?{authenticated:true,csrfToken:'fixture-csrf'}:{authenticated:false}};
+  };
   let language='zh';const api=createOwnerTools({root:doc.body,pageURL:win.location.href,getContent:()=>content,getLanguage:()=>language,onPublished:next=>{content=next;published.push(next);},onSession:s=>sessions.push(s),fetchImpl});
   t.after(()=>api.destroy());api.setRuntime({apiBaseUrl:'https://site.example',adminUrl:'https://site.example/admin/'});await api.refresh();
   const find=s=>doc.querySelector(s);return {api,doc,entry,card,note,photo,find,calls,sessions,published,setLanguage(value){language=value;api.setLanguage(value);}};
 }
 
-test('photo editing presents independent Chinese and Japanese fields and saves both without closing the player',async t=>{
+test('photo editing switches visible languages, retains both changes and saves without closing the player',async t=>{
   const f=await ownerFixture(t,{authenticated:true,caption:{zh:'中文原文',ja:'日本語の原文'}});
   f.photo.showModal();await f.find('.owner-photo-edit').emit('click');
   const chinese=f.find('.owner-tools-caption-zh'),japanese=f.find('.owner-tools-caption-ja');
   assert.equal(f.find('.owner-tools-fields').querySelectorAll('textarea').length,2);
   assert.equal(chinese.value,'中文原文');assert.equal(japanese.value,'日本語の原文');
   assert.equal(chinese.getAttribute('lang'),'zh-CN');assert.equal(japanese.getAttribute('lang'),'ja');
-  chinese.value='新的中文说明';japanese.value='新しい日本語の説明';await f.find('.owner-tools-form').emit('submit');
+  assert.equal(f.find('#owner-tools-panel-zh').hidden,false);assert.equal(f.find('#owner-tools-panel-ja').hidden,true);
+  const chineseTab=f.find('.owner-tools-language-zh'),japaneseTab=f.find('.owner-tools-language-ja');
+  assert.equal(chineseTab.getAttribute('aria-selected'),'true');assert.equal(japaneseTab.tabIndex,-1);
+  chinese.value='新的中文说明';
+  const key=await chineseTab.emit('keydown',{key:'ArrowRight'});
+  assert.equal(key.prevented,true);assert.equal(f.doc.activeElement,japaneseTab);
+  assert.equal(japaneseTab.getAttribute('aria-selected'),'true');assert.equal(chineseTab.tabIndex,-1);
+  assert.equal(f.find('#owner-tools-panel-zh').hidden,true);assert.equal(f.find('#owner-tools-panel-ja').hidden,false);
+  japanese.value='新しい日本語の説明';
+  await chineseTab.emit('click');
+  assert.equal(chinese.value,'新的中文说明');assert.equal(japanese.value,'新しい日本語の説明');
+  await f.find('.owner-tools-form').emit('submit');
   const save=f.calls.find(call=>call.url.endsWith('/live-content'));
   assert.deepEqual(JSON.parse(save.options.body),{targetType:'photo',targetId:'photo-a',patch:{caption:{zh:'新的中文说明',ja:'新しい日本語の説明'}}});
   assert.equal(save.options.headers['X-Garden-CSRF'],'fixture-csrf');assert.equal(f.published.length,1);
   assert.equal(f.photo.open,true);assert.equal(f.photo.getAttribute('data-photo-id'),'photo-a');assert.equal(f.find('.owner-tools-dialog').open,false);
   f.setLanguage('ja');await f.find('.owner-photo-edit').emit('click');
   assert.equal(f.find('.owner-tools-caption-zh').value,'新的中文说明');assert.equal(f.find('.owner-tools-caption-ja').value,'新しい日本語の説明');
+  assert.equal(f.find('#owner-tools-panel-zh').hidden,true);assert.equal(f.find('#owner-tools-panel-ja').hidden,false);
 });
 
 test('photo language fields do not copy fallback text into a missing translation',async t=>{
@@ -90,6 +113,21 @@ test('photo language fields do not copy fallback text into a missing translation
 test('a legacy unlocalized photo caption enters only the Chinese field',async t=>{
   const f=await ownerFixture(t,{authenticated:true,caption:'旧照片原文'});await f.find('.owner-photo-edit').emit('click');
   assert.equal(f.find('.owner-tools-caption-zh').value,'旧照片原文');assert.equal(f.find('.owner-tools-caption-ja').value,'');
+});
+
+test('journal editing stages both languages and sends only edited title and body locales',async t=>{
+  const f=await ownerFixture(t,{authenticated:true});
+  f.setLanguage('ja');await f.find('.owner-note-edit').emit('click');
+  assert.equal(f.find('.owner-tools-title-ja').value,'');assert.equal(f.find('.owner-tools-body-ja').value,'');
+  f.find('.owner-tools-title-ja').value='新しい題名';
+  await f.find('.owner-tools-language-zh').emit('click');
+  assert.equal(f.find('.owner-tools-title-zh').value,'旧标题');assert.equal(f.find('.owner-tools-body-zh').value,'正文');
+  f.find('.owner-tools-body-zh').value='新的正文';
+  await f.find('.owner-tools-form').emit('submit');
+  const saves=f.calls.filter(call=>call.url.endsWith('/live-content'));
+  assert.equal(saves.length,1);
+  assert.deepEqual(JSON.parse(saves[0].options.body),{targetType:'journal',targetId:'note-a',patch:{title:{ja:'新しい題名'},body:{zh:'新的正文'}}});
+  assert.equal(f.find('.owner-tools-dialog').open,false);
 });
 
 test('the avatar clover logs in and then presents only management and logout in its own card',async t=>{

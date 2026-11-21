@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { appendFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { COMMENT_EMAIL_TO } from '../worker/comment-email.mjs';
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const WRANGLER_VERSION = '4.164.0';
@@ -37,6 +38,7 @@ export function readDeploymentSettings(env = process.env) {
   }
   return {
     accountId, token, password, username, workersSubdomain, origins: [...new Set(origins)].join(','),
+    commentEmailEnabled: env.CLOUDFLARE_COMMENT_EMAIL_ENABLED === 'true',
     workerName: named('CLOUDFLARE_WORKER_NAME', 'shiratsume-page', 1, 63),
     bucketName: named('CLOUDFLARE_R2_BUCKET', 'shiratsume-page', 3, 63),
     databaseName: named('CLOUDFLARE_D1_NAME', 'shiratsume-comments', 1, 63),
@@ -123,7 +125,7 @@ export function summarizeCloudContent(draft, published) {
   };
 }
 
-async function verifyAdministratorAccess(settings, origin, request, { inspectContent = false, log = console.log } = {}) {
+async function verifyAdministratorAccess(settings, origin, request, { inspectContent = false, publishEmailContact = false, log = console.log } = {}) {
   let cookie = '', csrf = '', stage = 'sign-in', status;
   const send = (path, options = {}) => request(`${origin}${path}`, {
     ...options, redirect: 'error', signal: AbortSignal.timeout(15_000),
@@ -159,9 +161,22 @@ async function verifyAdministratorAccess(settings, origin, request, { inspectCon
       const summary = summarizeCloudContent(draftBody, await published.json());
       log(`Content inspection (counts only): ${JSON.stringify(summary)}`);
     }
+    if (publishEmailContact) {
+      stage = 'owner email contact';
+      status = undefined;
+      const contact = await send('/api/admin/owner/contact', {
+        method: 'POST', headers: { Cookie: cookie, 'X-Garden-CSRF': csrf, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: COMMENT_EMAIL_TO }),
+      });
+      status = contact.status;
+      if (!contact.ok || (await contact.json()).email !== COMMENT_EMAIL_TO) throw new Error();
+      log('Owner email contact confirmed in the published site and its draft.');
+    }
   } catch {
     // Provider response text, cookies, CSRF tokens and credential-bearing errors are never logged.
-    throw new Error(`Administrator ${stage} check failed${status ? ` (HTTP ${status})` : ''}. Check ADMIN_USERNAME and the ADMIN_PASSWORD Actions secret, then rerun; no content was changed.`);
+    const result = status ? ` (HTTP ${status})` : '';
+    if (stage === 'owner email contact') throw new Error(`Could not confirm the owner email contact${result}. Rerun with the same input to check or append the contact.`);
+    throw new Error(`Administrator ${stage} check failed${result}. Check ADMIN_USERNAME and the ADMIN_PASSWORD Actions secret, then rerun; no content was changed.`);
   } finally {
     if (cookie && csrf) {
       try {
@@ -206,7 +221,7 @@ export async function deployCloudflare(settings, {
   root = project, request = fetch, run = runWrangler, log = console.log,
   env = process.env, random = () => randomBytes(48).toString('hex'),
   delay = ms => new Promise(accept => setTimeout(accept, ms)),
-  inspectContent = false,
+  inspectContent = false, publishEmailContact = false,
 } = {}) {
   await checkAssets(root);
   const api = cloudflareApi(settings, request);
@@ -277,6 +292,7 @@ export async function deployCloudflare(settings, {
     d1_databases: [{ binding: 'DB', database_name: settings.databaseName, database_id: database.uuid, migrations_dir: 'migrations' }],
     vars: { ADMIN_USERNAME: settings.username, PUBLIC_SITE_ORIGINS: settings.origins },
   };
+  if (settings.commentEmailEnabled) config.send_email = [{ name: 'COMMENT_EMAIL', destination_address: COMMENT_EMAIL_TO }];
   const runnerEnv = { ...env, CLOUDFLARE_ACCOUNT_ID: settings.accountId, CLOUDFLARE_API_TOKEN: settings.token };
   try {
     await writeFile(configPath, JSON.stringify(config, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
@@ -299,7 +315,7 @@ export async function deployCloudflare(settings, {
 
   const origin = `https://${settings.workerName}.${subdomain}.workers.dev`;
   await waitForCloudflareReadiness(origin, { request, log, delay });
-  await verifyAdministratorAccess(settings, origin, request, { inspectContent, log });
+  await verifyAdministratorAccess(settings, origin, request, { inspectContent, publishEmailContact, log });
   log('Administrator sign-in and authenticated session verified; temporary login credentials were discarded.');
   log(`Cloudflare is ready: ${origin}/admin/`);
   return { origin, adminUrl: `${origin}/admin/`, apiBaseUrl: origin, bucketName: settings.bucketName, databaseName: settings.databaseName };
@@ -308,7 +324,10 @@ export async function deployCloudflare(settings, {
 async function main() {
   const settings = readDeploymentSettings();
   if (process.argv.includes('--check')) { console.log('Cloudflare deployment inputs are present and valid. No cloud request was made.'); return; }
-  const result = await deployCloudflare(settings, { inspectContent: process.env.CLOUDFLARE_INSPECT_CONTENT === 'true' });
+  const result = await deployCloudflare(settings, {
+    inspectContent: process.env.CLOUDFLARE_INSPECT_CONTENT === 'true',
+    publishEmailContact: process.env.CLOUDFLARE_PUBLISH_EMAIL_CONTACT === 'true',
+  });
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `origin=${result.origin}\nadmin_url=${result.adminUrl}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, [
     '## Cloudflare deployment ready', '',

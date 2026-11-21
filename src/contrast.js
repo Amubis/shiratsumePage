@@ -138,12 +138,16 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
   const doc = scene.ownerDocument;
   const win = doc.defaultView;
   let records = [];
+  let shapeElements = [];
   let frame = 0;
   let destroyed = false;
   let lastPaint = -Infinity;
 
   const stop = () => { if (frame) win.cancelAnimationFrame(frame); frame = 0; };
-  const hide = () => records.forEach(({ copy }) => { copy.style.visibility = 'hidden'; });
+  const setVisibility = (copy, visibility) => {
+    if (copy.style.visibility !== visibility) copy.style.visibility = visibility;
+  };
+  const hide = () => records.forEach(({ copy }) => setVisibility(copy, 'hidden'));
   const active = () => !destroyed && !doc.hidden && flag(isActive);
   const schedule = () => {
     if (!frame && active() && !flag(reducedMotion)) frame = win.requestAnimationFrame(tick);
@@ -152,29 +156,27 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
   function paint() {
     if (!active()) { hide(); return; }
     // Read every layout/computed style before changing any mask or visibility.
+    const layouts = records.map(({ copy, clip }) => ({ copy, clip, rect: copy.getBoundingClientRect() }));
     const styleCache = new Map();
     const readStyle = (element) => win.getComputedStyle(element);
-    const shapes = Array.from(scene.querySelectorAll('[data-contrast-shape]')).flatMap((element) => {
-      if (!isShapeVisible(element, scene, readStyle, styleCache)) return [];
+    const shapes = [];
+    for (const element of shapeElements) {
+      const rect = element.getBoundingClientRect();
+      if (!layouts.some((layout) => overlaps(rect, layout.rect)) || !isShapeVisible(element, scene, readStyle, styleCache)) continue;
       const style = styleCache.get(element);
       const width = element.offsetWidth;
       const height = element.offsetHeight;
-      const rect = element.getBoundingClientRect();
-      if (!width || !height) return [];
+      if (!width || !height) continue;
       const shape = { width, height, rect, transform: style.transform, transformOrigin: style.transformOrigin, variant: element.dataset.shapeVariant };
       shape.matrix = shapeMatrix(shape);
-      return [shape];
-    });
-    const layouts = records.map(({ copy, clip }) => ({ copy, clip, rect: copy.getBoundingClientRect() }));
-    const updates = layouts.map(({ copy, clip, rect }) => {
+      shapes.push(shape);
+    }
+    for (const { copy, clip, rect } of layouts) {
       const projections = shapes.map((shape) => projectShape(shape, rect)).filter(Boolean);
-      return { copy, clip, projections };
-    });
-    for (const { copy, clip, projections } of updates) {
       // The local SVG resource and CSS URL stay the same for the copy's lifetime.
       // Only path geometry changes, avoiding WebKit's asynchronous image decode.
       clip.update(projections);
-      copy.style.visibility = projections.length ? 'visible' : 'hidden';
+      setVisibility(copy, projections.length ? 'visible' : 'hidden');
     }
   }
 
@@ -192,6 +194,7 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
     if (destroyed) return;
     stop();
     records.forEach(({ copy, clip }) => { copy.remove(); clip.destroy(); });
+    shapeElements = Array.from(scene.querySelectorAll('[data-contrast-shape]'));
     const elements = Array.from(targets || scene.querySelectorAll('[data-contrast]')).filter((target) => target.isConnected && !target.closest('.contrast-copy'));
     const animationPairs = [];
     // Read styles and clone content before appending anything that affects selectors.
@@ -237,6 +240,7 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
       doc.removeEventListener('visibilitychange', resume);
       records.forEach(({ copy, clip }) => { copy.remove(); clip.destroy(); });
       records = [];
+      shapeElements = [];
     },
   };
 }

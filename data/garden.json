@@ -259,7 +259,7 @@
     "comments": {
       "zh": {
         "title": "留言",
-        "note": "无需登录。留言审核后显示。",
+        "note": "无需登录。留言发送后立即公开。",
         "unavailable": "评论暂未开放",
         "loading": "正在读取留言…",
         "empty": "还没有留言，留下一点想法吧。",
@@ -271,7 +271,7 @@
         "bodyPlaceholder": "留下一点想法…",
         "submit": "发送留言",
         "submitting": "正在发送…",
-        "pending": "留言已收到，审核后显示。",
+        "sent": "留言已发送。",
         "submitError": "发送失败，文字已保留，请稍后重试。",
         "rateLimited": "发送得有些频繁，文字已保留，请稍后再试。",
         "invalidBody": "请填写 1 至 2000 字的留言。",
@@ -289,7 +289,7 @@
       },
       "ja": {
         "title": "コメント",
-        "note": "ログイン不要です。承認後に表示されます。",
+        "note": "ログイン不要です。コメントは送信すると公開されます。",
         "unavailable": "コメントは準備中です",
         "loading": "コメントを読み込み中…",
         "empty": "最初のひとことを残してみませんか。",
@@ -301,7 +301,7 @@
         "bodyPlaceholder": "ひとことをどうぞ…",
         "submit": "コメントを送る",
         "submitting": "送信中…",
-        "pending": "コメントを受け付けました。承認後に表示されます。",
+        "sent": "コメントを送信しました。",
         "submitError": "送信できませんでした。入力は残っています。しばらくしてからお試しください。",
         "rateLimited": "送信が続いています。入力は残っています。少し待ってからお試しください。",
         "invalidBody": "1〜2000文字のコメントを入力してください。",
@@ -369,7 +369,9 @@
     "avatar": "./assets/owner-avatar.png",
     "name": "Amubis",
     "bio": "Chaotic Good",
-    "contacts": [],
+    "contacts": [
+      { "label": "amubisxv@gmail.com", "url": "mailto:amubisxv@gmail.com" }
+    ],
     "socials": {
       "xiaohongshu": "https://xhslink.cn/o/5Edl2I5FOIJ",
       "x": "https://x.com/amubis1",

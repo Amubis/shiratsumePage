@@ -39,6 +39,7 @@ const gardenDefaults = readGardenData(document, {
 let activeGarden = resolveGardenMedia(gardenDefaults);
 for (const locale of ['zh','ja']) Object.assign(COPY[locale],activeGarden.texts.site[locale]);
 const previewToken = new URLSearchParams(location.search).get('editor-preview');
+const initialPublishedGarden = !previewToken && location.protocol !== 'file:' ? requestPublishedGarden() : null;
 let previewReceived = false;
 let publicSceneStarted = false;
 const commentsService = createCommentService({baseUrl:null});
@@ -91,10 +92,8 @@ const languageControl = $('.language-control');
 const imageSources = new Map($$('[data-model-image]').map((image) => [image, { src: image.getAttribute('src'), alt: image.getAttribute('alt') }]));
 const lightboxSources = new Map($$('[data-lightbox]').map((button) => [button, button.dataset.lightbox]));
 
-$$('[data-clover]').forEach((element) => {
-  element.innerHTML = element.dataset.cloverShadow
-    ? halftoneShadowSVG({id:element.dataset.cloverShadow})
-    : cloverSVG({className:'clover-svg',variant:element.dataset.cloverVariant || 'small'});
+$$('[data-clover]:not([data-clover-shadow])').forEach((element) => {
+  element.innerHTML = cloverSVG({className:'clover-svg',variant:element.dataset.cloverVariant || 'small'});
 });
 function renderHalftone(){
   $('.halftone-vignette').innerHTML=createHalftoneSVG({width:innerWidth,height:innerHeight,profile:MODELS[modelId].preview?'soft':'connected'});
@@ -103,7 +102,6 @@ function renderHalftone(){
   if (!MODELS[modelId].preview) $('.intro-halftone-seam').innerHTML=createHalftoneSeamSVG({width:innerWidth,height:innerHeight});
   introEntrance?.refresh();
 }
-renderHalftone();
 const scene = createCloverScene({ container: $('.hero-clovers'), theme: MODELS[modelId].theme, seed: modelId, reducedMotion });
 
 function translate(key) { return COPY[language][key] ?? COPY.zh[key] ?? ''; }
@@ -143,9 +141,15 @@ function syncOutfitGround(outfit=selectedOutfit()){
   container.style.setProperty('--outfit-ground-y',`${(pair.offsetTop+pair.offsetHeight*2500/2560).toFixed(3)}px`);
 }
 
+function shouldPreloadOutfits(){
+  if(!publicSceneStarted)return false;
+  if(initialRoutePending)return requestedSection===1;
+  return currentIndex===1 || (currentIndex===0 && (reducedMotion() || !['poster','loading'].includes(mediaStatus)));
+}
+
 function ensureOutfitShowcase(){
   if(!outfitShowcase){
-    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,defaultOutfitId:activeGarden.settings.defaultOutfitId,copy:activeGarden.texts.outfits,preloadEnabled:publicSceneStarted,onChange(_index,outfit){syncOutfitGround(outfit);}});
+    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,defaultOutfitId:activeGarden.settings.defaultOutfitId,copy:activeGarden.texts.outfits,preloadEnabled:shouldPreloadOutfits(),onChange(_index,outfit){syncOutfitGround(outfit);}});
     syncOutfitGround();
     if(typeof ResizeObserver==='function'){
       outfitGroundObserver=new ResizeObserver(()=>syncOutfitGround());
@@ -221,7 +225,6 @@ function updatePlaybackLabel(status) {
   $('#pause-toggle').setAttribute('aria-label', label);
   $('#pause-toggle use').setAttribute('href', paused ? '#icon-play' : '#icon-pause');
   renderVideoNotice();
-  contrastLayer?.refresh();
 }
 
 function renderVideoNotice() {
@@ -242,9 +245,11 @@ function renderVideoNotice() {
 
 const player = createVideoPlayer({
   container: $('.hero-media'), playlist: MODELS[modelId].playlist, poster: MODELS[modelId].poster, reducedMotion,
+  deferInitialSource: requestedSection > 0 || reducedMotion(),
   onStatus(status,details={}) {
     mediaDetails=details;
     updatePlaybackLabel(status);
+    outfitShowcase?.setPreloadEnabled(shouldPreloadOutfits());
     if (introWaiting && currentIndex === 0) {
       if (status === 'playing') startIntro();
       else if (['blocked','error','timeout'].includes(status)) finishIntro();
@@ -462,6 +467,7 @@ navigator = createSectionNavigator({
     $('.topbar').inert = index !== 0 || watching;
     $('.side-nav').inert = index === 0;
     $('.video-controls').inert = index !== 0;
+    outfitShowcase?.setPreloadEnabled(shouldPreloadOutfits());
     if (index !== 0) { if(publicSceneStarted)finishIntro(); player.pause(); } else if (publicSceneStarted&&!userPaused) void player.resume();
     sidebar?.setCurrent(index);contrastLayer?.refresh();applyURL();
     if(!nativeInterior || pendingNativeEntry!==index)syncPersonalEntrance();
@@ -621,7 +627,7 @@ function applyTheme() {
   introEntrance?.finish();
   albumScroll?.cancel();
   pendingAlbumNavigation = null;
-  albumTransition?.cancel();
+  if(publicSceneStarted)albumTransition?.cancel();
   root.style.setProperty('--theme',model.theme);root.style.setProperty('--theme-rgb',model.rgb);root.style.setProperty('--theme-dark',model.dark);root.style.setProperty('--paper',model.paper);
   $('meta[name="theme-color"]').content=model.theme;
   document.body.classList.toggle('theme-preview',model.preview);
@@ -681,8 +687,8 @@ window.addEventListener('keydown', (event) => {
   if(event.key==='Tab' && root.dataset.phase!=='ready')finishIntro();
   if(event.key==='Escape') {videoReveal?.cancel();introEntrance?.finish();albumTransition?.cancel();if(watching)setWatching(false);finishWipe();prepareIntroOffscreen();$('.side-nav').classList.remove('is-open');$('.mobile-menu-toggle').setAttribute('aria-expanded','false');}
 });
-document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();contrastLayer?.refresh();personalEntrance?.refresh();if(!document.hidden)syncPersonalEntrance();queueMicrotask(prepareIntroOffscreen);});
-const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();modelSwitchMotion?.refresh();languageTransition?.finish();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
+document.addEventListener('visibilitychange', () => {document.body.classList.toggle('is-background',document.hidden);if(document.hidden&&albumScroll?.busy)albumScroll.cancel();personalEntrance?.refresh();if(!document.hidden)syncPersonalEntrance();queueMicrotask(prepareIntroOffscreen);});
+const onMotionPreferenceChange=() => {videoReveal?.cancel();introEntrance?.finish();albumScroll?.cancel();albumTransition?.cancel();finishIntro();scene.setTheme(MODELS[modelId].theme,modelId);contrastLayer?.refresh();heroInteractions?.refresh();personalEntrance?.refresh();waterFooter?.refresh();modelSwitchMotion?.refresh();languageTransition?.finish();if(reducedMotion()){player.pause();userPaused=true;}sidebar?.refresh();updatePlaybackLabel();prepareIntroOffscreen();syncPersonalEntrance();};
 if(typeof motionPreference.addEventListener==='function')motionPreference.addEventListener('change',onMotionPreferenceChange);
 else motionPreference.addListener?.(onMotionPreferenceChange);
 window.addEventListener('resize',()=>{renderHalftone();sidebar?.refresh();navigator.refresh();queueMicrotask(prepareIntroOffscreen);});
@@ -783,10 +789,10 @@ modelSwitchMotion=createModelSwitchMotion({root:$('#model-toggle'),reducedMotion
 topbarDock=createTopbarDock({topbar:$('.topbar'),hero:$('.hero'),reducedMotion});
 for(const node of $$('#mobile-current,#video-message,#video-retry,#video-open,.model-intro-eyebrow,.model-intro-reading,.model-intro-lead,.model-intro-description,.top-links small'))node.setAttribute('data-language-text','');
 languageTransition=createLanguageTransition({root:document.body,reducedMotion:()=>reducedMotion()||Boolean(pendingModelChange),getTargets:()=>languageTextTargets(document.body)});
-if(!previewToken)ownerTools=createOwnerTools({root:document.body,getContent:()=>activeGarden,getLanguage:()=>language,onPublished:content=>applyGardenContent(content,{inline:true}),onSession:session=>commentsService.setOwnerSession(session)});
+if(!previewToken)ownerTools=createOwnerTools({root:document.body,getContent:()=>activeGarden,getLanguage:()=>language,onPublished:content=>applyGardenContent(resolveGardenMedia(normalizeGardenContent(content,gardenDefaults)),{inline:true}),onSession:session=>commentsService.setOwnerSession(session)});
 function applyGardenContent(next,{inline=false}={}) {
   const previous=activeGarden;
-  activeGarden=resolveGardenMedia(normalizeGardenContent(next,gardenDefaults));
+  activeGarden=next;
   const changed=key=>JSON.stringify(previous[key])!==JSON.stringify(activeGarden[key]);
   const changedCopy=key=>JSON.stringify(previous.texts[key])!==JSON.stringify(activeGarden.texts[key]);
   if(changed('owner'))applyOwnerProfile(activeGarden.owner);
@@ -821,12 +827,16 @@ function updateGardenRuntime(runtime){
   ownerProfile?.setAdminUrl(runtime.adminUrl);
   ownerTools?.setRuntime(runtime);
 }
-function refreshPublishedGarden(){
+function requestPublishedGarden(){
+  // Remote pages require a fresh, verified response. Skip the unused offline cache.
+  return loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href,onRuntime:updateGardenRuntime,storage:null});
+}
+function refreshPublishedGarden(initialRequest=null){
   if(location.protocol==='file:' || previewToken || previewReceived)return Promise.resolve();
   if(publishedGardenRequest)return publishedGardenRequest;
   lastPublishedAttempt=Date.now();
   contentAvailability.loading();
-  publishedGardenRequest=loadPublishedGarden({defaults:gardenDefaults,pageURL:location.href,onRuntime:updateGardenRuntime}).then(({content,runtime,connected})=>{
+  publishedGardenRequest=(initialRequest || requestPublishedGarden()).then(({content,runtime,connected})=>{
     publishedGardenConnected=connected;
     if(previewReceived)return;
     if(!connected){contentAvailability.error();return;}
@@ -851,7 +861,7 @@ applyTheme();
 function beginPublicScene(){
   if(publicSceneStarted)return;
   publicSceneStarted=true;
-  outfitShowcase?.setPreloadEnabled?.(true);
+  outfitShowcase?.setPreloadEnabled(shouldPreloadOutfits());
   if(requestedSection>0) {
     finishIntro();
     // Keep the original fragment until the first verified chapter settles.
@@ -876,6 +886,6 @@ function beginPublicScene(){
 if(previewToken || location.protocol==='file:'){
   contentAvailability.ready(previewToken?'preview':'static');
   beginPublicScene();
-} else void refreshPublishedGarden();
+} else void refreshPublishedGarden(initialPublishedGarden);
 window.addEventListener('load', () => navigator.refresh(), {once:true});
 document.fonts?.ready.then(()=>{navigator.refresh();sidebar?.refresh();contrastLayer?.refresh();});

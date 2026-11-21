@@ -36,8 +36,9 @@ async function fixture() {
   assert.equal(login.status, 200);
   const session = await login.json();
   const headers = { Origin: origin, 'Content-Type': 'application/json', Cookie: login.headers.get('set-cookie').split(';')[0], 'X-Garden-CSRF': session.csrfToken };
-  const request = (body, changedHeaders = {}, method = 'PATCH') => handle(new Request(`${origin}/api/admin/live-content`, { method, headers: { ...headers, ...changedHeaders }, body: JSON.stringify(body) }));
-  return { request, get state() { return state; }, get writes() { return writes; }, failWrite() { conflict = true; } };
+  const request = (body, changedHeaders = {}, method = 'PATCH', path = '/api/admin/live-content') => handle(new Request(`${origin}${path}`, { method, headers: { ...headers, ...changedHeaders }, body: JSON.stringify(body) }));
+  const addEmail = (body, changedHeaders) => request(body, changedHeaders, 'POST', '/api/admin/owner/contact');
+  return { request, addEmail, get state() { return state; }, get writes() { return writes; }, failWrite() { conflict = true; } };
 }
 
 test('inline photo edits update only selected published/draft text and leave unrelated drafts private', async () => {
@@ -134,6 +135,33 @@ test('inline journal edits preserve other locales, images and pending deletion i
   assert.equal(f.state.draft.revision, draftRevision);
 });
 
+test('bilingual journal fields share one write while unedited draft translations stay private', async () => {
+  const f = await fixture(), before = structuredClone(f.state);
+  const patch = { title: { ja: '新しい題名' }, body: { zh: '新的正文', ja: '新しい本文' } };
+  const response = await f.request({ targetType: 'journal', targetId: 'note', patch });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.deepEqual(result.content.journal[0].title, { zh: '小标题', ja: '新しい題名' });
+  assert.deepEqual(result.content.journal[0].body, patch.body);
+  assert.deepEqual(f.state.draft.content.journal[0].title, { zh: '未发布的标题', ja: '新しい題名' });
+  assert.deepEqual(f.state.published.content.journal[0].images, before.published.content.journal[0].images);
+  assert.deepEqual(f.state.draft.content.journal[1], before.draft.content.journal[1]);
+  assert.deepEqual(f.state.previousPublished, before.published);
+  assert.equal(f.writes, 1);
+});
+
+test('invalid journal translations leave both versions unchanged', async () => {
+  const f = await fixture(), before = structuredClone(f.state);
+  for (const title of [{ zh: 'valid', ja: 'x'.repeat(501) }, { zh: 42 }, { en: 'unsupported' }, {}]) {
+    assert.equal((await f.request({ targetType: 'journal', targetId: 'note', patch: { title, body: { zh: 'valid' } } })).status, 422);
+  }
+  assert.deepEqual(f.state, before);
+  assert.equal(f.writes, 0);
+  const response = await f.request({ targetType: 'journal', targetId: 'note', patch: { body: { zh: '新的正文' } } });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).content.journal[0].body, { zh: '新的正文', ja: '' });
+});
+
 test('inline writes retain authentication, CSRF and narrow field validation', async () => {
   const f = await fixture();
   const body = { targetType: 'photo', targetId: 'photo', locale: 'zh', patch: { caption: '' } };
@@ -160,6 +188,38 @@ test('a concurrent storage write returns conflict without publishing or changing
   assert.equal(f.writes, 0);
   const photoResponse = await f.request({ targetType: 'photo', targetId: 'photo', patch: { caption: { zh: 'Conflicting Chinese', ja: 'Conflicting Japanese' } } });
   assert.equal(photoResponse.status, 409);
+  assert.deepEqual(f.state, before);
+  assert.equal(f.writes, 0);
+});
+
+test('adding a live email appends only the contact and preserves existing draft labels', async () => {
+  const f = await fixture();
+  f.state.published.content.owner.contacts.push({ label: 'Website', url: 'https://example.org/' });
+  f.state.draft.content.owner.contacts.push({ label: 'Existing email', url: 'mailto:Owner@Example.org?subject=Hello' });
+  const before = structuredClone(f.state);
+  const response = await f.addEmail({ email: 'owner@example.org' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { email: 'owner@example.org', updated: true });
+  const expected = structuredClone(before.published.content);
+  expected.owner.contacts.push({ label: 'owner@example.org', url: 'mailto:owner@example.org' });
+  assert.deepEqual(f.state.published.content, expected);
+  assert.deepEqual(f.state.draft, before.draft);
+  assert.deepEqual(f.state.previousPublished, before.published);
+  const duplicate = await f.addEmail({ email: 'OWNER@example.org' });
+  assert.deepEqual(await duplicate.json(), { email: 'OWNER@example.org', updated: false });
+  assert.equal(f.writes, 1);
+});
+
+test('publishing an owner email requires authorization and a successful conditional write', async () => {
+  const f = await fixture(), before = structuredClone(f.state);
+  const payload = { email: 'owner@example.org' };
+  assert.equal((await f.addEmail(payload, { Cookie: '' })).status, 401);
+  assert.equal((await f.addEmail(payload, { 'X-Garden-CSRF': '' })).status, 403);
+  assert.equal((await f.addEmail(payload, { Origin: 'https://another.example' })).status, 403);
+  assert.equal((await f.addEmail({ email: 'owner@example.org?bcc=spam@example.org' })).status, 422);
+  assert.equal((await f.addEmail({ ...payload, label: 'Other fields are unsupported' })).status, 422);
+  f.failWrite();
+  assert.equal((await f.addEmail(payload)).status, 409);
   assert.deepEqual(f.state, before);
   assert.equal(f.writes, 0);
 });

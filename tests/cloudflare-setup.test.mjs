@@ -4,13 +4,14 @@ import { chmod, mkdtemp, mkdir, readFile, readdir, rm, truncate, writeFile } fro
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { deployCloudflare, readDeploymentSettings, runWrangler, summarizeCloudContent, waitForCloudflareReadiness } from '../scripts/cloudflare-setup.mjs';
+import { COMMENT_EMAIL_FROM, COMMENT_EMAIL_TO, createCommentEmailNotifier } from '../worker/comment-email.mjs';
 
 const credentials = { CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32), CLOUDFLARE_API_TOKEN: 'private-token', ADMIN_PASSWORD: '  exact password  ' };
 const settings = readDeploymentSettings(credentials);
 const database = { name: 'shiratsume-comments', uuid: '12345678-1234-1234-1234-123456789abc' };
 const result = value => Response.json({ success: true, result: value });
 
-async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false, nullSubdomain = false, inspectContent = false, draftMedia = [], publishedMedia = [], badInspection = false } = {}) {
+async function fixture(t, { existing = false, publicBucket = false, noSubdomain = false, noSession = false, failRun = false, badLogin = false, brokenSession = false, requestedSubdomain = '', unavailableSubdomain = false, concurrentSubdomain = false, emptySubdomain = false, nullSubdomain = false, inspectContent = false, draftMedia = [], publishedMedia = [], badInspection = false, publishEmailContact = false, commentEmailEnabled = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'cloudflare-setup-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'worker'));
@@ -38,6 +39,13 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
         assert.equal(options.headers.Cookie, '__Host-garden_session=private-cookie');
         assert.equal(options.headers['X-Garden-CSRF'], 'private-csrf-token');
         return Response.json({ authenticated: false });
+      }
+      if (publishEmailContact && path === '/api/admin/owner/contact') {
+        assert.equal(method, 'POST');
+        assert.equal(options.headers.Cookie, '__Host-garden_session=private-cookie');
+        assert.equal(options.headers['X-Garden-CSRF'], 'private-csrf-token');
+        assert.deepEqual(JSON.parse(options.body), { email: COMMENT_EMAIL_TO });
+        return Response.json({ email: COMMENT_EMAIL_TO, updated: true });
       }
       if (inspectContent && path === '/api/admin/content') {
         assert.equal(options.headers.Cookie, '__Host-garden_session=private-cookie');
@@ -79,7 +87,7 @@ async function fixture(t, { existing = false, publicBucket = false, noSubdomain 
     commands.push({ args, options, config });
     if (failRun) throw new Error('Mock migration failure');
   };
-  const deploy = () => deployCloudflare({ ...settings, workersSubdomain: requestedSubdomain }, { root, request, run, log: message => logs.push(message), env: credentials, random: () => 'unlogged-session-'.repeat(4), delay: async () => {}, inspectContent });
+  const deploy = () => deployCloudflare({ ...settings, workersSubdomain: requestedSubdomain, commentEmailEnabled }, { root, request, run, log: message => logs.push(message), env: credentials, random: () => 'unlogged-session-'.repeat(4), delay: async () => {}, inspectContent, publishEmailContact });
   return { root, request, run, calls, commands, logs, deploy };
 }
 
@@ -94,6 +102,32 @@ test('deployment validates only public input and presence of secrets without mak
   assert.throws(() => readDeploymentSettings({ ...credentials, ADMIN_USERNAME: 'hidden\tcontrol' }), /ADMIN_USERNAME/);
   for (const prefix of ['https://example.workers.dev', 'BadPrefix', '-prefix', 'x', 'x'.repeat(64)]) assert.throws(() => readDeploymentSettings({ ...credentials, CLOUDFLARE_WORKERS_SUBDOMAIN: prefix }), /CLOUDFLARE_WORKERS_SUBDOMAIN/);
   assert.equal(readDeploymentSettings({ ...credentials, CLOUDFLARE_WORKERS_SUBDOMAIN: 'amubis-shiratsume' }).workersSubdomain, 'amubis-shiratsume');
+});
+
+test('email-enabled deploy confines the binding and appends the requested contact through the owner session', async t => {
+  assert.equal(settings.commentEmailEnabled, false);
+  assert.equal(readDeploymentSettings({ ...credentials, CLOUDFLARE_COMMENT_EMAIL_ENABLED: 'true' }).commentEmailEnabled, true);
+  const f = await fixture(t, { existing: true, publishEmailContact: true, commentEmailEnabled: true });
+  await f.deploy();
+  const config = f.commands.find(command => command.args[0] === 'deploy').config;
+  assert.deepEqual(config.send_email, [{ name: 'COMMENT_EMAIL', destination_address: COMMENT_EMAIL_TO }]);
+  assert.ok(f.calls.some(call => call.path === '/api/admin/owner/contact' && call.method === 'POST'));
+});
+
+test('comment email stays in the worker background and uses the fixed owner recipient', async () => {
+  const messages = [], failures = [];
+  let background;
+  const notify = createCommentEmailNotifier({ send: async message => { messages.push(message); throw new Error('Unavailable'); } }, error => failures.push(error.message));
+  const result = notify({ targetType: 'photo', nickname: '小草', body: '照片真好看！', email: 'visitor@example.org' }, { waitUntil(promise) { background = promise; } });
+  assert.equal(result, undefined);
+  await background;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, COMMENT_EMAIL_TO);
+  assert.equal(messages[0].from.email, COMMENT_EMAIL_FROM);
+  assert.match(messages[0].text, /小草 在照片下留言\n\n照片真好看！/);
+  assert.match(messages[0].text, /https:\/\/amubis\.art\/admin\//);
+  assert.deepEqual(failures, ['Unavailable']);
+  assert.equal(createCommentEmailNotifier(undefined), undefined);
 });
 
 test('first deploy creates only missing private resources, migrates before deployment, and sends secrets only in protected stdin', async t => {

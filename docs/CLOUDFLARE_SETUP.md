@@ -11,7 +11,7 @@
 | GitHub | 源代码、初始公开内容、GitHub Pages 静态构建 |
 | Worker | 网站文件、登录、内容发布、上传与评论 API |
 | 私人 R2 桶 | 图片、私有原图、内容草稿与已发布内容 |
-| D1 数据库 | 匿名留言、审核状态、管理员回复、未读状态 |
+| D1 数据库 | 匿名留言、可见状态、管理员回复、未读状态 |
 
 ## 快速入口：把部署交给 GitHub Actions
 
@@ -166,7 +166,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 先打开这个地址的 `/admin/`，输入管理员账号（默认 `Amubis`）和 `ADMIN_PASSWORD` 登录。再打开 `/api/content`，确认可以读取已发布内容。浏览器登录 Cookie 属于这个 Worker 的域名；管理页应直接使用 Worker 自己的地址。
 
-账号密码由 Worker 后端验证，并由它保护草稿、上传、发布和评论审核接口。GitHub Pages 只能提供静态管理界面，前端增加一个密码框不能保护后台数据。本地 `npm run admin` 仍仅监听本机回环地址并自动认证，不要求输入云端账号密码。
+账号密码由 Worker 后端验证，并由它保护草稿、上传、发布和消息管理接口。GitHub Pages 只能提供静态管理界面，前端增加一个密码框不能保护后台数据。本地 `npm run admin` 仍仅监听本机回环地址并自动认证，不要求输入云端账号密码。
 
 云端管理未登录、会话失效或断网时，草稿、消息和内嵌预览会锁住，不会降级为可打开私有备份的静态编辑模式。重新认证后可继续处理当前页面内保留的未保存编辑。点击退出登录会清除当前浏览器的草稿备份、预览与私有内容；有未保存内容时可以取消退出，先保存到服务端或导出。正在保存、发布或导入图片时，请等操作完成再退出。服务端已保存的草稿和上传文件不会因退出而删除。
 
@@ -190,7 +190,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 后台依然从 Worker 的 `/admin/` 进入。GitHub Pages 只负责静态文件，本身不能执行 Worker 管理 API；仅把 `/admin/` HTML 上传到 GitHub Pages，并不代表上传、保存和发布已连接云端。
 
-管理页“连接与备份”的“公开网站地址”应填实际入口，例如 `https://amubis.github.io/shiratsumePage/`，然后保存并发布。评论服务会从这个地址提取来源 `https://amubis.github.io`，允许该网站提交匿名留言。公开内容读取不依赖管理员 Cookie；上传、保存和审核仍在 Worker 同源管理页完成。
+管理页“连接与备份”的“公开网站地址”应填实际入口，例如 `https://amubis.github.io/shiratsumePage/`，然后保存并发布。评论服务会从这个地址提取来源 `https://amubis.github.io`，允许该网站提交匿名留言。公开内容读取不依赖管理员 Cookie，后台的上传、保存及消息管理使用 Worker 同源会话。
 
 使用管理页保存并发布一次小改动，然后从公开网站刷新确认。草稿预览成功并不能代替这个公开发布检查。
 
@@ -240,13 +240,13 @@ npm run cloud:deploy
 
 如果需要单独验证 Worker 的本地模拟，先用 `--local` 代替 `--remote` 应用迁移，再构建网站并运行 `npm run cloud:dev`；本地模拟登录所需的 Secrets 放在 `worker/.dev.vars`，不要提交 Git。日常本地编辑直接用 `npm run admin` 即可，它自动使用 `.garden-data/` 的本地评论文件，不需要 D1 或云端登录。
 
-所有访客留言都先进入待审核状态，公开页面只返回已批准的留言。昵称选填，无需注册；留言只关联已经公开的照片或碎碎念。照片播放器右侧显示该照片的留言，碎碎念下方可展开对应留言。登录后台的「消息中心」可查看上下文，批准、拒绝、标为垃圾、删除、标记已读，并在批准后发送管理员回复。管理员回复由服务端标记身份，浏览器不能自行声明为管理员。
+访客留言发送后直接公开，昵称选填。留言关联已公开的照片或碎碎念，管理页「消息中心」可按所有／未读和留言来源筛选，并可标为已读、回复或删除。管理员回复由服务端标记身份。历史未公开留言保留原有可见性。
 
-导航显示待审核和未读数量；管理页面可见时每 30 秒轻量刷新，窗口重新获得焦点时刷新，后台标签页暂停轮询。通知只在登录的管理端展示，不使用邮件或第三方消息推送。提交测试留言后，确认「待审核 → 消息中心出现未读 → 批准 → 公开页面显示 → 管理员回复 → 标为已读」的完整流程。
+消息中心在登录、手动刷新或管理操作时更新未读数量。站长邮件可在 amubis.art 启用 Email Routing 并验证 `amubisxv@gmail.com` 后，将 GitHub Actions 仓库变量 `CLOUDFLARE_COMMENT_EMAIL_ENABLED` 设为 `true`，再运行部署。邮件绑定仅允许向该地址发送新访客留言。Cloudflare 对已验证目标地址的发送免费，也不计入每日限额。[Cloudflare 邮件限额](https://developers.cloudflare.com/email-service/platform/limits/#verified-destination-addresses)
 
 网站与 Worker 不同源时，评论提交允许已发布内容中“公开网站地址”的来源。若还需要额外允许预览站点，可以在 Worker **Settings → Variables and Secrets** 添加普通变量 `PUBLIC_SITE_ORIGINS`，填写逗号分隔的来源，例如 `https://amubis.github.io,https://garden.example.com`。来源只包含协议与域名，不带路径。管理 API 仍仅接受同源登录会话与 CSRF 校验；管理密码不写入公开运行配置。
 
-D1 迁移后请自行定期备份评论数据库；内容 JSON 导出不包含评论。仅更换网站域名、保留原数据库时，留言、审核与未读状态会保留。官方文档：[D1 创建与查询](https://developers.cloudflare.com/d1/get-started/)、[D1 命令](https://developers.cloudflare.com/d1/wrangler-commands/)、[D1 迁移](https://developers.cloudflare.com/d1/reference/migrations/)。
+D1 评论数据独立于内容 JSON 导出。更换网站域名并保留原数据库时，留言、可见性与未读状态会保留。[D1 创建与查询](https://developers.cloudflare.com/d1/get-started/) · [D1 命令](https://developers.cloudflare.com/d1/wrangler-commands/) · [D1 迁移](https://developers.cloudflare.com/d1/reference/migrations/)
 
 ## 8. 更换网站域名，无需逐张改图片
 

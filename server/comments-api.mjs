@@ -1,7 +1,6 @@
 const encoder = new TextEncoder();
 const STATUSES = new Set(['pending', 'approved', 'rejected', 'spam', 'deleted']);
 const MODERATION_STATUSES = new Set(['approved', 'rejected', 'spam', 'deleted']);
-const REVIEW_MESSAGE = 'Your comment is awaiting review.';
 const MAX_BODY_BYTES = 16 * 1024;
 
 class CommentError extends Error {
@@ -62,8 +61,8 @@ export function isCommentsPath(path) {
   return path === '/api/comments' || path === '/api/admin/comments' || path.startsWith('/api/admin/comments/') || path === '/api/admin/notifications' || path === '/api/admin/notifications/read';
 }
 
-/** Anonymous text is stored as text, never HTML; moderation and author identity are server controlled. */
-export function createCommentsApi({ store, getPublishedContent, requireAuth, requireWrite, publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', rateLimitSecret = '', onError = () => {} }) {
+/** Public comments are plain text. Visibility and author identity are server controlled. */
+export function createCommentsApi({ store, getPublishedContent, requireAuth, requireWrite, publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', rateLimitSecret = '', onNewComment, onError = () => {} }) {
   const salt = rateLimitSecret || crypto.randomUUID();
   const configuredOrigins = (Array.isArray(publicSiteOrigins) ? publicSiteOrigins : String(publicSiteOrigins || '').split(',')).map(value => originOf(value.trim())).filter(Boolean);
   const allowedOrigin = async request => {
@@ -90,7 +89,8 @@ export function createCommentsApi({ store, getPublishedContent, requireAuth, req
     return content;
   };
   const bodyText = body => requiredText(body, 'Comment', 2000);
-  return async request => {
+  const inboxUnreadCount = () => store.unreadCount({ inbox: true });
+  return async (request, context) => {
     const url = new URL(request.url), path = url.pathname;
     if (!isCommentsPath(path)) return null;
     const publicRoute = path === '/api/comments';
@@ -129,20 +129,26 @@ export function createCommentsApi({ store, getPublishedContent, requireAuth, req
         const rate = await store.consumeRateLimit(key, now(), { windowMs: 10 * 60 * 1000, max: 5 });
         if (!rate.allowed) fail(429, 'Too many comments. Please try again later.', { retryAfter: rate.retryAfter });
         const body = await readJson(request);
-        if (typeof body.website === 'string' && body.website.trim()) return json({ accepted: true, status: 'pending', message: REVIEW_MESSAGE }, 202, corsHeaders);
+        if (typeof body.website === 'string' && body.website.trim()) return json({ accepted: true }, 202, corsHeaders);
         const target = targetFrom(body);
         await assertPublished(target);
         let parentId = null;
         if (body.parentId !== undefined && body.parentId !== null && body.parentId !== '') {
           parentId = requiredText(body.parentId, 'Parent comment ID', 120);
           const parent = await store.get(parentId);
-          if (!parent || parent.status !== 'approved' || parent.parentId || parent.targetType !== target.targetType || parent.targetId !== target.targetId) fail(422, 'Replies require an approved top-level comment on this target.');
+          if (!parent || parent.status !== 'approved' || parent.parentId || parent.targetType !== target.targetType || parent.targetId !== target.targetId) fail(422, 'Replies require a visible top-level comment on this target.');
         }
         let nickname = '';
         if (body.nickname !== undefined && body.nickname !== null && body.nickname !== '') nickname = requiredText(body.nickname, 'Nickname', 40);
         const createdAt = new Date(now()).toISOString();
-        const comment = await store.insert({ id: crypto.randomUUID(), ...target, parentId, nickname, body: bodyText(body.body), status: 'pending', verified: false, createdAt, updatedAt: createdAt, readAt: null });
-        return json({ comment: { id: comment.id, status: 'pending', createdAt: comment.createdAt }, message: REVIEW_MESSAGE }, 201, corsHeaders);
+        const comment = await store.insert({ id: crypto.randomUUID(), ...target, parentId, nickname, body: bodyText(body.body), status: 'approved', verified: false, createdAt, updatedAt: createdAt, readAt: null });
+        const published = publicComment(comment);
+        try { await onNewComment?.(published, context); }
+        catch (error) {
+          // The comment is already committed. Notification failures must not invite a duplicate submission.
+          try { onError(error); } catch { /* Reporting is best-effort. */ }
+        }
+        return json({ comment: published }, 201, corsHeaders);
       }
       if (path === '/api/admin/comments' && request.method === 'GET') {
         const status = url.searchParams.get('status');
@@ -151,16 +157,22 @@ export function createCommentsApi({ store, getPublishedContent, requireAuth, req
         if (unread !== null && !['true', 'false'].includes(unread)) fail(400, 'Unread must be true or false.');
         const target = url.searchParams.has('targetType') || url.searchParams.has('targetId') ? targetFrom(Object.fromEntries(url.searchParams)) : {};
         const comments = await store.list({ ...target, ...(status && status !== 'all' ? { status } : {}), ...(unread === null ? {} : { unread: unread === 'true' }), limit: pageLimit(url) });
-        return json({ comments, unreadCount: await store.unreadCount(), pendingCount: await store.pendingCount() });
+        return json({ comments, unreadCount: await inboxUnreadCount(), pendingCount: await store.pendingCount() });
       }
       if (path === '/api/admin/notifications' && request.method === 'GET') {
-        return json({ notifications: await store.list({ unread: true, limit: pageLimit(url) }), unreadCount: await store.unreadCount(), pendingCount: await store.pendingCount() });
+        const mode = url.searchParams.get('unread') ?? 'true';
+        if (!['all', 'true', 'false'].includes(mode)) fail(400, 'Unread must be all, true, or false.');
+        const targetType = url.searchParams.get('targetType');
+        if (targetType !== null && !['photo', 'note'].includes(targetType)) fail(400, 'Choose photo or note notifications.');
+        const filters = { inbox: true, targetType, ...(mode === 'all' ? {} : { unread: mode === 'true' }), limit: pageLimit(url) };
+        const [notifications, unreadCount] = await Promise.all([store.list(filters), inboxUnreadCount()]);
+        return json({ notifications, unreadCount });
       }
       if (path === '/api/admin/notifications/read' && request.method === 'POST') {
         const body = await readJson(request);
         if (body.all !== true && (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 500 || body.ids.some(value => typeof value !== 'string' || !value || value.length > 120))) fail(422, 'Provide comment IDs or all: true.');
-        const updated = await store.markRead(body.all === true ? { all: true } : { ids: [...new Set(body.ids)] });
-        return json({ updated, unreadCount: await store.unreadCount(), pendingCount: await store.pendingCount() });
+        const updated = await store.markRead({ inbox: true, ...(body.all === true ? { all: true } : { ids: [...new Set(body.ids)] }) });
+        return json({ updated, unreadCount: await inboxUnreadCount() });
       }
       const match = /^\/api\/admin\/comments\/([^/]+)(\/reply)?$/.exec(path);
       if (match && request.method === 'PATCH' && !match[2]) {
@@ -170,21 +182,21 @@ export function createCommentsApi({ store, getPublishedContent, requireAuth, req
         if (body.status === undefined && body.read !== true) fail(422, 'Provide a moderation status or read: true.');
         const comment = await store.moderate(match[1], { ...(body.status ? { status: body.status } : {}), ...(body.read ? { read: true } : {}) }, new Date(now()).toISOString());
         if (!comment) fail(404, 'Comment not found.');
-        return json({ comment, unreadCount: await store.unreadCount(), pendingCount: await store.pendingCount() });
+        return json({ comment, unreadCount: await inboxUnreadCount(), pendingCount: await store.pendingCount() });
       }
       if (match && request.method === 'POST' && match[2]) {
         const body = await readJson(request);
         const comment = await store.get(match[1]);
         if (!comment) fail(404, 'Comment not found.');
         const parent = comment.parentId ? await store.get(comment.parentId) : comment;
-        if (!parent || parent.status !== 'approved' || parent.parentId) fail(409, 'Approve the original comment before replying.');
+        if (comment.status !== 'approved' || !parent || parent.status !== 'approved' || parent.parentId) fail(409, 'This thread is no longer visible.');
         const target = { targetType: parent.targetType, targetId: parent.targetId };
         const content = await assertPublished(target);
         const name = content.owner?.name;
         const nickname = cleanText(typeof name === 'string' ? name : name?.zh || name?.ja || '') || '作者';
         const createdAt = new Date(now()).toISOString();
         const reply = await store.insert({ id: crypto.randomUUID(), ...target, parentId: parent.id, nickname: Array.from(nickname).slice(0, 40).join(''), body: bodyText(body.body), status: 'approved', verified: true, createdAt, updatedAt: createdAt, readAt: createdAt });
-        return json({ comment: reply, unreadCount: await store.unreadCount(), pendingCount: await store.pendingCount() }, 201);
+        return json({ comment: reply, unreadCount: await inboxUnreadCount(), pendingCount: await store.pendingCount() }, 201);
       }
       fail(405, 'Method not allowed.');
     } catch (error) {

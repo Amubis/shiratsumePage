@@ -263,12 +263,18 @@ test('language refresh and visibility lifecycle release stable clips without dup
   const layer = createContrastLayer({ scene: env.scene });
   const oldClip = env.doc.body.querySelector('clipPath');
   env.label.textContent = '白詰草';
+  const nextShape = env.shape.cloneNode(false);
+  nextShape.offsetWidth = nextShape.offsetHeight = 100;
+  nextShape.rect = { ...env.shape.rect, left: 20 };
+  env.shape.remove();
+  env.scene.append(nextShape);
   layer.refresh();
   assert.equal(oldClip.isConnected, false);
   assert.equal(env.target.querySelectorAll('.contrast-copy').length, 1);
   assert.equal(env.doc.body.querySelectorAll('clipPath').length, 1);
   const copy = env.target.querySelector('.contrast-copy');
   assert.equal(copy.textContent, '白詰草');
+  assert.equal(env.doc.body.querySelector('clipPath').children[0].getAttribute('transform'), 'matrix(1 0 0 1 10 -10)');
   assert.equal(copy.querySelector('[id]'), null);
   assert.equal(copy.querySelector('[data-i18n]'), null);
   env.doc.hidden = true;

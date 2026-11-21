@@ -1,5 +1,5 @@
 import { extractPhotoMetadata } from '../src/photo-metadata.js';
-import { normalizeGardenContent, validateGardenContent, publicGardenContent, safeGardenURL } from '../src/garden-content.js';
+import { emailContactAddress, normalizeGardenContent, validateGardenContent, publicGardenContent, safeGardenURL } from '../src/garden-content.js';
 import { EDITOR_COPY_SECTIONS, editorCopySection, readEditorCopy, writeEditorCopy } from '../src/editor-copy-fields.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -18,7 +18,7 @@ const state = {
   photoFilter: 'published', photoSearch: '', textGroup: 'navigation', textLanguage: 'zh', textSearch: '',
   photoCohort: 'all', journalCohort: 'all', additions: { media: new Set(), journal: new Set() },
   jobs: [], running: 0, preview: false, localBackup: null, cloudMode: false,
-  comments: [], notifications: [], unreadCount: 0, pendingCount: 0, messageView: 'comments', messageStatus: 'pending', messageUnread: false, messagesBusy: false, messagesLoaded: false, messagesError: '', replyDrafts: {},
+  unreadCount: 0, messageView: 'all', messageType: '', messagesBusy: false, messagesError: '', replyDrafts: {},
 };
 let uid = 0, localTimer, previewTimer, toastTimer, contentEpoch = 0, viewLocked = false;
 let photoEditorDialog = null, photoEditorOpener = null, photoEditorClosing = false, photoEditorMotion = null;
@@ -86,7 +86,7 @@ function clearPrivateContent() {
   state.selectedOutfit = state.selectedPhoto = state.selectedPost = null; state.selectedPhotos.clear(); state.photoEditSequence = [];
   state.additions = { media: new Set(), journal: new Set() }; state.photoCohort = state.journalCohort = 'all';
   state.photoSearch = state.textSearch = ''; state.jobs = []; state.running = 0;
-  state.comments = []; state.notifications = []; state.replyDrafts = {}; state.unreadCount = state.pendingCount = 0;
+  state.replyDrafts = {}; state.unreadCount = 0;
   clearMessageCache();
   $('#json-import').value = '';
   try { localStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(COHORT_KEY); } catch { /* The page still drops all in-memory references. */ }
@@ -201,7 +201,7 @@ function image(reference, alt, className) {
 }
 function navigation() {
   $('#navigation').replaceChildren(...sections.map(([key, icon, label]) => {
-    const amount = cloudLocked() ? undefined : key === 'photos' ? state.content?.media?.length : key === 'outfits' ? state.content?.outfits?.length : key === 'journal' ? state.content?.journal?.length : key === 'messages' ? `${state.unreadCount}未读\n${state.pendingCount}待审` : undefined;
+    const amount = cloudLocked() ? undefined : key === 'photos' ? state.content?.media?.length : key === 'outfits' ? state.content?.outfits?.length : key === 'journal' ? state.content?.journal?.length : key === 'messages' ? `${state.unreadCount} 未读` : undefined;
     return node('button', { type: 'button', class: `nav-button${state.section === key ? ' active' : ''}`, 'aria-current': state.section === key ? 'page' : undefined, onclick: () => selectSection(key) }, node('span', { class: 'nav-icon', 'aria-hidden': 'true' }, icon), label, amount !== undefined ? node('span', { class: 'nav-count' }, amount) : null);
   }));
 }
@@ -399,6 +399,7 @@ async function saveDraft() {
     // Editing remains possible while saving. Do not overwrite keystrokes typed after the request began.
     if (JSON.stringify(state.content) === previousJSON) {
       state.content = normalizeGardenContent(result.content || snapshot); state.dirty = false;
+      if (state.section === 'owner') render();
     }
     persistLocal(); toast('草稿已保存。检查预览后，可单独发布到网站。');
   } catch (error) { reportError(error, '保存失败：'); }
@@ -509,7 +510,31 @@ function renderOwner() {
   });
   const contactList = node('div');
   function renderContacts() {
-    contactList.replaceChildren(...owner.contacts.map((contact, index) => node('div', { class: 'contact-row' }, localizedFields('显示名称', contact, 'label'), field('链接地址', contact.url, value => { contact.url = value; }, { placeholder: 'https://… 或 mailto:…' }), node('button', { type: 'button', class: 'icon-button', 'aria-label': `删除联系方式 ${index + 1}`, onclick: () => { owner.contacts.splice(index, 1); changed(); renderContacts(); } }, '×'))));
+    contactList.replaceChildren(...owner.contacts.map((contact, index) => {
+      const existingAddress = emailContactAddress(contact.url);
+      let type = contact.type === 'email' || existingAddress ? 'email' : 'link';
+      const addresses = { email: contact.email ?? existingAddress ?? '', link: existingAddress ? '' : contact.url ?? '' };
+      const addressField = node('div');
+      function setAddress(value) {
+        addresses[type] = value;
+        if (type === 'email') {
+          contact.type = 'email'; contact.email = value; delete contact.url;
+        } else {
+          contact.url = value; delete contact.type; delete contact.email;
+        }
+      }
+      function renderAddress() {
+        const email = type === 'email';
+        addressField.replaceChildren(field(email ? '电子邮箱地址' : '链接地址', addresses[type], setAddress,
+          email ? { type: 'email', placeholder: 'name@example.com' } : { placeholder: 'https://…' }));
+      }
+      const typeField = field('联系方式类型', type, value => { type = value; setAddress(addresses[type]); renderAddress(); },
+        { options: [['link', '网页链接'], ['email', '电子邮箱']] });
+      renderAddress();
+      const remove = node('button', { type: 'button', class: 'icon-button', 'aria-label': `删除联系方式 ${index + 1}`,
+        onclick: () => { owner.contacts.splice(index, 1); changed(); renderContacts(); } }, '×');
+      return node('div', { class: 'contact-row' }, localizedFields('显示名称', contact, 'label'), node('div', {}, typeField, addressField), remove);
+    }));
   }
   renderContacts();
   const journalOptions = [['placeholder', '保留占位提示'], ['feed', '展示已发布碎碎念'], ['link', '链接到外部页面'], ['hidden', '隐藏碎碎念入口']];
@@ -957,45 +982,50 @@ function postPreview() {
   $('#site-preview').contentWindow.postMessage({ type: 'garden-preview', token: previewToken, content, ...(state.section === 'texts' ? { language: previewLanguage() } : {}) }, location.origin);
 }
 
-const commentStatusNames = { pending: '待审核', approved: '已通过', rejected: '已拒绝', spam: '垃圾', deleted: '已删除' };
+const MESSAGE_LIMIT = 200;
 let messagesRequest = 0;
 const messageCache = new Map();
 const messageActions = new Set();
 function clearMessageCache() {
   messageCache.clear(); messagesRequest++;
-  state.messagesLoaded = false; state.messagesError = ''; state.messagesRefreshQueued = false; state.messagesForceQueued = false;
-  state.comments = []; state.notifications = []; state.unreadCount = state.pendingCount = 0;
+  state.messagesError = ''; state.messagesRefreshQueued = false; state.messagesForceQueued = false;
+  state.unreadCount = 0;
+}
+function messageQuery() {
+  const list = state.section === 'messages';
+  const query = new URLSearchParams({ limit: String(list ? MESSAGE_LIMIT : 1), unread: list && state.messageView === 'all' ? 'all' : 'true' });
+  if (list && state.messageType) query.set('targetType', state.messageType);
+  return query.toString();
 }
 async function refreshMessages({ quiet = false, force = false } = {}) {
   if (!state.authenticated || !state.connected) return;
-  if (state.messagesBusy) { state.messagesRefreshQueued = true; state.messagesForceQueued ||= force; return; }
-  const section = state.section;
-  const query = new URLSearchParams({ status: state.messageStatus, limit: '200' }); if (state.messageUnread) query.set('unread', 'true');
-  const key = section === 'messages' ? `comments:${query}` : 'summary';
-  if (force) messageCache.clear();
-  const cached = messageCache.get(key);
-  if (cached) {
-    Object.assign(state, cached, { messagesLoaded: true, messagesError: '' }); navigation();
-    if (section === 'messages') renderMessagesBody();
+  const query = messageQuery();
+  const renderCurrentList = () => {
+    if (state.section === 'messages' && query === messageQuery() && !(quiet && document.activeElement?.closest('.message-reply'))) renderMessagesBody();
+  };
+  state.messagesError = '';
+  if (!force || !messageCache.has(query)) renderCurrentList();
+  if (!force && messageCache.has(query)) return;
+  if (state.messagesBusy) {
+    state.messagesRefreshQueued = true;
+    state.messagesForceQueued ||= force;
     return;
   }
+  if (force) messageCache.clear();
   state.messagesBusy = true; const request = ++messagesRequest;
   try {
-    const notificationRequest = api(`/api/admin/notifications?limit=${section === 'messages' ? 200 : 1}`);
-    const [notifications, comments] = await Promise.all([notificationRequest, section === 'messages' ? api(`/api/admin/comments?${query}`) : Promise.resolve(null)]);
+    const result = await api(`/api/admin/notifications?${query}`);
     if (request !== messagesRequest) return;
-    const snapshot = { notifications: notifications.notifications || [], unreadCount: Number(notifications.unreadCount) || 0,
-      pendingCount: Number(comments?.pendingCount ?? notifications.pendingCount) || 0, ...(comments ? { comments: comments.comments || [] } : {}) };
-    messageCache.set(key, snapshot); Object.assign(state, snapshot);
-    state.messagesLoaded = true; state.messagesError = ''; navigation();
-    const editingReply = document.activeElement?.closest('.message-reply');
-    if (state.section === 'messages' && !(quiet && editingReply)) renderMessagesBody();
+    messageCache.set(query, result.notifications || []);
+    state.unreadCount = Number(result.unreadCount) || 0;
+    navigation();
+    renderCurrentList();
   } catch (error) {
     if (request !== messagesRequest) return;
-    state.messagesError = error.message;
+    if (query === messageQuery()) state.messagesError = error.message;
     if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error);
     else if (!quiet) toast(`读取消息失败：${error.message}`, true);
-    if (state.section === 'messages') renderMessagesBody();
+    renderCurrentList();
   } finally {
     state.messagesBusy = false;
     if (state.messagesRefreshQueued) {
@@ -1005,28 +1035,30 @@ async function refreshMessages({ quiet = false, force = false } = {}) {
   }
 }
 function renderMessages() {
-  if (!state.authenticated) return [intro('消息中心', '登录后可查看留言、处理审核和回复。通知只会出现在管理端，不会发送邮件。'), empty('登录后查看消息', '先连接管理服务并登录管理员账号。', button('连接与登录', () => selectSection('settings')))];
+  if (!state.authenticated) return [intro('消息中心', '登录后可查看照片和碎碎念的留言通知。'), empty('登录后查看消息', '先连接管理服务并登录管理员账号。', button('连接与登录', () => selectSection('settings')))];
   const container = node('div', { id: 'message-content' });
   queueMicrotask(() => renderMessagesBody());
-  return [intro('留言与通知', '审核相册与碎碎念下的留言。管理员回复会在公开页面标记；消息与已读状态即时保存。', button('刷新消息', () => refreshMessages({ force: true }))), container];
+  return [intro('留言通知', '查看并回复照片与碎碎念收到的留言。', button('刷新消息', () => refreshMessages({ force: true }))), container];
 }
 function renderMessagesBody() {
   if (cloudLocked()) return;
   const container = $('#message-content'); if (!container) return;
-  const view = node('div', { class: 'message-tabs', role: 'tablist', 'aria-label': '消息类别' }, ...[['comments', '留言审核'], ['notifications', '未读通知']].map(([key, label]) => button(label, () => { state.messageView = key; renderMessagesBody(); }, state.messageView === key ? 'primary' : 'secondary', { role: 'tab', 'aria-selected': state.messageView === key })));
-  const stats = node('div', { class: 'message-summary' }, node('span', { class: 'pill draft' }, `待审核 ${state.pendingCount}`), node('span', { class: 'pill published' }, `未读 ${state.unreadCount}`), node('span', { class: 'small-note' }, '已读取的消息会保留；点击「刷新消息」获取最新留言。'));
-  const status = node('select', { 'aria-label': '留言审核状态' }, ...[['all', '全部状态'], ...Object.entries(commentStatusNames)].map(([value, label]) => node('option', { value }, label)));
-  status.value = state.messageStatus;
-  status.addEventListener('change', async () => { state.messageStatus = status.value; await refreshMessages(); });
-  const unread = node('input', { type: 'checkbox', checked: state.messageUnread });
-  unread.addEventListener('change', async () => { state.messageUnread = unread.checked; await refreshMessages(); });
-  const filters = state.messageView === 'comments' ? node('div', { class: 'toolbar' }, status, node('label', { class: 'selection-label' }, unread, '只看未读')) : node('div', { class: 'toolbar' }, button('将全部通知标为已读', () => mutateMessages('notifications', () => api('/api/admin/notifications/read', { method: 'POST', body: { all: true } })), 'secondary', { disabled: !state.unreadCount || messageActions.has('notifications') }));
-  const records = state.messageView === 'comments' ? state.comments : state.notifications.filter(item => !item.readAt);
-  container.replaceChildren(...[view, stats, filters,
+  const focusedFilter = container.contains(document.activeElement) ? document.activeElement?.dataset?.messageFilter : '';
+  const view = node('div', { class: 'message-tabs', role: 'group', 'aria-label': '已读状态' }, ...[['all', '所有通知'], ['unread', `未读通知（${state.unreadCount}）`]].map(([key, label]) => button(label, () => {
+    if (state.messageView !== key) { state.messageView = key; void refreshMessages(); }
+  }, state.messageView === key ? 'primary' : 'secondary', { 'aria-pressed': String(state.messageView === key), 'data-message-filter': key })));
+  const types = node('div', { class: 'row-actions', role: 'group', 'aria-label': '留言来源' }, ...[['photo', '照片留言'], ['note', '碎碎念留言']].map(([key, label]) => button(label, () => {
+    state.messageType = state.messageType === key ? '' : key;
+    void refreshMessages();
+  }, state.messageType === key ? 'primary small' : 'secondary small', { 'aria-pressed': String(state.messageType === key), 'data-message-filter': key })));
+  const filters = node('div', { class: 'message-summary' }, types, button('将全部通知标为已读', () => mutateMessages('notifications', () => api('/api/admin/notifications/read', { method: 'POST', body: { all: true } })), 'secondary small', { disabled: !state.unreadCount || messageActions.has('notifications') }));
+  const records = messageCache.get(messageQuery());
+  container.replaceChildren(...[view, filters,
     state.messagesError ? panel(node('p', { class: 'metadata-warning' }, `消息暂时无法读取：${state.messagesError}`), button('重试', () => refreshMessages({ force: true }))) : null,
-    ...records.map(commentCard),
-    !records.length ? empty(state.messagesLoaded ? '这里暂时很安静' : '正在读取消息', state.messageView === 'comments' ? '当前筛选下没有留言。' : '所有通知都已读。') : null,
-    records.length >= 200 ? node('p', { class: 'small-note' }, '当前最多展示 200 条，请按状态或未读筛选处理。') : null].filter(Boolean));
+    ...(records || []).map(commentCard),
+    !state.messagesError && !records?.length ? empty(records ? '暂无通知' : '正在读取消息', records ? '当前筛选下没有留言通知。' : '请稍候。') : null,
+    records?.length >= MESSAGE_LIMIT ? node('p', { class: 'small-note' }, `当前最多展示 ${MESSAGE_LIMIT} 条。可按来源或未读筛选。`) : null].filter(Boolean));
+  if (focusedFilter) container.querySelector(`[data-message-filter="${focusedFilter}"]`)?.focus({ preventScroll: true });
 }
 function targetContext(comment) {
   const photo = comment.targetType === 'photo' ? state.content.media.find(item => item.id === comment.targetId) : null;
@@ -1052,16 +1084,14 @@ function commentCard(comment) {
     if (sent) { if (state.replyDrafts[comment.id] === draft) delete state.replyDrafts[comment.id]; renderMessagesBody(); }
     else replySubmit.disabled = false;
   });
-  return panel(node('div', { class: 'comment-heading' }, node('strong', {}, comment.nickname || '访客'), comment.verified ? node('span', { class: 'pill published' }, '管理员') : null, node('span', { class: `pill ${comment.status === 'pending' ? 'draft' : ''}` }, commentStatusNames[comment.status] || comment.status), !comment.readAt ? node('span', { class: 'pill published' }, '未读') : null, node('time', { datetime: comment.createdAt, class: 'small-note' }, formatDate(comment.createdAt))),
+  return panel(node('div', { class: 'comment-heading' }, node('strong', {}, comment.nickname || '访客'), !comment.readAt ? node('span', { class: 'pill published' }, '未读') : null, node('time', { datetime: comment.createdAt, class: 'small-note' }, formatDate(comment.createdAt))),
     comment.parentId ? node('p', { class: 'small-note' }, `回复于留言 ${comment.parentId}`) : null,
     node('p', { class: 'comment-body' }, comment.body), targetContext(comment),
-    node('div', { class: 'row-actions comment-actions' }, ...[
-      ['approved', '批准', 'primary'], ['rejected', '拒绝', 'secondary'], ['spam', '标为垃圾', 'secondary'], ['deleted', '删除', 'danger'],
-    ].filter(([status]) => comment.status !== status).map(([status, label, kind]) => button(label, async () => {
-      if (status === 'deleted' && !await confirmAction('删除这条留言？', '留言将从公开页面与正常审核列表隐藏，后台保留删除状态。', '删除留言')) return;
-      await patch(status === 'approved' ? { status, read: true } : { status });
-    }, `${kind} small`, { disabled: busy })), !comment.readAt ? button('标为已读', () => patch({ read: true }), 'secondary small', { disabled: busy }) : null),
-    comment.status === 'approved' ? replyForm : comment.status === 'pending' ? node('p', { class: 'small-note' }, '批准后可以发送管理员回复。') : null);
+    node('div', { class: 'row-actions comment-actions' }, !comment.readAt ? button('标为已读', () => patch({ read: true }), 'secondary small', { disabled: busy }) : null,
+      button('删除', async () => {
+        if (await confirmAction('删除这条留言？', '留言将从公开页面和消息中心移除。', '删除留言')) await patch({ status: 'deleted' });
+      }, 'danger small', { disabled: busy })),
+    replyForm);
 }
 async function mutateMessages(id, action) {
   if (cloudLocked() || messageActions.has(id)) return false;
@@ -1070,7 +1100,6 @@ async function mutateMessages(id, action) {
   try {
     const result = await action();
     if (result.unreadCount !== undefined) state.unreadCount = Number(result.unreadCount) || 0;
-    if (result.pendingCount !== undefined) state.pendingCount = Number(result.pendingCount) || 0;
     messageActions.delete(id); toast('消息处理已保存。'); await refreshMessages({ force: true }); return true;
   } catch (error) {
     if ([401, 403].includes(error.status) || error.offline && state.cloudMode) reportError(error); else if (!error.stale) toast(`消息处理失败：${error.message}`, true);

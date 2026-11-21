@@ -1,5 +1,6 @@
 const GROUPS = ['site', 'album', 'outfits', 'owner', 'personal', 'comments', 'fixed'];
 const RESERVED = new Set(['__proto__', 'prototype', 'constructor']);
+export const MAX_OWNER_CONTACTS = 30;
 const text = (value, limit = 50000) => typeof value === 'string' ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').slice(0, limit) : '';
 const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -41,6 +42,21 @@ export function safeGardenURL(value, { contact = false } = {}) {
     if (contact && ['mailto:', 'tel:'].includes(parsed.protocol) && parsed.pathname) return parsed.href;
   } catch { /* Invalid and executable media references are not retained. */ }
   return null;
+}
+
+export function emailContactURL(value) {
+  const address = typeof value === 'string' ? value.trim() : '';
+  if (address.length > 254 || !/^[a-z\d.!#$%&'*+/=?^_`{|}~-]+@[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)*$/i.test(address)) return null;
+  const [mailbox, domain] = address.split('@');
+  return `mailto:${encodeURIComponent(mailbox)}@${domain}`;
+}
+
+export function emailContactAddress(url) {
+  if (typeof url !== 'string' || !/^mailto:/i.test(url) || /[?#]/.test(url)) return null;
+  try {
+    const address = decodeURIComponent(url.slice(7));
+    return emailContactURL(address) ? address : null;
+  } catch { return null; }
 }
 
 export function validGardenDate(value) {
@@ -95,7 +111,10 @@ export function normalizeGardenContent(input, defaults = {}) {
     modelProfile: { name: localized(profile.name, 'しらつめ'), ...Object.fromEntries(['zh', 'ja'].map(language => [language, Object.fromEntries(['eyebrow', 'heading', 'lead', 'description'].map(key => [key, text(profile[language]?.[key] ?? base.modelProfile?.[language]?.[key])]))])) },
     owner: {
       schemaVersion: 1, avatar: safeGardenURL(owner.avatar), name: localized(owner.name, 'Amubis'), bio: localized(owner.bio),
-      contacts: (Array.isArray(owner.contacts) ? owner.contacts : []).slice(0, 30).flatMap(contact => { const url = safeGardenURL(contact?.url, { contact: true }); return url ? [{ label: localized(contact.label), url }] : []; }),
+      contacts: (Array.isArray(owner.contacts) ? owner.contacts : []).slice(0, MAX_OWNER_CONTACTS).flatMap(contact => {
+        const url = contact?.type === 'email' ? emailContactURL(contact.email) : safeGardenURL(contact?.url, { contact: true });
+        return url ? [{ label: localized(contact.label, emailContactAddress(url) || ''), url }] : [];
+      }),
       socials: Object.fromEntries(['xiaohongshu', 'x', 'vrchat', 'pixiv'].map(key => [key, /^https?:/.test(safeGardenURL(owner.socials?.[key]) || '') ? safeGardenURL(owner.socials[key]) : null])),
       journal: { mode: ['placeholder', 'hidden', 'link', 'feed'].includes(owner.journal?.mode) ? owner.journal.mode : 'placeholder', url: /^https?:/.test(safeGardenURL(owner.journal?.url) || '') ? safeGardenURL(owner.journal.url) : null },
     },
@@ -148,6 +167,9 @@ export function validateGardenContent(input) {
     }
   };
   visit(input);
+  if (Array.isArray(input?.owner?.contacts)) input.owner.contacts.forEach((contact, index) => {
+    if (contact?.type === 'email' && contact.email && !emailContactURL(contact.email)) errors.push(`第 ${index + 1} 条联系方式的电子邮箱地址不可用。`);
+  });
   return [...new Set(errors)];
 }
 

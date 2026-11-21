@@ -99,16 +99,16 @@ test('target selectors discover the sort sticker, new localized controls and exp
     getBoundingClientRect: () => ({ top: 20, bottom: 40, left: 20, right: 160, width: 140, height: 20 }),
   });
   const sort = node('album-sort-tab'), empty = node('album-empty'), retry = node('comments-retry');
-  const review = node('comment-review-state'), manage = node('owner-tools-manage'), future = node('future-localized-control', true);
+  const remove = node('comment-delete-button'), manage = node('owner-tools-manage'), future = node('future-localized-control', true);
   const nickname = node('comment-author'), prose = node('comment-body');
-  const candidates = [sort, empty, retry, review, manage, future, nickname, prose];
+  const candidates = [sort, empty, retry, remove, manage, future, nickname, prose];
   // Match the real selector string instead of returning all candidates no
   // matter what the production selector contains.
   const root = { ownerDocument: doc, querySelectorAll(selector) {
     const selectors = selector.split(',').map(value => value.trim());
     return candidates.filter(candidate => selectors.includes('.' + candidate.className) || candidate.marked && selectors.includes('[data-language-text]'));
   } };
-  assert.deepEqual(languageTextTargets(root), [sort, empty, retry, review, manage, future]);
+  assert.deepEqual(languageTextTargets(root), [sort, empty, retry, remove, manage, future]);
 });
 
 test('empty placeholders animate independently and restore native fields on completion and interruption', async t => {

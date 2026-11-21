@@ -596,12 +596,31 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   render();
   return {
     get state() { return { pageIndex, pageCount: pages.length, view, filter, order, count: pages.reduce((sum, page) => sum + page.items.length, 0), playerOpen: Boolean(dialog.open) }; },
-    setLanguage(nextLanguage) { if (destroyed) return; locale = nextLanguage === 'ja' ? 'ja' : 'zh'; commentPanel.setLanguage(locale); redraw('language'); },
+    setLanguage(nextLanguage) {
+      const nextLocale = nextLanguage === 'ja' ? 'ja' : 'zh';
+      if (destroyed || nextLocale === locale) return;
+      locale = nextLocale;
+      commentPanel.setLanguage(locale);
+      redraw('language');
+    },
     setCopy(nextCopy) { if (destroyed) return; dictionary = albumCopyDictionary(nextCopy); redraw('copy'); },
     setCommentsService(next) { if (!destroyed) commentPanel.setService(next); },
     setCommentsCopy(next) { if (!destroyed) commentPanel.setCopy(next); },
-    setModel(nextModel) { if (destroyed) return; closePlayer(true); modelId = String(nextModel); pageIndex = 0; redraw('model'); },
-    setEnabled(value) { if (destroyed) return; enabled = Boolean(value); if (!enabled) closePlayer(true); redraw('enabled'); },
+    setModel(nextModel) {
+      const nextModelId = String(nextModel);
+      if (destroyed || nextModelId === modelId) return;
+      closePlayer(true);
+      modelId = nextModelId;
+      pageIndex = 0;
+      redraw('model');
+    },
+    setEnabled(value) {
+      const nextEnabled = Boolean(value);
+      if (destroyed || nextEnabled === enabled) return;
+      enabled = nextEnabled;
+      if (!enabled) closePlayer(true);
+      redraw('enabled');
+    },
     setMedia(nextMedia, { preservePlayer = false } = {}) {
       if (destroyed) return;
       const selectedId = preservePlayer && dialog.open ? playerItems[playerIndex]?.id : null;

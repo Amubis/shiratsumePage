@@ -87,6 +87,23 @@ test('D1 public lists hide unapproved comments and replies without an approved m
   assert.deepEqual(await store.list({ publicOnly: true, before: createdAt }), []);
 });
 
+test('D1 notification inbox filters and marks only visible visitor comments, newest first', options, async t => {
+  const { store, insert } = await fixture(t);
+  await insert('photo', { status: 'approved' });
+  await insert('note', { status: 'approved', targetType: 'note', targetId: 'note-1', createdAt: updatedAt });
+  await insert('verified', { status: 'approved', verified: true, parentId: 'photo' });
+  await insert('legacy');
+  await insert('hidden-reply', { status: 'approved', parentId: 'legacy' });
+  assert.equal(await store.unreadCount({ inbox: true }), 2);
+  assert.deepEqual((await store.list({ inbox: true })).map(comment => comment.id), ['note', 'photo']);
+  assert.deepEqual((await store.list({ inbox: true, targetType: 'photo' })).map(comment => comment.id), ['photo']);
+  assert.equal(await store.markRead({ inbox: true, ids: ['photo', 'legacy', 'verified', 'hidden-reply'] }), 1);
+  assert.deepEqual((await store.list({ inbox: true, unread: false })).map(comment => comment.id), ['photo']);
+  assert.equal(await store.markRead({ inbox: true, all: true }), 1);
+  assert.equal(await store.unreadCount({ inbox: true }), 0);
+  assert.equal(await store.unreadCount(), 3);
+});
+
 test('D1 moderation marks messages read atomically without overwriting their first read time', options, async t => {
   const { store, insert } = await fixture(t);
   for (const status of ['approved', 'rejected', 'spam', 'deleted']) await insert(status);

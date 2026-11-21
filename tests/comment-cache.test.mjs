@@ -82,7 +82,7 @@ test('unchanged owner sessions do not notify subscribers or invalidate cached pr
   f.service.subscribe(() => notifications++);
   f.service.setOwnerSession(session());
   const ownerResult = await f.service.getComments(target());
-  assert.equal(ownerResult.some(item => item.status === 'pending'), true);
+  assert.equal(ownerResult.some(item => item.status === 'pending'), false);
   const before = notifications;
   f.service.setOwnerSession({ ...session() });
   f.version = 2;
@@ -95,11 +95,11 @@ test('unchanged owner sessions do not notify subscribers or invalidate cached pr
   assert.equal(f.reads.length, 2);
 });
 
-test('logout and API base changes discard pending/private cache and cannot serve it to anonymous readers', async () => {
+test('logout and API base changes discard owner thread cache and hide historical nonpublic comments', async () => {
   const f = fixture();
   await f.service.getComments(target());
   f.service.setOwnerSession(session());
-  assert.equal((await f.service.getComments(target())).some(item => item.status === 'pending'), true);
+  assert.equal((await f.service.getComments(target())).some(item => item.status === 'pending'), false);
   f.version = 2;
   f.service.setOwnerSession({ authenticated: false });
   const anonymous = await f.service.getComments(target());
@@ -145,12 +145,12 @@ test('posting invalidates only the affected target and leaves other cached threa
   assert.equal(f.reads.length, 3);
 });
 
-test('owner reply and moderation invalidate their affected thread without refetching unrelated threads', async () => {
+test('owner reply and deletion invalidate their affected thread without refetching unrelated threads', async () => {
   const f = fixture();
   f.service.setOwnerSession(session());
   const affected = await f.service.getComments(target('photo-a'));
   const other = await f.service.getComments(target('photo-b'));
-  await f.service.moderateComment(affected[0].id, 'approved');
+  await f.service.deleteComment(affected[0].id);
   f.version = 2;
   assert.equal((await f.service.getComments(target('photo-a')))[0].id, 'photo-photo-a-2');
   assert.deepEqual(await f.service.getComments(target('photo-b')), other);

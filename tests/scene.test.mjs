@@ -552,6 +552,28 @@ test('native primary video is reused and only one additional layer is created', 
   player.destroy();
 });
 
+test('deferred initial media requests nothing until playback starts', async () => {
+  const fixture = mediaFixture(undefined, { nativePrimary: true });
+  const player = createVideoPlayer({
+    container: fixture.container,
+    playlist: ['finished.mp4'],
+    deferInitialSource: true,
+    reducedMotion: () => true,
+  });
+  try {
+    const [primary, standby] = fixture.layers;
+    assert.equal(primary.src, undefined);
+    assert.equal(standby.src, undefined);
+    assert.equal(await player.start(), false);
+    assert.equal(primary.src, undefined);
+    assert.equal(await player.resume(), true);
+    assert.equal(primary.src, 'finished.mp4');
+    assert.equal(standby.src, undefined);
+  } finally {
+    player.destroy();
+  }
+});
+
 test('a playing event reveals video even when the play promise never settles', async () => {
   const fixture = mediaFixture(() => new Promise(() => {}));
   const player = createVideoPlayer({ container: fixture.container, playlist: ['a.mp4'], loadingTimeout: 15 });

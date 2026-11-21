@@ -1,4 +1,4 @@
-import { normalizeGardenContent, publicGardenContent, validateGardenContent } from '../src/garden-content.js';
+import { emailContactAddress, emailContactURL, MAX_OWNER_CONTACTS, normalizeGardenContent, publicGardenContent, validateGardenContent } from '../src/garden-content.js';
 import { inspectImage } from './image-format.mjs';
 import { createCommentsApi, isCommentsPath } from './comments-api.mjs';
 import { createPhotoLikesApi } from './photo-likes-api.mjs';
@@ -10,6 +10,7 @@ const SESSION_SECONDS = 12 * 60 * 60;
 const IMAGE_KEY = /^media\/([a-f0-9]{64})\.(png|jpg|webp)$/;
 const ORIGINAL_KEY = /^private\/originals\/([a-f0-9]{64})\.(png|jpg|webp)$/;
 const ROLES = new Set(['original', 'display', 'thumbnail', 'outfit', 'avatar', 'journal']);
+const LIVE_TEXT_LOCALES = ['zh', 'ja'];
 const encoder = new TextEncoder();
 
 class HttpError extends Error {
@@ -107,17 +108,20 @@ function liveContentPatch(body) {
   if (!allowed || typeof body.targetId !== 'string' || !body.targetId.trim() || body.targetId.length > 120) throw new HttpError(422, 'Choose a published photo or journal entry.');
   const patch = body.patch;
   if (!patch || typeof patch !== 'object' || Array.isArray(patch) || !Object.keys(patch).length || Object.keys(patch).some(key => !Object.hasOwn(allowed, key))) throw new HttpError(422, 'Only the displayed text fields can be changed here.');
-  const bilingual = body.targetType === 'photo' && patch.caption && typeof patch.caption === 'object' && !Array.isArray(patch.caption);
-  if ((!bilingual || body.locale !== undefined) && !['zh', 'ja'].includes(body.locale)) throw new HttpError(422, 'Choose a language for this text edit.');
+  const localized = Object.values(patch).every(value => value && typeof value === 'object' && !Array.isArray(value));
+  if ((!localized || body.locale !== undefined) && !LIVE_TEXT_LOCALES.includes(body.locale)) throw new HttpError(422, 'Choose a language for this text edit.');
+  const clean = value => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
   const fields = {};
   for (const [key, value] of Object.entries(patch)) {
-    if (bilingual && key === 'caption') {
-      if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'zh') || !Object.hasOwn(value, 'ja') || ['zh', 'ja'].some(locale => typeof value[locale] !== 'string' || value[locale].length > allowed.caption)) throw new HttpError(422, 'Provide Chinese and Japanese descriptions, each no more than 5000 characters.');
-      fields.caption = Object.fromEntries(['zh', 'ja'].map(locale => [locale, value[locale].replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')]));
+    if (localized) {
+      const translations = Object.entries(value);
+      const minimum = body.targetType === 'photo' ? LIVE_TEXT_LOCALES.length : 1;
+      if (translations.length < minimum || translations.some(([locale, text]) => !LIVE_TEXT_LOCALES.includes(locale) || typeof text !== 'string' || text.length > allowed[key])) throw new HttpError(422, `Each translation of ${key} must be Chinese or Japanese text of no more than ${allowed[key]} characters.`);
+      fields[key] = Object.fromEntries(translations.map(([locale, text]) => [locale, clean(text)]));
       continue;
     }
     if (typeof value !== 'string' || value.length > allowed[key]) throw new HttpError(422, `${key} must be text of no more than ${allowed[key]} characters.`);
-    fields[key] = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+    fields[key] = clean(value);
   }
   return { targetType: body.targetType, targetId: body.targetId.trim(), locale: body.locale, fields };
 }
@@ -125,12 +129,28 @@ function liveContentPatch(body) {
 function applyLiveText(record, locale, fields) {
   for (const [key, value] of Object.entries(fields)) {
     const previous = record[key];
-    record[key] = { ...(typeof previous === 'string' ? { zh: previous, ja: previous } : previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : { zh: '', ja: '' }), ...(typeof value === 'string' ? { [locale]: value } : value) };
+    const legacyEdit = typeof value === 'string';
+    const existing = typeof previous === 'string'
+      ? { zh: previous, ja: legacyEdit ? previous : '' }
+      : previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : { zh: '', ja: '' };
+    record[key] = { ...existing, ...(legacyEdit ? { [locale]: value } : value) };
   }
 }
 
+function appendOwnerEmail(content, address, url) {
+  const owner = content.owner || {};
+  const contacts = Array.isArray(owner.contacts) ? owner.contacts : [];
+  const mailbox = address.toLowerCase();
+  if (contacts.some(contact => {
+    const recipient = typeof contact?.url === 'string' ? emailContactAddress(contact.url.split(/[?#]/, 1)[0]) : null;
+    return recipient?.toLowerCase() === mailbox;
+  })) return content;
+  if (contacts.length >= MAX_OWNER_CONTACTS) throw new HttpError(422, 'Remove a contact before adding another email address.');
+  return { ...content, owner: { ...owner, contacts: [...contacts, { label: address, url }] } };
+}
+
 /** Portable Fetch API handler. Storage adapters implement conditional state writes and immutable objects. */
-export function createAdminApi({ storage, commentsStore = null, photoLikesStore = null, seed, mode = 'cloud', adminUsername = 'Amubis', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onError = () => {} }) {
+export function createAdminApi({ storage, commentsStore = null, photoLikesStore = null, seed, mode = 'cloud', adminUsername = 'Amubis', adminPassword = '', sessionSecret = '', mediaBaseUrl = '', publicSiteOrigins = '', now = () => Date.now(), clientAddress = request => request.headers.get('cf-connecting-ip') || 'unknown', onNewComment, onError = () => {} }) {
   if (!storage || !seed) throw new Error('Storage and seed content are required.');
   const local = mode === 'local';
   const loginName = typeof adminUsername === 'string' ? adminUsername.trim().toLowerCase() : '';
@@ -194,17 +214,17 @@ export function createAdminApi({ storage, commentsStore = null, photoLikesStore 
     store: commentsStore,
     getPublishedContent: async () => publicGardenContent((await readState()).state.published.content),
     requireAuth: async request => { assertSameOrigin(request); return requireAuth(request); },
-    requireWrite, publicSiteOrigins, now, clientAddress, rateLimitSecret: sessionSecret, onError,
+    requireWrite, publicSiteOrigins, now, clientAddress, rateLimitSecret: sessionSecret, onNewComment, onError,
   });
   const handlePhotoLikes = createPhotoLikesApi({
     store: photoLikesStore, getPublishedContent: async () => publicGardenContent((await readState()).state.published.content),
     mode, identitySecret: sessionSecret, now, onError,
   });
 
-  return async function handle(request) {
+  return async function handle(request, context) {
     const url = new URL(request.url);
     const path = url.pathname;
-    if (isCommentsPath(path)) return handleComments(request);
+    if (isCommentsPath(path)) return handleComments(request, context);
     if (path === '/api/photo-likes') return handlePhotoLikes(request);
     const publicRoute = path === '/api/content' || path.startsWith('/media/');
     if (!publicRoute && !path.startsWith('/api/admin/')) return null;
@@ -283,6 +303,27 @@ export function createAdminApi({ storage, commentsStore = null, photoLikesStore 
         const draft = { content, revision: await nextRevision(content) };
         await writeState({ ...state, draft }, version);
         return json(draft, 200, { ETag: `"${draft.revision}"` });
+      }
+      if (path === '/api/admin/owner/contact' && request.method === 'POST') {
+        await requireWrite(request);
+        const body = await readJson(request);
+        const url = emailContactURL(body.email);
+        if (!url || Object.keys(body).length !== 1) throw new HttpError(422, 'Provide a single email address.');
+        const email = body.email.trim();
+        const { state, version } = await readState();
+        const publicContent = appendOwnerEmail(state.published.content, email, url);
+        const draftContent = appendOwnerEmail(state.draft.content, email, url);
+        const publicChanged = publicContent !== state.published.content;
+        const draftChanged = draftContent !== state.draft.content;
+        if (!publicChanged && !draftChanged) return json({ email, updated: false });
+        const published = publicChanged
+          ? { content: publicContent, revision: await nextRevision(publicContent), publishedAt: new Date(now()).toISOString() }
+          : state.published;
+        const draft = draftChanged
+          ? { content: draftContent, revision: JSON.stringify(draftContent) === JSON.stringify(publicContent) ? published.revision : await nextRevision(draftContent) }
+          : state.draft;
+        await writeState({ ...state, draft, published, previousPublished: publicChanged ? state.published : state.previousPublished }, version);
+        return json({ email, updated: true });
       }
       if (path === '/api/admin/live-content' && request.method === 'PATCH') {
         await requireWrite(request);

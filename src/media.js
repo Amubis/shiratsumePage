@@ -3,7 +3,7 @@ const CROSSFADE_LEAD_SECONDS = 0.9;
 const LOOP_PRELOAD_LEAD_SECONDS = 4;
 
 /** Two managed layers; sources are assigned only after choosing the active model. */
-export function createVideoPlayer({ container, playlist = [], poster, reducedMotion = () => false, onStatus = () => {}, loadingTimeout = 8000 }) {
+export function createVideoPlayer({ container, playlist = [], poster, reducedMotion = () => false, onStatus = () => {}, loadingTimeout = 8000, deferInitialSource = false }) {
   const doc = container.ownerDocument;
   const posterImage = container.querySelector('img.poster');
   const primary = container.querySelector('video[data-hero-primary]');
@@ -72,6 +72,11 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     if (!url) video.removeAttribute('src');
     else video.src = url;
     video.load();
+  }
+  function assignSources(defer = false) {
+    const first = defer ? undefined : choose();
+    load(videos[active], first);
+    load(videos[1 - active], first && list.length > 1 ? choose(first) : undefined);
   }
   function rewind(video) {
     video.pause();
@@ -142,6 +147,7 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
     const video = videos[active];
     if (currentStatus === 'playing' && !video.paused && video.readyState >= 2) return Promise.resolve(true);
     cancelRequest();
+    if (!video.dataset.clip) assignSources();
     let resolve;
     const result = new Promise((settle) => { resolve = settle; });
     const attempt = { video, generation, resolve, timer: null };
@@ -264,7 +270,7 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
   }
   doc.addEventListener('visibilitychange', onVisibility);
 
-  function setPlaylist(nextList, nextPoster = poster) {
+  function setPlaylist(nextList, nextPoster = poster, deferSource = false) {
     if (destroyed) return;
     generation += 1;
     cancelRequest();
@@ -281,14 +287,12 @@ export function createVideoPlayer({ container, playlist = [], poster, reducedMot
       if (poster) video.poster = poster;
     });
     showPoster();
-    const first = choose();
-    load(videos[0], first);
-    load(videos[1], list.length > 1 ? choose(first) : undefined);
+    assignSources(deferSource);
     configuring = false;
     status('poster', list.length ? {} : { reason: 'empty-playlist' });
     if (started && canPlay()) void playActive();
   }
-  setPlaylist(playlist, poster);
+  setPlaylist(playlist, poster, deferInitialSource);
   return {
     async start() {
       if (destroyed) return false;

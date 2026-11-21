@@ -9,6 +9,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createLocalAdminServer } from '../server/local-admin.mjs';
 import { createAdminApi } from '../server/admin-api.mjs';
+import { createLocalCommentsStore } from '../server/local-comments-storage.mjs';
 import { normalizeGardenContent } from '../src/garden-content.js';
 
 const seed = normalizeGardenContent({
@@ -89,31 +90,27 @@ test('owner comment lists filter the requested thread and keep the unfiltered ma
   }
 });
 
-test('anonymous HTTP comments await moderation and server-controlled author replies become public', async t => {
+test('anonymous HTTP comments publish immediately and remain unread without trusting visitor identity fields', async t => {
   const context = await local(t);
   const text = '<img src=x onerror=alert(1)>\nこんにちは，花园';
   const submitted = await json(await submit(context, { ...photoTarget, body: text, verified: true, status: 'approved', nickname: 'Garden author', readAt: '2026-01-01T00:00:00Z', ip: '203.0.113.42' }), 201);
-  assert.equal(submitted.comment.status, 'pending');
-  assert.equal('body' in submitted.comment, false);
+  assert.equal(submitted.comment.status, 'approved');
+  assert.equal(submitted.comment.body, text);
+  assert.equal(submitted.comment.verified, false);
   const publicResponse = await publicComments(context);
   assert.equal(publicResponse.headers.get('access-control-allow-origin'), '*');
-  assert.deepEqual(await json(publicResponse), { available: true, comments: [] });
-  let review = await json(await admin(context, 'comments?status=pending&unread=true'));
+  assert.deepEqual(await json(publicResponse), { available: true, comments: [submitted.comment] });
+  const review = await json(await admin(context, 'comments?status=approved&unread=true'));
   assert.equal(review.unreadCount, 1);
-  assert.equal(review.pendingCount, 1);
+  assert.equal(review.pendingCount, 0);
   assert.equal(review.comments[0].verified, false);
   assert.equal(review.comments[0].body, text);
   assert.equal(review.comments[0].readAt, null);
   assert.equal('ip' in review.comments[0], false);
   const notifications = await json(await admin(context, 'notifications'));
   assert.deepEqual(notifications.notifications.map(item => item.id), [submitted.comment.id]);
-  await json(await admin(context, `comments/${submitted.comment.id}`, 'PATCH', { status: 'approved' }, { 'X-Garden-CSRF': 'wrong' }), 403);
-  await json(await admin(context, `comments/${submitted.comment.id}`, 'PATCH', { status: 'approved' }, { Origin: 'https://evil.example' }), 403);
-  const approved = await moderate(context, submitted.comment.id, { status: 'approved', read: true });
-  assert.equal(approved.unreadCount, 0);
-  assert.equal(approved.pendingCount, 0);
-  assert.equal(approved.comment.status, 'approved');
-  assert.ok(approved.comment.readAt);
+  await json(await admin(context, `comments/${submitted.comment.id}`, 'PATCH', { status: 'deleted' }, { 'X-Garden-CSRF': 'wrong' }), 403);
+  await json(await admin(context, `comments/${submitted.comment.id}`, 'PATCH', { status: 'deleted' }, { Origin: 'https://evil.example' }), 403);
   const reply = await json(await admin(context, `comments/${submitted.comment.id}/reply`, 'POST', { body: '作者的回复', verified: false, nickname: 'Someone else' }), 201);
   assert.equal(reply.comment.verified, true);
   assert.equal(reply.comment.nickname, 'Garden author');
@@ -124,13 +121,13 @@ test('anonymous HTTP comments await moderation and server-controlled author repl
   assert.equal(published.find(item => item.id === submitted.comment.id).body, text);
   assert.equal(published.find(item => item.id === submitted.comment.id).verified, false);
   assert.equal(published.find(item => item.id === reply.comment.id).verified, true);
-  for (const item of published) for (const privateField of ['readAt', 'ip', 'address', 'rateKey']) assert.equal(privateField in item, false);
+  for (const item of [...published, submitted.comment]) for (const privateField of ['readAt', 'ip', 'address', 'rateKey']) assert.equal(privateField in item, false);
   const disk = JSON.parse(await readFile(join(context.dataDir, 'comments.json'), 'utf8'));
   assert.equal(disk.comments.some(item => 'ip' in item || 'address' in item), false);
   assert.equal(JSON.stringify(disk).includes('203.0.113.42'), false);
-  review = await json(await admin(context, 'notifications'));
-  assert.equal(review.unreadCount, 0);
-  assert.equal(review.pendingCount, 0);
+  const inbox = await json(await admin(context, 'notifications?unread=all'));
+  assert.equal(inbox.unreadCount, 1);
+  assert.deepEqual(inbox.notifications.map(item => item.id), [submitted.comment.id]);
 });
 
 test('public HTTP comment CORS permits only the current, published site and configured site Origins', async t => {
@@ -191,16 +188,16 @@ test('HTTP validation rejects malformed comments and unpublished photo or note t
   });
 });
 
-test('anonymous HTTP replies require an approved top-level parent on the same published target', async t => {
+test('anonymous HTTP replies require a visible top-level parent on the same published target', async t => {
   const context = await local(t);
   const parent = await createComment(context);
-  await json(await submit(context, { ...photoTarget, parentId: parent.id, body: 'Parent still pending' }), 422);
-  await json(await admin(context, `comments/${parent.id}/reply`, 'POST', { body: 'Author reply too early' }), 409);
-  await moderate(context, parent.id, { status: 'approved' });
+  const timestamp = new Date().toISOString();
+  const pending = await createLocalCommentsStore(context.dataDir).insert({ id: 'legacy-pending', ...photoTarget, parentId: null, nickname: '', body: 'Historical pending comment', status: 'pending', verified: false, createdAt: timestamp, updatedAt: timestamp, readAt: null });
+  await json(await submit(context, { ...photoTarget, parentId: pending.id, body: 'Hidden parent' }), 422);
+  await json(await admin(context, `comments/${pending.id}/reply`, 'POST', { body: 'Hidden parent' }), 409);
   await json(await submit(context, { ...noteTarget, parentId: parent.id, body: 'Wrong target' }), 422);
   const child = await json(await submit(context, { ...photoTarget, parentId: parent.id, body: 'One-level reply' }), 201);
-  assert.equal((await json(await publicComments(context))).comments.length, 1);
-  await moderate(context, child.comment.id, { status: 'approved' });
+  assert.equal((await json(await publicComments(context))).comments.length, 2);
   await json(await submit(context, { ...photoTarget, parentId: child.comment.id, body: 'Too deep' }), 422);
   assert.equal((await json(await publicComments(context))).comments.length, 2);
   const authorReply = await json(await admin(context, `comments/${child.comment.id}/reply`, 'POST', { body: 'Reply to this thread' }), 201);
@@ -210,22 +207,26 @@ test('anonymous HTTP replies require an approved top-level parent on the same pu
   await json(await admin(context, `comments/${parent.id}/reply`, 'POST', { body: 'Hidden thread' }), 409);
 });
 
-test('HTTP moderation filters, notifications and batch read actions preserve their state independently', async t => {
+test('HTTP notifications filter by read state and source while hiding removed records', async t => {
   const context = await local(t);
   const first = await createComment(context, 'First message');
   const second = await createComment(context, 'Second message', noteTarget);
   const third = await createComment(context, 'Third message');
-  assert.equal((await json(await admin(context, 'comments?status=pending&unread=true'))).comments.length, 3);
-  for (const path of ['comments?status=bogus', 'comments?unread=1', 'comments?limit=501']) await json(await admin(context, path), 400);
+  assert.equal((await json(await admin(context, 'comments?status=approved&unread=true'))).comments.length, 3);
+  for (const path of ['comments?status=bogus', 'comments?unread=1', 'comments?limit=501', 'notifications?unread=yes', 'notifications?targetType=journal']) await json(await admin(context, path), 400);
   for (const body of [{}, { status: 'pending' }, { read: false }]) await json(await admin(context, `comments/${first.id}`, 'PATCH', body), 422);
   const read = await json(await admin(context, 'notifications/read', 'POST', { ids: [first.id, first.id] }));
   assert.equal(read.updated, 1);
   assert.equal(read.unreadCount, 2);
-  assert.equal(read.pendingCount, 3);
   assert.deepEqual((await json(await admin(context, 'comments?unread=false'))).comments.map(item => item.id), [first.id]);
+  const inbox = async params => (await json(await admin(context, `notifications?${params}`))).notifications.map(item => item.id);
+  assert.deepEqual(await inbox('unread=all&targetType=photo'), [third.id, first.id]);
+  assert.deepEqual(await inbox('unread=all&targetType=note'), [second.id]);
+  assert.deepEqual(await inbox('unread=true&targetType=photo'), [third.id]);
+  assert.deepEqual(await inbox('unread=false'), [first.id]);
   const spam = await moderate(context, second.id, { status: 'spam', read: true });
   assert.equal(spam.unreadCount, 1);
-  assert.equal(spam.pendingCount, 2);
+  assert.equal(spam.pendingCount, 0);
   assert.deepEqual((await json(await admin(context, 'comments?status=spam'))).comments.map(item => item.id), [second.id]);
   const notifications = await json(await admin(context, 'notifications'));
   assert.deepEqual(notifications.notifications.map(item => item.id), [third.id]);
@@ -243,14 +244,14 @@ test('HTTP moderation filters, notifications and batch read actions preserve the
   await json(await admin(context, 'notifications/read', 'POST', { all: true }, { 'X-Garden-CSRF': '' }), 403);
 });
 
-test('reviewing a message marks it read immediately and keeps the first read time after restart', async t => {
+test('legacy status actions clear unread notifications without changing existing read times', async t => {
   const context = await local(t);
   const first = await createComment(context, 'Approve this message');
   const second = await createComment(context, 'Reject this message');
   const approved = await moderate(context, first.id, { status: 'approved' });
   assert.ok(approved.comment.readAt);
   assert.equal(approved.unreadCount, 1);
-  assert.equal(approved.pendingCount, 1);
+  assert.equal(approved.pendingCount, 0);
   const rejected = await moderate(context, second.id, { status: 'rejected' });
   assert.ok(rejected.comment.readAt);
   assert.equal(rejected.unreadCount, 0);
@@ -263,23 +264,31 @@ test('reviewing a message marks it read immediately and keeps the first read tim
   assert.deepEqual(notifications.notifications, []);
 });
 
-test('local storage repairs previously reviewed unread messages without marking pending messages read', async t => {
+test('local storage repairs legacy review times once and keeps new public messages unread after restart', async t => {
   const context = await local(t);
   const reviewed = await createComment(context, 'Previously approved');
   const pending = await createComment(context, 'Still pending');
   const file = join(context.dataDir, 'comments.json');
   const state = JSON.parse(await readFile(file, 'utf8'));
+  state.schemaVersion = 1;
   const old = state.comments.find(comment => comment.id === reviewed.id);
   old.status = 'approved';
   old.updatedAt = '2026-01-02T01:00:00.000Z';
   old.readAt = null;
+  state.comments.find(comment => comment.id === pending.id).status = 'pending';
   await writeFile(file, JSON.stringify(state));
+  await context.restart();
+  const next = await createComment(context, 'Published immediately');
   await context.restart();
   const notifications = await json(await admin(context, 'notifications'));
   assert.equal(notifications.unreadCount, 1);
-  assert.deepEqual(notifications.notifications.map(comment => comment.id), [pending.id]);
+  assert.deepEqual(notifications.notifications.map(comment => comment.id), [next.id]);
+  await json(await admin(context, 'notifications/read', 'POST', { all: true }));
+  const historical = (await json(await admin(context, 'comments?status=pending'))).comments;
+  assert.equal(historical[0].id, pending.id);
+  assert.equal(historical[0].readAt, null);
   const approved = await json(await admin(context, 'comments?status=approved'));
-  assert.equal(approved.comments[0].readAt, old.updatedAt);
+  assert.equal(approved.comments.find(comment => comment.id === reviewed.id).readAt, old.updatedAt);
 });
 
 test('HTTP honeypot submission is silent and concurrent anonymous submissions are limited atomically', async t => {
@@ -304,11 +313,42 @@ test('HTTP honeypot submission is silent and concurrent anonymous submissions ar
     const review = await json(await admin(context, 'comments'));
     assert.equal(review.comments.length, 5);
     assert.equal(review.unreadCount, 5);
-    assert.equal(review.pendingCount, 5);
+    assert.equal(review.pendingCount, 0);
     const file = JSON.parse(await readFile(join(context.dataDir, 'comments.json'), 'utf8'));
     assert.equal(Object.keys(file.rates).length, 1);
     assert.match(Object.keys(file.rates)[0], /^[a-f\d]{64}$/);
   });
+});
+
+test('notification hook receives only durable visitor comments and delivery errors do not roll them back', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'garden-comment-notifications-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = createLocalCommentsStore(dataDir);
+  const context = {}, notices = [], errors = [];
+  const handler = createAdminApi({
+    seed, storage: { readState: async () => null }, commentsStore: store, mode: 'local',
+    async onNewComment(comment, receivedContext) {
+      notices.push({ comment, receivedContext, stored: await store.get(comment.id) });
+      throw new Error('Delivery unavailable');
+    },
+    onError: error => errors.push(error.message),
+  });
+  const origin = 'https://public.example';
+  const request = (path, body, extra = {}) => handler(new Request(origin + path, {
+    method: body === undefined ? 'GET' : 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', ...extra },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }), context);
+  await json(await request('/api/comments', { ...photoTarget, website: 'honeypot', body: 'Discard' }), 202);
+  await json(await request('/api/comments', { ...noteTarget, body: '' }), 422);
+  const { comment } = await json(await request('/api/comments', { ...noteTarget, body: 'Published' }), 201);
+  const { csrfToken } = await json(await request('/api/admin/session'));
+  await json(await request(`/api/admin/comments/${comment.id}/reply`, { body: 'Owner reply' }, { 'X-Garden-CSRF': csrfToken }), 201);
+  assert.equal(notices.length, 1);
+  assert.deepEqual(notices[0].comment, comment);
+  assert.equal(notices[0].stored.status, 'approved');
+  assert.equal(notices[0].stored.readAt, null);
+  assert.equal(notices[0].receivedContext, context);
+  assert.deepEqual(errors, ['Delivery unavailable']);
 });
 
 test('local HTTP comments, moderation and replies survive a server restart without touching content storage', async t => {

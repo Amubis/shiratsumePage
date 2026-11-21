@@ -2,6 +2,7 @@ import { cloverSVG } from './scene.js';
 import { DEFAULT_OWNER_PROFILE, localizeOwnerText, safeOwnerURL } from './owner-profile.js';
 import { createAnonymousComments, normalizeCommentsCopy } from './comments.js';
 import { createJournalViewer } from './journal-viewer.js';
+import { emailContactAddress } from './garden-content.js';
 
 export const PERSONAL_PLATFORMS = Object.freeze([
   Object.freeze({ id: 'xiaohongshu', label: Object.freeze({ zh: '小红书', ja: 'RED / 小紅書' }), icon: './assets/icons/xiaohongshu.svg' }),
@@ -299,6 +300,14 @@ export function createPersonalPage({ root, profile = DEFAULT_PERSONAL_PROFILE, l
       icon.style.setProperty('--platform-icon', `url("${platform.icon}")`);
       const text = languageText('span', 'personal-social-label', label);
       link.append(icon, text); links.append(link);
+    }
+    for (const { url, label } of data.contacts) {
+      const address = emailContactAddress(url);
+      if (!address) continue;
+      const link = element('a', 'personal-social personal-email-link');
+      link.href = url;
+      link.append(languageText('span', 'personal-social-label', localizeOwnerText(label, locale) || address));
+      links.append(link);
     }
     shell.append(eyebrow, avatarWrap, name, bio, links);
     if (data.journal.mode !== 'hidden') {

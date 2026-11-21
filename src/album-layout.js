@@ -49,12 +49,17 @@ export function planAlbumLayout({ aspects = [], likes = [], width = 1000, height
   function measureRows(list, areaWidth, imageHeight, rowCount, maxPerRow = list.length, materialize = true) {
     const groups = Array.from({ length: list.length }, () => []);
     const totalWeight = list.reduce((sum, index) => sum + ratios[index] * factors[index], 0);
+    const otherRows = rowCount - 1;
     for (let start = 0; start < list.length; start++) {
       let rowWeight = 0, minimumHeight = 0;
       for (let end = start + 1; end <= Math.min(list.length, start + maxPerRow); end++) {
         const index = list[end - 1];
         rowWeight += ratios[index] * factors[index];
         if (mobile) minimumHeight = Math.max(minimumHeight, mobileMinimumHeights[index]);
+        // Only measure segments that can belong to a full partition. Rows
+        // before and after this segment must use the same per-row photo limit.
+        const tail = list.length - end;
+        if (start + tail < otherRows || Math.ceil(start / maxPerRow) + Math.ceil(tail / maxPerRow) > otherRows) continue;
         const rowFactor = mobile ? Math.max(1, minimumHeight / Math.max(.0001, imageHeight))
           : ratios.length >= 6 ? clamp(Math.sqrt(totalWeight / rowCount / rowWeight), .84, 1.22) : 1;
         let offset = 0, left = Infinity, right = -Infinity, height = 0, extraY = 0;
@@ -73,7 +78,7 @@ export function planAlbumLayout({ aspects = [], likes = [], width = 1000, height
       }
     }
     const best = Array.from({ length: rowCount + 1 }, () => []);
-    best[0][0] = { cost: 0, height: 0, groups: [] };
+    best[0][0] = { cost: 0, height: 0, extraY: 0 };
     for (let row = 1; row <= rowCount; row++) for (let start = row - 1; start < list.length; start++) {
       const previous = best[row - 1][start];
       if (!previous) continue;
@@ -82,15 +87,21 @@ export function planAlbumLayout({ aspects = [], likes = [], width = 1000, height
         // Height is the feasibility objective. Width balance breaks near ties.
         const cost = previous.cost + group.height + (row > 1 ? gapY : 0) + (1 - group.width / areaWidth) ** 2 * 12;
         const saved = best[row][group.end];
-        if (!saved || cost < saved.cost) best[row][group.end] = { cost, height, groups: [...previous.groups, group] };
+        if (!saved || cost < saved.cost) best[row][group.end] = { cost, height, extraY: Math.max(previous.extraY, group.extraY), previous, group };
       }
     }
     const selected = best[rowCount][list.length];
     if (!selected) return null;
-    if (materialize) for (const group of selected.groups) group.boxes = list.slice(group.start, group.end).map(index => envelope(index, imageHeight * group.rowFactor));
-    const boxes = materialize ? selected.groups.flatMap(group => group.boxes) : [];
-    const extraY = Math.max(0, ...selected.groups.map(group => group.extraY));
-    return { ...selected, height: selected.height + extraY, extraY, boxes, list, imageHeight };
+    const { cost, extraY } = selected;
+    const height = selected.height + extraY;
+    if (!materialize) return { height };
+    const selectedGroups = Array(rowCount);
+    for (let row = rowCount - 1, state = selected; row >= 0; row--, state = state.previous) {
+      const group = state.group;
+      group.boxes = list.slice(group.start, group.end).map(index => envelope(index, imageHeight * group.rowFactor));
+      selectedGroups[row] = group;
+    }
+    return { cost, height, extraY, groups: selectedGroups, boxes: selectedGroups.flatMap(group => group.boxes), list, imageHeight };
   }
   function bestRows(list, areaWidth, areaHeight, { grow = false, minRows = 1, maxRows = 4 } = {}) {
     let chosen = null;

@@ -146,6 +146,7 @@
   line-height: 1.7;
   text-decoration: underline;
   text-underline-offset: 4px;
+  overflow-wrap: anywhere;
 }
 
 .owner-contact-link:hover {

@@ -38,6 +38,7 @@ body:not(.theme-preview) .collection-section { background: var(--paper); min-hei
 .personal-socials { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 30px 0 0; }
 .personal-social { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-width: 113px; min-height: 48px; padding: 10px 16px; border-radius: 999px; background: color-mix(in srgb, var(--theme) 17%, var(--paper)); color: var(--theme-dark); font-size: 11px; letter-spacing: .035em; border: 1px solid color-mix(in srgb, var(--theme-dark) 12%, transparent); transition: transform .3s var(--water-settle), background .3s, box-shadow .3s; }
 .personal-social.is-pending { opacity: .6; }
+.personal-email-link { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .personal-social-icon { display: block; width: 23px; height: 23px; flex: none; background: currentColor; -webkit-mask: var(--platform-icon) center / contain no-repeat; mask: var(--platform-icon) center / contain no-repeat; }
 .personal-journal { margin-top: 27px; color: var(--theme-dark); }
 .personal-journal-entry { display: inline-flex; gap: 8px; align-items: center; min-height: 38px; padding: 4px 8px; font-size: 12px; letter-spacing: .1em; }

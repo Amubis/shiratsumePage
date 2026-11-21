@@ -1,4 +1,7 @@
 const localized = (value, locale = 'zh') => typeof value === 'string' ? value : value?.[locale] || value?.zh || value?.ja || '';
+const editTargets = '.album-player, .personal-journal-post';
+const editorLanguages = { zh: { label: '中文', lang: 'zh-CN' }, ja: { label: '日本語', lang: 'ja' } };
+const originalText = (value, locale) => typeof value === 'string' ? (locale === 'zh' ? value : '') : value?.[locale] ?? '';
 
 /** Sessions are intentionally usable only by the site that owns their cookie. */
 export function sameOriginOwnerApi(runtime, pageURL) {
@@ -35,7 +38,7 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   const url = pageURL || win.location?.href || globalThis.location?.href;
   const bindings = [], buttons = new Set(), entryVisibility = new Map();
   let api = null, base = null, session = { authenticated: false }, destroyed = false, authBusy = false, dialogBusy = false;
-  let observer = null, scheduled = false, refreshSequence = 0, lastFocusRefresh = 0, opener = null;
+  let observer = null, linkObserver = null, observedEntry, scheduled = false, refreshSequence = 0, lastFocusRefresh = 0, opener = null;
   const zh = () => getLanguage() !== 'ja';
   const text = (chinese, japanese) => zh() ? chinese : japanese;
   const create = (tag, className, value) => { const node = doc.createElement(tag); node.className = className; if (value !== undefined) node.textContent = value; if (['owner-tools-manage', 'owner-tools-logout', 'owner-tools-heading', 'owner-tools-status', 'owner-tools-save', 'owner-tools-notice owner-tools-ui'].includes(className)) node.setAttribute('data-language-text', ''); return node; };
@@ -66,6 +69,11 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     if (destroyed) return;
     for (const entry of buttons) if (entry.isConnected === false) buttons.delete(entry);
     const card = root.querySelector('.owner-card'), entry = card?.querySelector('.owner-admin-link');
+    if (entry !== observedEntry && linkObserver) {
+      linkObserver.disconnect();
+      if (entry) linkObserver.observe(entry, { attributes: true, attributeFilter: ['href', 'aria-label'] });
+      observedEntry = entry;
+    }
     if (card && actions.parentElement !== card) card.append(actions);
     const authenticated = Boolean(api && session.authenticated);
     if (card && card.classList.contains('has-owner-session') !== authenticated) card.classList.toggle('has-owner-session', authenticated);
@@ -77,25 +85,35 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
         if (!entryVisibility.has(entry)) entryVisibility.set(entry, Boolean(entry.hidden));
         entry.hidden = authenticated;
         entry.setAttribute('role', 'button');
-        const label = text('站长登录', '管理者ログイン'); entry.setAttribute('aria-label', label); entry.title = label;
+        const label = text('站长登录', '管理者ログイン');
+        if (entry.getAttribute('aria-label') !== label) entry.setAttribute('aria-label', label);
+        entry.title = label;
       } else {
         if (entryVisibility.has(entry)) { entry.hidden = entryVisibility.get(entry); entryVisibility.delete(entry); }
         entry.removeAttribute('role');
       }
     }
     close.setAttribute('aria-label', text('关闭', '閉じる'));
-    for (const node of doc.querySelectorAll('.album-player[data-photo-id], .personal-journal-post[data-journal-id]')) {
+    if (!authenticated) {
+      for (const edit of buttons) {
+        edit.hidden = true;
+        if (edit.dataset.ownerType === 'journal') edit.parentElement?.classList.remove('owner-editable-note');
+      }
+      return;
+    }
+    for (const node of root.querySelectorAll(editTargets)) {
       const photo = node.classList.contains('album-player'), id = node.getAttribute(photo ? 'data-photo-id' : 'data-journal-id');
       const target = photo ? node.querySelector('.album-player-stage') : node;
       if (!target) continue;
       let edit = target.querySelector(photo ? '.owner-photo-edit' : '.owner-note-edit');
+      if (!id && !edit) continue;
       if (!edit) {
         edit = button(`owner-inline-edit owner-tools-ui ${photo ? 'owner-photo-edit' : 'owner-note-edit'}`);
         edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15.6 3.8 4.6 4.6-1.4 1.4-4.6-4.6Zm-2.8 2.8 4.6 4.6-9 9H3.8v-4.6Z"/></svg>';
         edit.addEventListener('click', () => openEditor(edit.dataset.ownerType, edit.dataset.ownerId, edit));
         target.append(edit); buttons.add(edit);
       }
-      edit.hidden = !session.authenticated || !id;
+      edit.hidden = !id;
       const type = photo ? 'photo' : 'journal';
       if (edit.dataset.ownerType !== type) edit.dataset.ownerType = type;
       if (edit.dataset.ownerId !== id) edit.dataset.ownerId = id;
@@ -130,7 +148,7 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     opener = origin || doc.activeElement; heading.textContent = title; save.textContent = submitLabel; message.textContent = ''; fields.replaceChildren();
     if (!dialog.open) dialog.showModal(); doc.body.classList.add('owner-dialog-open');
   }
-  function field(label, input) { const row = create('label', 'owner-tools-field'), caption = create('span', '', label); caption.setAttribute('data-language-text', ''); row.append(caption, input); fields.append(row); return input; }
+  function field(label, input, group = fields) { const row = create('label', 'owner-tools-field'), caption = create('span', '', label); caption.setAttribute('data-language-text', ''); row.append(caption, input); group.append(row); return input; }
   function openLogin(origin) {
     if (!api || destroyed) return;
     dialogKind = 'login';
@@ -144,41 +162,90 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
     };
     password.focus();
   }
+  function languageFields(initialLocale, renderFields) {
+    const tabs = create('div', 'owner-tools-language-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', text('编辑语言', '編集する言語'));
+    fields.append(tabs);
+    const groups = Object.entries(editorLanguages).map(([locale, { label, lang }]) => {
+      const tab = button(`owner-tools-language-tab owner-tools-language-${locale}`, label);
+      const panel = create('div', 'owner-tools-language-panel');
+      tab.id = `owner-tools-language-${locale}`;
+      panel.id = `owner-tools-panel-${locale}`;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('lang', lang);
+      tab.setAttribute('aria-controls', panel.id);
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+      tabs.append(tab); fields.append(panel);
+      return { locale, tab, panel, inputs: renderFields(panel, locale, lang) };
+    });
+    const select = index => groups.forEach(({ tab, panel }, i) => {
+      const selected = i === index;
+      tab.tabIndex = selected ? 0 : -1;
+      tab.setAttribute('aria-selected', String(selected));
+      panel.hidden = !selected;
+    });
+    groups.forEach(({ tab }, index) => {
+      tab.addEventListener('click', () => select(index));
+      tab.addEventListener('keydown', event => {
+        let next;
+        switch (event.key) {
+          case 'ArrowLeft': next = (index + groups.length - 1) % groups.length; break;
+          case 'ArrowRight': next = (index + 1) % groups.length; break;
+          case 'Home': next = 0; break;
+          case 'End': next = groups.length - 1; break;
+          default: return;
+        }
+        event.preventDefault();
+        select(next);
+        groups[next].tab.focus();
+      });
+    });
+    select(groups.findIndex(group => group.locale === initialLocale));
+    return Object.fromEntries(groups.map(({ locale, inputs }) => [locale, inputs]));
+  }
   function openEditor(type, id, origin) {
     if (!session.authenticated || !api) return;
     const content = getContent(), record = (type === 'photo' ? content.media : content.journal)?.find(item => item.id === id);
     if (!record) return;
     dialogKind = 'edit';
     const locale = zh() ? 'zh' : 'ja';
-    openDialog(type === 'photo' ? text('编辑照片说明', '写真の説明を編集') : text('编辑碎碎念', 'ひとりごとを編集'), text('保存并更新网站', '保存してサイトを更新'), origin);
-    let title = null, body = null, captions = null;
-    if (type === 'photo') {
-      captions = {};
-      for (const [captionLocale, label] of [['zh', text('照片说明 · 中文', '写真の説明 · 中文')], ['ja', text('照片说明 · 日本語', '写真の説明 · 日本語')]]) {
-        const input = field(label, create('textarea', `owner-tools-body owner-tools-caption-${captionLocale}`));
-        input.rows = 4; input.maxLength = 5000; input.name = `caption_${captionLocale}`;
-        input.setAttribute('lang', captionLocale === 'zh' ? 'zh-CN' : 'ja');
-        // A missing translation stays blank instead of borrowing the other
-        // language and accidentally saving it as an existing translation.
-        input.value = typeof record.caption === 'string' ? captionLocale === 'zh' ? record.caption : '' : typeof record.caption?.[captionLocale] === 'string' ? record.caption[captionLocale] : '';
-        captions[captionLocale] = input;
-      }
-    } else {
-      title = field(text('标题（选填）', 'タイトル（任意）'), create('input', 'owner-tools-title')); title.value = localized(record.title, locale); title.maxLength = 500;
-      body = field(text('正文', '本文'), create('textarea', 'owner-tools-body')); body.rows = 9; body.value = localized(record.body, locale); body.maxLength = 50000;
-    }
+    const photo = type === 'photo';
+    const sourceDialog = origin?.closest('dialog');
+    openDialog(photo ? text('编辑照片说明', '写真の説明を編集') : text('编辑碎碎念', 'ひとりごとを編集'), text('保存并更新网站', '保存してサイトを更新'), origin);
+    const inputs = languageFields(locale, (panel, editLocale, lang) => {
+      const addInput = (key, label, className, maxLength, rows) => {
+        const input = field(label, create(rows ? 'textarea' : 'input', `${className} owner-tools-${key}-${editLocale}`), panel);
+        input.maxLength = maxLength;
+        input.name = `${key}_${editLocale}`;
+        input.setAttribute('lang', lang);
+        if (rows) input.rows = rows;
+        input.value = originalText(record[key], editLocale);
+        return input;
+      };
+      return photo ? { caption: addInput('caption', text('照片说明', '写真の説明'), 'owner-tools-body', 5000, 4) } : {
+        title: addInput('title', text('标题（选填）', 'タイトル（任意）'), 'owner-tools-title', 500),
+        body: addInput('body', text('正文', '本文'), 'owner-tools-body', 50000, 9),
+      };
+    });
     submitForm = async () => {
-      const change = type === 'photo'
-        ? { targetType: type, targetId: id, patch: { caption: { zh: captions.zh.value, ja: captions.ja.value } } }
-        : { targetType: type, targetId: id, locale, patch: { title: title.value, body: body.value } };
-      const result = await api.save(change, session.csrfToken);
+      const patch = {};
+      for (const key of Object.keys(inputs[locale])) {
+        for (const [editLocale, fields] of Object.entries(inputs)) {
+          const value = fields[key].value;
+          if (photo || value !== originalText(record[key], editLocale)) (patch[key] ??= {})[editLocale] = value;
+        }
+      }
+      if (!Object.keys(patch).length) { closeDialog(true); return; }
+      const result = await api.save({ targetType: type, targetId: id, patch }, session.csrfToken);
       if (destroyed) return;
       if (!result?.content) throw new Error(text('保存结果暂时无法读取，请刷新确认。', '保存結果を確認できません。再読み込みしてください。'));
       onPublished(result.content); update();
-      if (opener?.isConnected === false) opener = Array.from(doc.querySelectorAll('.owner-inline-edit')).find(entry => entry.dataset.ownerType === type && entry.dataset.ownerId === id) || null;
+      if (opener?.isConnected === false) opener = Array.from((sourceDialog?.open ? sourceDialog : root).querySelectorAll('.owner-inline-edit')).find(entry => entry.dataset.ownerType === type && entry.dataset.ownerId === id) || null;
       notice.textContent = text('已更新网站。', 'サイトを更新しました。'); closeDialog(true); scheduleUpdate();
     };
-    (captions?.[locale] || body).focus();
+    (photo ? inputs[locale].caption : inputs[locale].body).focus();
   }
   bind(form, 'submit', async event => {
     event.preventDefault(); if (dialogBusy || !submitForm) return;
@@ -205,13 +272,24 @@ export function createOwnerTools({ root, getContent = () => ({}), getLanguage = 
   const onFocus = () => { if (Date.now() - lastFocusRefresh < 1500 || doc.hidden) return; lastFocusRefresh = Date.now(); void refresh(); };
   bind(win, 'focus', onFocus); bind(doc, 'visibilitychange', () => { if (!doc.hidden) onFocus(); });
   if (typeof win.MutationObserver === 'function') {
-    observer = new win.MutationObserver(records => { if (!records.every(record => record.target.closest?.('.owner-tools-ui'))) scheduleUpdate(); });
-    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-photo-id', 'data-journal-id', 'class'] });
+    linkObserver = new win.MutationObserver(scheduleUpdate);
+    observer = new win.MutationObserver(records => {
+      if (!session.authenticated && observedEntry?.isConnected) return;
+      const structure = session.authenticated ? `.owner-card, .owner-admin-link, .album-player-stage, ${editTargets}` : '.owner-card, .owner-admin-link';
+      const containsTarget = node => node.matches?.(structure) || node.querySelector?.(structure);
+      const relevant = records.some(record => {
+        if (record.type === 'attributes') return session.authenticated && record.target.matches(editTargets);
+        if (record.target.closest?.('.owner-tools-ui')) return false;
+        return Array.from(record.addedNodes).some(containsTarget) || Array.from(record.removedNodes).some(containsTarget);
+      });
+      if (relevant) scheduleUpdate();
+    });
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-photo-id', 'data-journal-id'] });
   }
   return {
     setRuntime(runtime) { const next = sameOriginOwnerApi(runtime, url); if (next === base) return; base = next; api = base ? createOwnerApi({ baseUrl: base, fetchImpl }) : null; ++refreshSequence; setSession(null); if (api) void refresh(); },
     refresh, setLanguage() { update(); },
     get session() { return { ...session }; },
-    destroy() { if (destroyed) return; destroyed = true; ++refreshSequence; observer?.disconnect(); bindings.splice(0).forEach(remove => remove()); closeDialog(true); buttons.forEach(node => node.remove()); for (const [entry, hidden] of entryVisibility) { entry.hidden = hidden; entry.removeAttribute('role'); } entryVisibility.clear(); root.querySelectorAll('.owner-card').forEach(card => card.classList.remove('has-owner-session')); actions.remove(); notice.remove(); dialog.remove(); doc.body.classList.remove('owner-dialog-open'); onSession({ authenticated: false }); },
+    destroy() { if (destroyed) return; destroyed = true; ++refreshSequence; observer?.disconnect(); linkObserver?.disconnect(); bindings.splice(0).forEach(remove => remove()); closeDialog(true); buttons.forEach(node => node.remove()); for (const [entry, hidden] of entryVisibility) { entry.hidden = hidden; entry.removeAttribute('role'); } entryVisibility.clear(); root.querySelectorAll('.owner-card').forEach(card => card.classList.remove('has-owner-session')); actions.remove(); notice.remove(); dialog.remove(); doc.body.classList.remove('owner-dialog-open'); onSession({ authenticated: false }); },
   };
 }

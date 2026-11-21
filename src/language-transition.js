@@ -14,7 +14,7 @@ const TEXT_SELECTORS = [
   '.personal-journal-date', '.personal-post-comments-summary',
   '.comments-heading', '.comments-note', '.comments-load-state', '.comments-label-text', '.comments-retry', '.comments-more',
   '.comments-submit', '.comments-submit-state', '.comments-count', '.comments-cancel-reply',
-  '.comments-reply-target > span', '.comment-owner', '.comment-date', '.comment-reply-button', '.comment-review-state', '.comment-moderation-button',
+  '.comments-reply-target > span', '.comment-owner', '.comment-date', '.comment-reply-button', '.comment-delete-button',
   '.owner-tools-manage', '.owner-tools-logout', '.owner-tools-heading', '.owner-tools-status', '.owner-tools-save', '.owner-tools-field > span',
 ].join(',');
 

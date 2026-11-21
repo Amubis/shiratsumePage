@@ -1,11 +1,16 @@
 /** Public comment labels are editable alongside the other site dictionaries. */
 export const COMMENTS_COPY = Object.freeze({
-  zh: Object.freeze({ title: '留言', note: '无需登录。留言审核后显示。', unavailable: '评论暂未开放', loading: '正在读取留言…', empty: '还没有留言，留下一点想法吧。', loadError: '留言暂时无法读取。', retry: '重新读取', nickname: '昵称（选填）', nicknamePlaceholder: '匿名访客', body: '想说的话', bodyPlaceholder: '留下一点想法…', submit: '发送留言', submitting: '正在发送…', pending: '留言已收到，审核后显示。', submitError: '发送失败，文字已保留，请稍后重试。', rateLimited: '发送得有些频繁，文字已保留，请稍后再试。', invalidBody: '请填写 1 至 2000 字的留言。', invalidNickname: '昵称请保持在 40 字以内。', anonymous: '匿名访客', owner: '作者', reply: '回复', replyTo: '正在回复', replyLoading: '正在确认回复对象，请稍候或取消回复。', replyUnavailable: '暂时无法回复这条留言，请重新读取或取消回复。', cancelReply: '取消回复', website: '网站（请留空）', count: '字', open: '查看留言', ownerNote: '已以站长身份登录。选择留言下方的「回复」即可直接回复。', ownerReply: '站长回复', ownerSent: '回复已发布。', ownerModerationNote: '站长模式：待审核留言仅你可见，可直接审核、回复或删除。', pendingReview: '待审核', approve: '通过', reject: '拒绝', remove: '删除', reviewFirst: '请先通过留言，再回复。', moderationError: '操作未完成，请稍后重试。', approved: '留言已通过。', rejected: '留言已拒绝。', deleted: '留言已删除。' }),
-  ja: Object.freeze({ title: 'コメント', note: 'ログイン不要です。承認後に表示されます。', unavailable: 'コメントは準備中です', loading: 'コメントを読み込み中…', empty: '最初のひとことを残してみませんか。', loadError: 'コメントを読み込めませんでした。', retry: 'もう一度読み込む', nickname: 'お名前（任意）', nicknamePlaceholder: '匿名の訪問者', body: 'メッセージ', bodyPlaceholder: 'ひとことをどうぞ…', submit: 'コメントを送る', submitting: '送信中…', pending: 'コメントを受け付けました。承認後に表示されます。', submitError: '送信できませんでした。入力は残っています。しばらくしてからお試しください。', rateLimited: '送信が続いています。入力は残っています。少し待ってからお試しください。', invalidBody: '1〜2000文字のコメントを入力してください。', invalidNickname: 'お名前は40文字以内で入力してください。', anonymous: '匿名の訪問者', owner: '作者', reply: '返信', replyTo: '返信先', replyLoading: '返信先を確認中です。少し待つか、返信を取り消してください。', replyUnavailable: 'このコメントには返信できません。再読み込みするか、返信を取り消してください。', cancelReply: '返信を取り消す', website: 'ウェブサイト（入力しないでください）', count: '文字', open: 'コメントを見る', ownerNote: '管理者としてログイン中です。コメントの「返信」を選ぶと直接返信できます。', ownerReply: '管理者として返信', ownerSent: '返信を公開しました。', ownerModerationNote: '管理者モード：承認待ちのコメントは管理者だけに表示されます。承認・返信・削除ができます。', pendingReview: '承認待ち', approve: '承認', reject: '非承認', remove: '削除', reviewFirst: '承認してから返信してください。', moderationError: '操作できませんでした。もう一度お試しください。', approved: 'コメントを承認しました。', rejected: 'コメントを非承認にしました。', deleted: 'コメントを削除しました。' }),
+  zh: Object.freeze({ title: '留言', note: '无需登录。留言发送后立即公开。', unavailable: '评论暂未开放', loading: '正在读取留言…', empty: '还没有留言，留下一点想法吧。', loadError: '留言暂时无法读取。', retry: '重新读取', nickname: '昵称（选填）', nicknamePlaceholder: '匿名访客', body: '想说的话', bodyPlaceholder: '留下一点想法…', submit: '发送留言', submitting: '正在发送…', sent: '留言已发送。', submitError: '发送失败，文字已保留，请稍后重试。', rateLimited: '发送得有些频繁，文字已保留，请稍后再试。', invalidBody: '请填写 1 至 2000 字的留言。', invalidNickname: '昵称请保持在 40 字以内。', anonymous: '匿名访客', owner: '作者', reply: '回复', replyTo: '正在回复', replyLoading: '正在确认回复对象，请稍候或取消回复。', replyUnavailable: '暂时无法回复这条留言，请重新读取或取消回复。', cancelReply: '取消回复', website: '网站（请留空）', count: '字', open: '查看留言', ownerNote: '已以站长身份登录。选择留言下方的「回复」即可直接回复。', ownerReply: '站长回复', ownerSent: '回复已发布。', remove: '删除', deleteError: '删除失败，请稍后重试。', deleted: '留言已删除。' }),
+  ja: Object.freeze({ title: 'コメント', note: 'ログイン不要です。コメントは送信すると公開されます。', unavailable: 'コメントは準備中です', loading: 'コメントを読み込み中…', empty: '最初のひとことを残してみませんか。', loadError: 'コメントを読み込めませんでした。', retry: 'もう一度読み込む', nickname: 'お名前（任意）', nicknamePlaceholder: '匿名の訪問者', body: 'メッセージ', bodyPlaceholder: 'ひとことをどうぞ…', submit: 'コメントを送る', submitting: '送信中…', sent: 'コメントを送信しました。', submitError: '送信できませんでした。入力は残っています。しばらくしてからお試しください。', rateLimited: '送信が続いています。入力は残っています。少し待ってからお試しください。', invalidBody: '1〜2000文字のコメントを入力してください。', invalidNickname: 'お名前は40文字以内で入力してください。', anonymous: '匿名の訪問者', owner: '作者', reply: '返信', replyTo: '返信先', replyLoading: '返信先を確認中です。少し待つか、返信を取り消してください。', replyUnavailable: 'このコメントには返信できません。再読み込みするか、返信を取り消してください。', cancelReply: '返信を取り消す', website: 'ウェブサイト（入力しないでください）', count: '文字', open: 'コメントを見る', ownerNote: '管理者としてログイン中です。コメントの「返信」を選ぶと直接返信できます。', ownerReply: '管理者として返信', ownerSent: '返信を公開しました。', remove: '削除', deleteError: '削除できませんでした。しばらくしてからお試しください。', deleted: 'コメントを削除しました。' }),
 });
 
+const legacyNotes = { zh: '无需登录。留言审核后显示。', ja: 'ログイン不要です。承認後に表示されます。' };
+
 export const normalizeCommentsCopy = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
-  Object.fromEntries(Object.entries(COMMENTS_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
+  Object.fromEntries(Object.entries(COMMENTS_COPY[locale]).map(([key, fallback]) => {
+    const value = input?.[locale]?.[key];
+    return [key, typeof value === 'string' && !(key === 'note' && value.trim() === legacyNotes[locale]) ? value : fallback];
+  })),
 ]));
 
 function normalizeBaseUrl(value) {
@@ -22,11 +27,11 @@ function commentError(code, status = 0) {
   return Object.assign(new Error(code), { code, status });
 }
 
-function normalizeComments(input, { owner = false } = {}) {
+function normalizeComments(input) {
   const seen = new Set();
   const records = (Array.isArray(input) ? input : []).flatMap(item => {
     const status = item?.status || 'approved';
-    if (!item || typeof item.id !== 'string' || seen.has(item.id) || typeof item.body !== 'string' || (status !== 'approved' && !(owner && status === 'pending'))) return [];
+    if (!item || typeof item.id !== 'string' || seen.has(item.id) || typeof item.body !== 'string' || status !== 'approved') return [];
     seen.add(item.id);
     return [{ id: item.id, parentId: typeof item.parentId === 'string' ? item.parentId : null,
       nickname: typeof item.nickname === 'string' ? item.nickname : '', body: item.body,
@@ -113,10 +118,11 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
           const query = new URLSearchParams({ targetType, targetId: String(targetId) });
           let records;
           if (owner && sameOrigin()) {
+            query.set('status', 'approved');
             query.set('limit', '500');
             const data = await ownerRequest(`?${query}`);
             const matching = (Array.isArray(data) ? data : data?.comments || []).filter(item => item.targetType === targetType && item.targetId === String(targetId));
-            records = normalizeComments(matching, { owner: true });
+            records = normalizeComments(matching);
           } else {
             const data = await request(`?${query}`, { method: 'GET', headers: { Accept: 'application/json' } });
             if (data?.available === false) throw commentError('comments_unavailable', 503);
@@ -139,9 +145,9 @@ export function createCommentService({ baseUrl = null, fetchImpl = globalThis.fe
       const result = await request('', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
       invalidateThread(payload.targetType, payload.targetId); return result;
     },
-    async moderateComment(commentId, status, { signal } = {}) {
-      if (typeof commentId !== 'string' || !commentId || !['approved', 'rejected', 'deleted'].includes(status)) throw commentError('invalid_moderation', 400);
-      const result = await ownerRequest(`/${encodeURIComponent(commentId)}`, { method: 'PATCH', signal, body: { status, read: true } });
+    async deleteComment(commentId, { signal } = {}) {
+      if (typeof commentId !== 'string' || !commentId) throw commentError('invalid_comment', 400);
+      const result = await ownerRequest(`/${encodeURIComponent(commentId)}`, { method: 'PATCH', signal, body: { status: 'deleted', read: true } });
       for (const [key, entry] of threadCache) if (entry.records?.some(comment => comment.id === commentId)) threadCache.delete(key);
       return result;
     },
@@ -162,7 +168,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   let generation = 0;
   let loadController = null;
   let submitController = null;
-  let moderationController = null, moderating = null;
+  let deleteController = null;
   let unsubscribe = () => {};
   let comments = [];
   let loadState = 'idle';
@@ -176,7 +182,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   let expanded = false, listAnimation = null;
   const expandedReplies = new Set();
   const ownerMode = () => client?.ownerSession?.authenticated === true;
-  const canModerate = () => ownerMode() && typeof client?.moderateComment === 'function';
+  const canDelete = () => ownerMode() && typeof client?.deleteComment === 'function';
   const selectedReply = () => comments.find(comment => comment.id === replyId && !comment.parentId);
   const canReplyTo = comment => Boolean(comment && comment.status === 'approved' && !comment.parentId);
   const drafts = new Map();
@@ -223,7 +229,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   }
   function abort() {
     generation++;
-    loadController?.abort(); submitController?.abort(); moderationController?.abort(); loadController = submitController = moderationController = null; submitting = false; moderating = null;
+    loadController?.abort(); submitController?.abort(); deleteController?.abort(); loadController = submitController = deleteController = null; submitting = false;
   }
   function renderComments() {
     listAnimation?.cancel(); listAnimation = null;
@@ -231,13 +237,11 @@ export function createAnonymousComments({ container, service = null, targetType 
     const createComment = comment => {
       const article = element('article', `comment${comment.parentId ? ' comment-reply' : ''}`);
       article.setAttribute('data-comment-id', comment.id);
-      article.classList.toggle('comment-pending', comment.status === 'pending');
       const meta = element('div', 'comment-meta');
       const author = element('span', 'comment-author', comment.nickname.trim() || words().anonymous);
       if (!comment.nickname.trim()) languageText(author);
       meta.append(author);
       if (comment.verified === true) meta.append(languageText(element('span', 'comment-owner', words().owner)));
-      if (comment.status === 'pending') meta.append(languageText(element('span', 'comment-review-state', words().pendingReview)));
       const parsed = Date.parse(comment.createdAt);
       if (Number.isFinite(parsed)) {
         const date = new Date(parsed); const time = languageText(element('time', 'comment-date', date.toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' }))); time.dateTime = date.toISOString(); meta.append(time);
@@ -246,8 +250,7 @@ export function createAnonymousComments({ container, service = null, targetType 
       const actions = element('div', 'comment-actions');
       if (!comment.parentId) {
         const replyButton = languageText(button('comment-reply-button')); replyButton.textContent = words().reply;
-        replyButton.disabled = Boolean(moderating) || !canReplyTo(comment);
-        if (!canReplyTo(comment)) replyButton.title = words().reviewFirst;
+        replyButton.disabled = Boolean(deleteController);
         replyButton.addEventListener('click', () => {
           replyId = comment.id; submitState = ''; saveDraft(); update();
           if (isCompact) requestOpenThread();
@@ -255,14 +258,10 @@ export function createAnonymousComments({ container, service = null, targetType 
         });
         actions.append(replyButton);
       }
-      if (canModerate()) {
-        if (comment.status === 'pending') for (const [status, label] of [['approved', 'approve'], ['rejected', 'reject']]) {
-          const reviewButton = languageText(button(`comment-moderation-button comment-${label}-button`)); reviewButton.textContent = words()[label]; reviewButton.disabled = Boolean(moderating) || submitting;
-          reviewButton.addEventListener('click', () => moderate(comment, status)); actions.append(reviewButton);
-        }
-        const remove = languageText(button('comment-moderation-button comment-delete-button')); remove.textContent = words().remove; remove.disabled = Boolean(moderating) || submitting;
+      if (canDelete()) {
+        const remove = languageText(button('comment-delete-button')); remove.textContent = words().remove; remove.disabled = Boolean(deleteController) || submitting;
         remove.setAttribute('aria-label', `${words().remove} · ${comment.nickname.trim() || words().anonymous}`);
-        remove.addEventListener('click', () => moderate(comment, 'deleted')); actions.append(remove);
+        remove.addEventListener('click', () => removeComment(comment)); actions.append(remove);
       }
       if (actions.children.length) article.append(actions);
       if (!comment.parentId) {
@@ -270,8 +269,7 @@ export function createAnonymousComments({ container, service = null, targetType 
         if (children.length) {
           const replies = element('div', 'comment-replies');
           const open = expandedReplies.has(comment.id);
-          // Pending replies remain visible to their moderator even in a short preview.
-          const visible = !isCompact || open ? children : children.filter((child, index) => index === 0 || (ownerMode() && child.status === 'pending'));
+          const visible = !isCompact || open ? children : children.slice(0, 1);
           replies.append(...visible.map(createComment));
           if (isCompact && children.length > 1 && (open || visible.length < children.length)) {
             const toggle = languageText(button('comment-replies-more'));
@@ -342,7 +340,7 @@ export function createAnonymousComments({ container, service = null, targetType 
     if (!loggedIn && wasOwner) nickname.value = anonymousNickname;
     if (loggedIn) nickname.value = client.ownerSession.username || 'Amubis';
     wasOwner = loggedIn;
-    note.textContent = loggedIn ? words()[canModerate() ? 'ownerModerationNote' : 'ownerNote'] : words().note; note.hidden = isCompact || !enabled || loadState === 'unavailable';
+    note.textContent = loggedIn ? words().ownerNote : words().note; note.hidden = isCompact || !enabled || loadState === 'unavailable';
     form.hidden = isCompact || !enabled || loadState === 'unavailable'; list.hidden = !enabled;
     openThread.hidden = !isCompact || !enabled || loadState === 'unavailable';
     openThread.textContent = locale === 'ja' ? 'コメントを書く／会話を見る' : '写留言／查看讨论';
@@ -356,7 +354,7 @@ export function createAnonymousComments({ container, service = null, targetType 
     replyText.textContent = parent ? `${words().replyTo} ${parent.nickname.trim() || words().anonymous}` : replyId ? words()[['loading', 'idle'].includes(loadState) ? 'replyLoading' : 'replyUnavailable'] : '';
     cancelReply.textContent = words().cancelReply;
     count.textContent = `${Array.from(body.value || '').length} / 2000 ${words().count}`;
-    submit.disabled = submitting || Boolean(moderating) || !enabled || Boolean(replyId && !canReplyTo(parent)) || (loggedIn && !canReplyTo(parent)); submit.textContent = submitting ? words().submitting : loggedIn ? words().ownerReply : words().submit;
+    submit.disabled = submitting || Boolean(deleteController) || !enabled || Boolean(replyId && !canReplyTo(parent)) || (loggedIn && !canReplyTo(parent)); submit.textContent = submitting ? words().submitting : loggedIn ? words().ownerReply : words().submit;
     nickname.disabled = submitting || loggedIn; body.disabled = submitting; cancelReply.disabled = submitting;
     status.textContent = words()[submitState] || ''; status.hidden = !submitState;
   }
@@ -367,7 +365,9 @@ export function createAnonymousComments({ container, service = null, targetType 
     try {
       const result = await client.getComments({ targetType: type, targetId: id, signal: loadController.signal, force });
       if (destroyed || current !== generation) return;
-      comments = normalizeComments(result, { owner: ownerMode() }); loadState = 'loaded'; revealReply(); renderComments();
+      const records = Array.isArray(result) ? result : [];
+      // Keep a comment posted while this earlier read was still in flight.
+      comments = normalizeComments([...records, ...comments]); loadState = 'loaded'; revealReply(); renderComments();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
       loadState = error?.code === 'comments_unavailable' ? 'unavailable' : 'error';
@@ -375,7 +375,7 @@ export function createAnonymousComments({ container, service = null, targetType 
   }
   async function send(event) {
     event.preventDefault();
-    if (destroyed || submitting || moderating || !isActive || !available()) return;
+    if (destroyed || submitting || deleteController || !isActive || !available()) return;
     const parent = selectedReply();
     if ((replyId && !canReplyTo(parent)) || (ownerMode() && !canReplyTo(parent))) { update(); return; }
     const message = (body.value || '').trim(); const name = (nickname.value || '').trim();
@@ -384,35 +384,37 @@ export function createAnonymousComments({ container, service = null, targetType 
     const current = generation; submitting = true; submitState = ''; submitController = new AbortController(); update();
     const payload = { targetType: type, targetId: id, nickname: name, body: message, website: website.value || '' };
     if (parent) payload.parentId = parent.id;
+    let published = false;
     try {
       const result = await client.postComment(payload, { signal: submitController.signal });
       if (destroyed || current !== generation) return;
-      const publishedReply = ownerMode() && result?.comment?.verified === true && result.comment.status === 'approved';
-      if (publishedReply) { comments = normalizeComments([...comments, result.comment], { owner: true }); if (parent) expandedReplies.add(parent.id); renderComments(); }
-      body.value = ''; website.value = ''; replyId = null; submitState = publishedReply ? 'ownerSent' : 'pending'; saveDraft();
+      published = result?.comment?.status === 'approved';
+      if (published) {
+        comments = normalizeComments([...comments, result.comment]);
+        if (parent) expandedReplies.add(parent.id);
+      }
+      const publishedReply = published && ownerMode() && result.comment.verified === true;
+      body.value = ''; website.value = ''; replyId = null; submitState = publishedReply ? 'ownerSent' : 'sent'; saveDraft();
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
       submitState = error?.status === 429 ? 'rateLimited' : error?.code === 'comments_unavailable' ? 'unavailable' : 'submitError';
-    } finally { if (!destroyed && current === generation) { submitting = false; submitController = null; update(); } }
+    } finally { if (!destroyed && current === generation) { submitting = false; submitController = null; if (published) renderComments(); update(); } }
   }
-  async function moderate(comment, nextStatus) {
-    if (destroyed || moderating || submitting || !isActive || !canModerate()) return;
-    const current = generation; moderating = comment.id; moderationController = new AbortController(); submitState = ''; renderComments(); update();
+  async function removeComment(comment) {
+    if (destroyed || deleteController || submitting || !isActive || !canDelete()) return;
+    const current = generation; deleteController = new AbortController(); submitState = ''; renderComments(); update();
     try {
-      const result = await client.moderateComment(comment.id, nextStatus, { signal: moderationController.signal });
+      await client.deleteComment(comment.id, { signal: deleteController.signal });
       if (destroyed || current !== generation || !ownerMode()) return;
-      if (nextStatus === 'approved') comments = normalizeComments(comments.map(item => item.id === comment.id ? { ...item, ...result?.comment, status: 'approved' } : item), { owner: true });
-      else {
-        const removed = new Set(comments.filter(item => item.id === comment.id || item.parentId === comment.id).map(item => item.id));
-        comments = comments.filter(item => !removed.has(item.id));
-        if (removed.has(replyId)) { replyId = null; saveDraft(); }
-      }
-      submitState = nextStatus;
+      const removed = new Set(comments.filter(item => item.id === comment.id || item.parentId === comment.id).map(item => item.id));
+      comments = comments.filter(item => !removed.has(item.id));
+      if (removed.has(replyId)) { replyId = null; saveDraft(); }
+      submitState = 'deleted';
     } catch (error) {
       if (destroyed || current !== generation || error?.name === 'AbortError') return;
-      submitState = 'moderationError';
+      submitState = 'deleteError';
     } finally {
-      if (!destroyed && current === generation) { moderationController = null; moderating = null; renderComments(); update(); list.focus?.({ preventScroll: true }); }
+      if (!destroyed && current === generation) { deleteController = null; renderComments(); update(); list.focus?.({ preventScroll: true }); }
     }
   }
   function setService(next) {

@@ -300,6 +300,19 @@ test('disable, model switch and destruction close player and remove listeners', 
   assert.ok([...f.doc.listeners.values()].every((listeners) => listeners.size === 0)); assert.equal(f.api.openPlayer(0), false);
 });
 
+test('reapplying the same theme state keeps the current page, prints, and player', (t) => {
+  const media = Array.from({ length: 9 }, (_, index) => sample(`same-theme-${index}`, null));
+  const f = fixture(t, { media });
+  f.api.goToPage(1); f.api.openPlayer(0);
+  const print = f.find('album-photo');
+  const readyCount = f.ready.length;
+  f.api.setModel('shiratsume'); f.api.setEnabled(true); f.api.setLanguage('zh');
+  assert.equal(f.api.state.pageIndex, 1);
+  assert.equal(f.api.state.playerOpen, true);
+  assert.equal(f.find('album-photo'), print);
+  assert.equal(f.ready.length, readyCount);
+});
+
 test('month boundaries never mix short months and overflow continues the same calendar group',()=>{
  const media=[...Array.from({length:10},(_,i)=>sample(`nov${i}`,`2026-11-${String(i+1).padStart(2,'0')}`)),sample('oct','2026-10-01'),sample('old','2025-12-31')];
  assert.deepEqual(buildAlbumPages(media).map(p=>[p.key,p.items.length]),[['2026-11',8],['2026-11',2],['2026-10',1],['2025-12',1]]);

@@ -102,6 +102,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
   section.classList.add('has-album-transition');
   let grid;
   let circleNodes = [];
+  let rowRadii = [];
   let progress = 0;
   let phase = 'idle';
   let enabled = true;
@@ -185,10 +186,14 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
     progress = clamp(value);
     waveMode = mode;
     waveDirection = direction < 0 ? -1 : 1;
-    grid.circles.forEach((circle, index) => {
-      const radius = circle.maxRadius * Math.min(1, albumCircleScale(progress, circle.row, grid.rows, mode, waveDirection));
-      circleNodes[index].setAttribute('r', String(Number(radius.toFixed(3))));
-    });
+    for (let row = 0; row < grid.rows; row++) {
+      const radius = grid.maxRadius * Math.min(1, albumCircleScale(progress, row, grid.rows, mode, waveDirection));
+      const value = String(Number(radius.toFixed(3)));
+      if (rowRadii[row] === value) continue;
+      rowRadii[row] = value;
+      const start = row * grid.columns;
+      for (let index = start; index < start + grid.columns; index++) circleNodes[index].setAttribute('r', value);
+    }
   }
   function measure() {
     // A reserved scrollbar gutter can make the actual fixed canvas narrower
@@ -207,6 +212,7 @@ export function createAlbumTransition({ section, previous, reducedMotion = () =>
       node.setAttribute('r', '0');
       return node;
     });
+    rowRadii = Array(grid.rows).fill('0');
     svg.replaceChildren(...circleNodes);
     // Keep a stable measurement plane for tall chapters and handoffs. The
     // resting field itself is a solid theme color, without a second lattice.

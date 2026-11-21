@@ -4,6 +4,23 @@ import { normalizeGardenContent, publicGardenContent, resolveGardenMedia, safeGa
 
 const privateKey = `private/originals/${'a'.repeat(64)}.png`;
 
+test('email contact inputs become safe mailto links and preserve legacy URLs', () => {
+  const content = { schemaVersion: 1, owner: { contacts: [
+    { label: 'Email', type: 'email', email: ' user+hello&tag@example.org ' },
+    { label: 'Website', url: 'https://example.org/' },
+    { label: 'Legacy', url: 'mailto:old@example.org?subject=Hello' },
+    { type: 'email', email: '' },
+  ] } };
+  assert.deepEqual(validateGardenContent(content), []);
+  assert.deepEqual(publicGardenContent(content).owner.contacts, [
+    { label: 'Email', url: 'mailto:user%2Bhello%26tag@example.org' },
+    content.owner.contacts[1], content.owner.contacts[2],
+  ]);
+  const invalid = { schemaVersion: 1, owner: { contacts: [{ type: 'email', email: 'owner@example.org\nBcc:spam@example.org' }] } };
+  assert.equal(validateGardenContent(invalid).length, 1);
+  assert.deepEqual(publicGardenContent(invalid).owner.contacts, []);
+});
+
 const look = (id, front = `media/${id}.png`) => ({ id, front, label: { zh: id, ja: id } });
 test('legacy outfit order selects its own first usable portrait instead of a bundled default', () => {
   const seed = normalizeGardenContent({ settings: { defaultOutfitId: 'sailor' }, outfits: [look('sailor'), look('lace')] });
