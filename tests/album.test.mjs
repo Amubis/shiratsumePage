@@ -19,7 +19,9 @@ class Element {
   get className() { return [...this.classes].join(' '); }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
+  removeAttribute(name) { this.attributes.delete(name); if (name === 'src') delete this.src; }
   append(...nodes) { for (const node of nodes) { node.parentElement = this; this.children.push(node); } }
+  prepend(node) { node.parentElement = this; this.children.unshift(node); }
   replaceChildren(...nodes) { this.children.forEach((node) => { node.parentElement = null; node.isConnected = false; }); this.children = []; this.append(...nodes); }
   remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter((node) => node !== this); this.parentElement = null; this.isConnected = false; }
   addEventListener(type, handler) { if (!this.listeners.has(type)) this.listeners.set(type, new Set()); this.listeners.get(type).add(handler); }
@@ -398,7 +400,7 @@ test('player description sits above its date metadata and the photo aspect updat
  const description = f.dialog.find('album-player-description'); const metadata = f.dialog.find('album-player-caption'); const image = f.dialog.find('album-player-image');
  assert.equal(description.textContent, '梦开始的地方'); assert.equal(description.hidden, false);
  assert.equal(metadata.textContent, '01 / 01 · 2025 / 03 / 12 · A quiet world');
- assert.deepEqual(f.dialog.find('album-player-figure').children, [image, description, metadata]);
+ assert.deepEqual(f.dialog.find('album-player-figure').children, [image, description, metadata, f.dialog.find('album-player-photo-tools')]);
  assert.equal(f.dialog.style.getPropertyValue('--player-image-aspect'), '0.666667');
  assert.equal(f.dialog.getAttribute('data-photo-orientation'), 'portrait');
  image.naturalWidth = 3840; image.naturalHeight = 2160; image.emit('load');
@@ -418,6 +420,52 @@ test('player navigation lives outside the resizable photograph stage', t => {
  assert.deepEqual(stage.children, [f.dialog.find('album-player-figure')]);
  next.emit('click'); assert.equal(f.dialog.getAttribute('data-photo-id'), 'tall');
  next.emit('click'); assert.equal(f.dialog.getAttribute('data-photo-id'), 'wide');
+});
+
+test('viewport fullscreen uses the selected full-size photo and returns to its preview and draft', async t => {
+ const f = fixture(t, { language: 'ja', media: [sample('wide', null), sample('tall', null)] });
+ f.api.openPlayer(0);
+ f.dialog.find('album-player-next').emit('click');
+ const draft = f.dialog.find('comments-body'); draft.value = 'まだ送っていないコメント';
+ const zoom = f.dialog.find('album-player-zoom');
+ const fullscreen = f.doc.body.find('album-fullscreen');
+ f.doc.fullscreenEnabled = true;
+ fullscreen.find('album-fullscreen-surface').requestFullscreen = () => Promise.reject(new Error('Fullscreen denied'));
+ zoom.emit('click'); await microtick();
+ assert.equal(zoom.getAttribute('aria-label'), '写真を全画面で表示');
+ assert.equal(fullscreen.open, true);
+ assert.equal(fullscreen.find('album-fullscreen-image').src, './tall.jpg');
+ assert.equal(f.doc.activeElement, fullscreen.find('album-fullscreen-close'));
+ const event = fullscreen.emit('keydown', { key: 'Escape' });
+ assert.equal(event.prevented, true);
+ assert.equal(fullscreen.open, false);
+ assert.equal(f.dialog.open, true);
+ assert.equal(f.dialog.getAttribute('data-photo-id'), 'tall');
+ assert.equal(f.dialog.find('comments-body'), draft);
+ assert.equal(draft.value, 'まだ送っていないコメント');
+ assert.equal(f.doc.activeElement, zoom);
+});
+
+test('native fullscreen exit closes its overlay without closing the photo preview', t => {
+ const f = fixture(t);
+ const fullscreen = f.doc.body.find('album-fullscreen');
+ const surface = fullscreen.find('album-fullscreen-surface');
+ f.doc.fullscreenEnabled = true;
+ surface.requestFullscreen = async () => { f.doc.fullscreenElement = surface; f.doc.emit('fullscreenchange'); };
+ f.doc.exitFullscreen = async () => { f.doc.fullscreenElement = null; f.doc.emit('fullscreenchange'); };
+ f.api.openPlayer(0);
+ const zoom = f.dialog.find('album-player-zoom');
+ zoom.emit('click');
+ assert.equal(f.doc.fullscreenElement, surface);
+ f.doc.fullscreenElement = null; f.doc.emit('fullscreenchange');
+ assert.equal(fullscreen.open, false);
+ assert.equal(f.dialog.open, true);
+ assert.equal(f.doc.activeElement, zoom);
+ zoom.emit('click');
+ f.api.setEnabled(false);
+ assert.equal(f.doc.fullscreenElement, null);
+ assert.equal(fullscreen.open, false);
+ assert.equal(f.dialog.open, false);
 });
 
 test('closing a photo reached on another page quietly returns to its page, card and focus', t => {

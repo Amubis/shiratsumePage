@@ -232,6 +232,7 @@ export function createContrastLayer({ scene, targets, reducedMotion = false, isA
   refresh();
   return {
     refresh,
+    refreshActivity: resume,
     destroy() {
       if (destroyed) return;
       destroyed = true;

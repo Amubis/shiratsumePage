@@ -109,6 +109,8 @@ test('stable document clips reuse paths and URLs while cancellation restores all
   assert.equal(env.target.style.getPropertyValue('clip-path'), targetURL);
   assert.equal(env.hero.style.getPropertyValue('--video-reveal-clip'), heroURL);
   assert.equal(clipFor(env, targetURL).children[0], path);
+  assert.equal(path.getAttribute('d'), firstGeometry, 'unreached rectangles stay unchanged');
+  env.step(450);
   assert.notEqual(path.getAttribute('d'), firstGeometry);
   assert.equal(clips(env).length, 2);
   assert.equal(env.body.classList.contains('watch-reveal-animating'), true);
@@ -141,6 +143,37 @@ test('stable document clips reuse paths and URLs while cancellation restores all
   reveal.cancel();
   assert.equal(await next, false);
   assert.equal(clips(env).length, 0);
+});
+
+test('fixed reveal geometry is reused until a target changes size', async () => {
+  const env = environment();
+  const measured = new Map();
+  for (const target of [env.target, env.hero]) {
+    const original = target.getBoundingClientRect;
+    target.getBoundingClientRect = () => {
+      measured.set(target, (measured.get(target) || 0) + 1);
+      return original();
+    };
+  }
+  let invalidate, disconnected = false;
+  env.win.ResizeObserver = class {
+    constructor(callback) { invalidate = callback; }
+    observe() {}
+    disconnect() { disconnected = true; }
+  };
+  const reveal = createVideoReveal(env);
+  const promise = reveal.enter();
+  env.step(120);
+  env.step(400);
+  assert.equal(measured.get(env.target), 1);
+  assert.equal(measured.get(env.hero), 1);
+  invalidate([{ target: env.target }]);
+  env.step(500);
+  assert.equal(measured.get(env.target), 2);
+  assert.equal(measured.get(env.hero), 1);
+  env.step(780);
+  assert.equal(await promise, true);
+  assert.equal(disconnected, true);
 });
 
 test('completion commits watch mode under the opening before removing clips and transition lock', async () => {

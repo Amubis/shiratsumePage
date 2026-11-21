@@ -219,7 +219,7 @@ function updatePlaybackLabel(status) {
   if (status) mediaStatus = status;
   $('#watch-label').textContent = translate(watching ? 'returnHome' : 'watch');
   $('#watch-toggle').setAttribute('aria-label',$('#watch-label').textContent);
-  $('#watch-toggle .round-icon use').setAttribute('href',watching?'#icon-return':'#icon-play');
+  $('#watch-toggle .round-icon use').setAttribute('href',watching?'#icon-return':'#icon-video-expand');
   const paused = mediaStatus !== 'playing';
   const label = translate(paused ? 'play' : 'pause');
   $('#pause-toggle').setAttribute('aria-label', label);
@@ -280,7 +280,7 @@ function setWatching(next) {
   [$('.hero-copy'),$('.scroll-cue'),$('.model-control'),$('.language-control')].forEach((node) => { node.inert = next; });
   $('.topbar').inert = next || currentIndex !== 0;
   updatePlaybackLabel();
-  contrastLayer?.refresh();
+  contrastLayer?.refreshActivity();
   if (next && !MODELS[modelId].preview) { userPaused = false; void player.resume(); }
 }
 
@@ -774,8 +774,8 @@ albumScroll=createAlbumScroll({
 });
 videoReveal=createVideoReveal({
   hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
-  targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.hero-clovers'),$('.hero-wash'),$('.halftone-vignette'),$('.hero-edge-shade'),$('.scroll-cue'),$('.hero-coordinate'),$('.hero-treatment')],
-  onStart(){finishIntro();ownerProfile.close();userPaused=false;void player.resume();},
+  targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.scroll-cue'),$('.hero-coordinate')],
+  onStart(){finishIntro();ownerProfile.close();topbarDock?.refresh();heroInteractions?.refresh();userPaused=false;void player.resume();},
   onComplete(){setWatching(true);},
 });
 heroInteractions=createHeroInteractions({

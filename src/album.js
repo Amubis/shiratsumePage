@@ -21,8 +21,8 @@ export const ALBUM_ORDERS = Object.freeze(['desc', 'asc']);
 const PAGE_SIZES = Object.freeze({ month: 8, year: 12 });
 const popularitySnapshot = service => Object.fromEntries(Object.entries(service?.snapshot?.() || {}).filter(([, count]) => Number.isFinite(count) && count > 0));
 export const ALBUM_COPY = Object.freeze({
-  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', month: '按月', year: '按年', largerView: '更大视图', smallerView: '更小视图', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片', pagePosition: '相册页位置', dateOrder: '拍摄时间排序', newestFirst: '由新到旧', oldestFirst: '由旧到新' },
-  ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', month: '月ごと', year: '年ごと', largerView: '大きく表示', smallerView: '小さく表示', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません', pagePosition: 'アルバムのページ位置', dateOrder: '撮影日時の並び順', newestFirst: '新しい順', oldestFirst: '古い順' },
+  zh: { title: '超级相册', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日期待补充', current: '当前模型', all: '全部照片', toggle: '切换当前模型与全部照片', month: '按月', year: '按年', largerView: '更大视图', smallerView: '更小视图', view: '切换照片分组密度', previous: '上一页', next: '下一页', empty: '这里还没有照片。', source: '测试视频摘帧 · 拍摄日期待补充', mixedSource: '按已有拍摄信息整理', open: '查看照片', close: '关闭照片播放器', fullscreen: '全屏查看照片', exitFullscreen: '退出照片全屏', photoPrevious: '上一张照片', photoNext: '下一张照片', player: '照片播放器', defaultAlt: '相册照片', undated: '未标注拍摄日期', photoCount: '张影像', noPhoto: '没有可显示的照片', pagePosition: '相册页位置', dateOrder: '拍摄时间排序', newestFirst: '由新到旧', oldestFirst: '由旧到新' },
+  ja: { title: '超アルバム', coverNote: 'LITTLE CLOVER MEMORIES', stillLabel: 'VIDEO STILL', unknown: '日付未設定', current: 'このモデル', all: 'すべての写真', toggle: 'このモデルとすべての写真を切り替え', month: '月ごと', year: '年ごと', largerView: '大きく表示', smallerView: '小さく表示', view: '写真のグループと密度を切り替え', previous: '前のページ', next: '次のページ', empty: '写真はまだありません。', source: 'テスト映像のひとこま · 撮影日を準備中', mixedSource: '登録された撮影情報で整理', open: '写真を見る', close: '写真ビューアを閉じる', fullscreen: '写真を全画面で表示', exitFullscreen: '全画面表示を終了', photoPrevious: '前の写真', photoNext: '次の写真', player: '写真ビューア', defaultAlt: 'アルバムの写真', undated: '撮影日未設定', photoCount: '枚', noPhoto: '表示する写真がありません', pagePosition: 'アルバムのページ位置', dateOrder: '撮影日時の並び順', newestFirst: '新しい順', oldestFirst: '古い順' },
 });
 const albumCopyDictionary = input => Object.fromEntries(['zh', 'ja'].map(locale => [locale,
   Object.fromEntries(Object.entries(ALBUM_COPY[locale]).map(([key, fallback]) => [key, typeof input?.[locale]?.[key] === 'string' ? input[locale][key] : fallback])),
@@ -178,10 +178,23 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   const playerClose = button('album-player-close'); const playerPrevious = button('album-player-previous'); const playerNext = button('album-player-next');
   const playerContent = element('div', 'album-player-content'); const playerStage = element('div', 'album-player-stage'); const playerComments = element('aside', 'album-player-comments');
   const playerFigure = element('figure', 'album-player-figure'); const playerImage = element('img', 'album-player-image'); const playerDescription = element('p', 'album-player-description'); const playerCaption = element('figcaption', 'album-player-caption');
+  const playerTools = element('div', 'album-player-photo-tools');
+  const playerZoom = button('album-player-zoom');
+  const fullscreenDialog = element('dialog', 'album-fullscreen');
+  const fullscreenSurface = element('div', 'album-fullscreen-surface');
+  const fullscreenImage = element('img', 'album-fullscreen-image');
+  const fullscreenClose = button('album-fullscreen-close');
+  let nativeFullscreen = false, fullscreenExit = null;
+  playerZoom.setAttribute('aria-haspopup', 'dialog');
+  playerZoom.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.3 15.3 4.7 4.7m-12-9.5h5m-2.5-2.5v5"/></svg>';
+  fullscreenImage.draggable = false;
+  fullscreenClose.textContent = '×';
+  fullscreenSurface.append(fullscreenImage, fullscreenClose); fullscreenDialog.append(fullscreenSurface);
   // Localized labels declare their text boundary where they are created, so
   // new controls do not depend on a distant list of CSS class selectors.
   for (const node of [title, coverSmall, filterButton, orderButton, groupCount, empty, sourceNote, previous, mode, next, playerDescription, playerCaption]) node.setAttribute('data-language-text', '');
-  playerFigure.append(playerImage, playerDescription, playerCaption); playerStage.append(playerFigure); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent, playerPrevious, playerNext); doc.body.append(dialog);
+  playerTools.append(playerZoom);
+  playerFigure.append(playerImage, playerDescription, playerCaption, playerTools); playerStage.append(playerFigure); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent, playerPrevious, playerNext); doc.body.append(dialog, fullscreenDialog);
   const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
   const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion,onRequestClose:()=>closePlayer()});
   const section = root.closest?.('.page-section');
@@ -349,19 +362,62 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   bind(playerImage, 'load', () => {
     if (playerImage.naturalWidth > 0 && playerImage.naturalHeight > 0) setPlayerAspect(playerImage.naturalWidth, playerImage.naturalHeight);
   });
+  function syncFullscreenImage() {
+    if (fullscreenImage.src !== playerImage.src) fullscreenImage.src = playerImage.src;
+    fullscreenImage.alt = playerImage.alt;
+  }
+  function openFullscreen() {
+    if (!dialog.open || fullscreenDialog.open || playerMotion.phase === 'close') return;
+    playerLike?.cancelInteraction();
+    syncFullscreenImage();
+    fullscreenDialog.showModal();
+    fullscreenClose.focus?.({ preventScroll: true });
+    if (doc.fullscreenEnabled && !doc.fullscreenElement) {
+      // Unsupported or denied requests leave the viewport-sized dialog open.
+      void fullscreenSurface.requestFullscreen?.().catch(() => {});
+    }
+  }
+  function closeFullscreen({ immediate = false, restoreFocus = true } = {}) {
+    if (!fullscreenDialog.open || (fullscreenExit && !immediate)) return;
+    const finish = () => {
+      const exit = fullscreenExit; fullscreenExit = null; exit?.cancel();
+      nativeFullscreen = false;
+      if (doc.fullscreenElement === fullscreenSurface) void doc.exitFullscreen?.().catch(() => {});
+      fullscreenDialog.close();
+      fullscreenImage.removeAttribute('src');
+      if (restoreFocus && dialog.open) playerZoom.focus?.({ preventScroll: true });
+    };
+    if (immediate || reducedMotion() || doc.hidden || !fullscreenImage.animate) { finish(); return; }
+    const animation = fullscreenImage.animate([{ opacity: 1 }, { opacity: 0, scale: .985 }], { duration: 150, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' });
+    fullscreenExit = animation;
+    animation.finished.then(() => { if (fullscreenExit === animation) finish(); }).catch(() => {});
+  }
+  bind(playerZoom, 'click', openFullscreen);
+  bind(fullscreenClose, 'click', () => closeFullscreen());
+  bind(fullscreenDialog, 'cancel', event => { event.preventDefault(); closeFullscreen(); });
+  bind(fullscreenDialog, 'keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeFullscreen(); }
+  });
+  bind(doc, 'fullscreenchange', () => {
+    if (doc.fullscreenElement === fullscreenSurface) {
+      if (fullscreenDialog.open) nativeFullscreen = true;
+      else void doc.exitFullscreen?.().catch(() => {});
+    } else if (nativeFullscreen) closeFullscreen({ immediate: true });
+  });
   function renderPlayer() {
     const item = playerItems[playerIndex]; if (!item) return;
     dialog.setAttribute('data-photo-id', item.id);
     setPlayerAspect(item.width, item.height);
     playerImage.src = item.url; playerImage.alt = altFor(item);
+    if (fullscreenDialog.open) syncFullscreenImage();
     const date = dateKey(item.takenAt, 'day');
     const caption = typeof item.caption === 'string' ? item.caption : item.caption?.[locale] || item.caption?.zh || '';
     playerDescription.textContent = caption; playerDescription.hidden = !caption;
     if (likesService) {
       if (!playerLike) {
         playerLike = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion,
-          isActive: () => dialog.open && !playerMotion.busy });
-        playerLike.element.classList.add('album-player-like'); playerFigure.append(playerLike.element);
+          isActive: () => dialog.open && !fullscreenDialog.open && !playerMotion.busy });
+        playerLike.element.classList.add('album-player-like'); playerTools.prepend(playerLike.element);
       } else { playerLike.setPhotoId(item.id); playerLike.setLanguage(locale); }
     }
     playerCaption.textContent = [`${String(playerIndex + 1).padStart(2, '0')} / ${String(playerItems.length).padStart(2, '0')}`, date === 'undated' ? text().undated : groupLabel(date), item.worldName].filter(Boolean).join(' · ');
@@ -376,6 +432,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     returnFocus = null;
   }
   function closePlayer(immediate = false) {
+    closeFullscreen({ immediate: true, restoreFocus: false });
     playerLike?.cancelInteraction();
     commentPanel.setActive(false);
     const hide = () => { if(dialog.open)dialog.close();else restorePlayerFocus(); };
@@ -536,6 +593,9 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     grid.replaceChildren(...nodes);
     layoutPhotos();
     dialog.setAttribute('aria-label', text().player); playerClose.textContent = '×'; playerClose.setAttribute('aria-label', text().close);
+    playerZoom.setAttribute('aria-label', text().fullscreen); playerZoom.title = text().fullscreen;
+    fullscreenDialog.setAttribute('aria-label', text().fullscreen);
+    fullscreenClose.setAttribute('aria-label', text().exitFullscreen); fullscreenClose.title = text().exitFullscreen;
     playerPrevious.textContent = '←'; playerNext.textContent = '→'; playerPrevious.setAttribute('aria-label', text().photoPrevious); playerNext.setAttribute('aria-label', text().photoNext);
     if (dialog.open) renderPlayer();
     onReady({ pageIndex, pages: pages.length, count: total, view, filter, order, reason, pageKey: page?.key || null });
@@ -640,6 +700,6 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     setView(nextView) { if (destroyed || !ALBUM_VIEWS.includes(nextView)) return false; view = nextView; pageIndex = 0; transitionPage('view'); return true; },
     setFilter(nextFilter) { if (destroyed || !['model', 'all'].includes(nextFilter)) return false; filter = nextFilter; pageIndex = 0; transitionPage('filter'); return true; },
     setOrder, goToPage, openPlayer, closePlayer,
-    destroy() { if (destroyed) return; layoutObserver?.disconnect(); if (layoutFrame !== null) win.cancelAnimationFrame?.(layoutFrame); layoutFrame = null; closePlayer(true); commentPanel.destroy(); playerLike?.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
+    destroy() { if (destroyed) return; layoutObserver?.disconnect(); if (layoutFrame !== null) win.cancelAnimationFrame?.(layoutFrame); layoutFrame = null; closePlayer(true); commentPanel.destroy(); playerLike?.destroy(); playerMotion.destroy(); pageMotion.destroy(); clearInspection(); destroyed = true; bindings.splice(0).forEach((dispose) => dispose()); cardBindings.splice(0).forEach((dispose) => dispose()); fullscreenDialog.remove(); dialog.remove(); container.replaceChildren(); container.classList.remove('album-showcase'); },
   };
 }

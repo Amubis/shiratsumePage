@@ -11,6 +11,14 @@ const clamp = (value) => Math.max(0, Math.min(1, value));
 const ease = (value) => value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value + 2) ** 3 / 2;
 const number = (value) => String(Number((Number.isFinite(value) ? value : 0).toFixed(3)));
 
+function circleReach(rect, center) {
+  const x = center.x - rect.left, y = center.y - rect.top;
+  return {
+    nearest: Math.hypot(Math.max(-x, x - rect.width, 0), Math.max(-y, y - rect.height, 0)),
+    farthest: Math.hypot(Math.max(Math.abs(x), Math.abs(x - rect.width)), Math.max(Math.abs(y), Math.abs(y - rect.height))),
+  };
+}
+
 export function videoCoverRadius(center, { width, height }, margin = 32) {
   return Math.max(...[[0, 0], [width, 0], [0, height], [width, height]].map(([x, y]) => Math.hypot(x - center.x, y - center.y))) + margin;
 }
@@ -63,21 +71,37 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
     if (current !== session) return;
     current = null;
     if (session.frame) win.cancelAnimationFrame(session.frame);
+    session.resizeObserver?.disconnect();
     session.listeners.forEach(([target, name, listener, options]) => target.removeEventListener(name, listener, options));
     session.saved.forEach(restore);
     session.clips.forEach(({ clip }) => clip.destroy());
-    session.heroClip?.destroy();
     if (!session.hadClass) body.classList.remove('watch-reveal-animating');
     session.resolve(completed);
   }
 
   function paint(session, frame) {
-    // Read all geometry first, then mutate existing paths without replacing URLs.
-    const layouts = session.clips.map(({ element, clip }) => ({ clip, rect: element.getBoundingClientRect() }));
-    const heroRect = hero.getBoundingClientRect();
-    for (const { clip, rect } of layouts) clip.update([{ path: inverseCirclePath(rect, session.center, frame.radius), rule: 'evenodd' }]);
-    session.heroClip.update([{ path: inverseCirclePath(heroRect, session.center, frame.radius), rule: 'evenodd' }]);
-    if (session.disc) session.disc.style.setProperty('transform', `scale(${number(frame.discScale)})`);
+    // Measure together only when a box changes. The dock is locked throughout
+    // the wipe, and viewport movement cancels the session.
+    for (const record of session.clips) {
+      if (record.rect && session.resizeObserver) continue;
+      const rect = record.element.getBoundingClientRect();
+      if (record.rect && ['left', 'top', 'width', 'height'].every(key => rect[key] === record.rect[key])) continue;
+      record.rect = rect;
+      record.reach = circleReach(rect, session.center);
+      record.radius = null;
+    }
+    for (const record of session.clips) {
+      const { rect, reach, clip } = record;
+      const radius = frame.radius >= reach.farthest ? -1 : frame.radius <= reach.nearest ? 0 : frame.radius;
+      if (radius === record.radius) continue;
+      record.radius = radius;
+      clip.update(radius < 0 ? [] : [{ path: inverseCirclePath(rect, session.center, radius), rule: 'evenodd' }]);
+    }
+    const discScale = number(frame.discScale);
+    if (session.disc && discScale !== session.discScale) {
+      session.discScale = discScale;
+      session.disc.style.setProperty('transform', `scale(${discScale})`);
+    }
   }
 
   function complete(session) {
@@ -104,7 +128,7 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
       const promise = new Promise((done) => { resolve = done; });
       const disc = button.querySelector('.control-disc');
       const session = {
-        promise, resolve, disc, frame: 0, listeners: [], clips: [], heroClip: null,
+        promise, resolve, disc, frame: 0, listeners: [], clips: [], resizeObserver: null, discScale: null,
         hadClass: body.classList.contains('watch-reveal-animating'),
         saved: [...elements.map((element) => remember(element, REVEAL_PROPERTIES)), remember(hero, ['--video-reveal-clip']), ...(disc ? [remember(disc, ['transform'])] : [])],
       };
@@ -118,7 +142,6 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
         const bounds = button.getBoundingClientRect();
         session.center = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
         session.coverRadius = videoCoverRadius(session.center, { width: win.innerWidth, height: win.innerHeight });
-        session.startTime = win.performance.now();
         for (const element of elements) {
           const clip = createStableClip({ document: doc, prefix: 'video-target' });
           session.clips.push({ element, clip });
@@ -128,15 +151,27 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
           // for this session without changing their normal page presentation.
           element.style.setProperty('overflow', 'hidden', 'important');
         }
-        session.heroClip = createStableClip({ document: doc, prefix: 'video-hero' });
-        hero.style.setProperty('--video-reveal-clip', session.heroClip.url);
+        const heroClip = createStableClip({ document: doc, prefix: 'video-hero' });
+        session.clips.push({ element: hero, clip: heroClip });
+        hero.style.setProperty('--video-reveal-clip', heroClip.url);
+        if (typeof win.ResizeObserver === 'function') {
+          session.resizeObserver = new win.ResizeObserver(entries => {
+            for (const { target } of entries) {
+              const record = session.clips.find(({ element }) => element === target);
+              if (record) record.rect = null;
+            }
+          });
+          for (const { element } of session.clips) session.resizeObserver.observe(element);
+        }
         paint(session, videoRevealFrame(0, session.coverRadius));
+        session.startTime = win.performance.now();
       } catch { release(session, false); return promise; }
       const listen = (target, name, listener, options) => {
         target.addEventListener(name, listener, options);
         session.listeners.push([target, name, listener, options]);
       };
       listen(win, 'resize', cancel);
+      listen(win, 'scroll', cancel, { passive: true });
       listen(doc, 'visibilitychange', () => { if (doc.hidden) cancel(); });
       listen(doc, 'keydown', (event) => { if (event.key === 'Escape') cancel(); });
       for (const event of ['wheel', 'touchstart', 'touchmove']) listen(win, event, cancel, { passive: true, capture: true });

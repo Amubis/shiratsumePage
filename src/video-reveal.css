@@ -23,7 +23,8 @@ body.watch-mode .hero-treatment {
   pointer-events: none;
 }
 
-.hero::after {
+.hero::after,
+body.watch-reveal-animating .hero > :is(.hero-treatment, .hero-wash, .hero-edge-shade, .halftone-vignette, .hero-clovers) {
   -webkit-clip-path: var(--video-reveal-clip, none);
   clip-path: var(--video-reveal-clip, none);
 }
