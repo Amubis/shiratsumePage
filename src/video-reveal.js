@@ -38,14 +38,16 @@ export function videoRevealFrame(elapsed, coverRadius) {
 }
 
 /** Rectangle minus a circular opening, in target-local pixels. */
-export function inverseCirclePath(rect, center, radius) {
-  const width = Math.max(0, rect.width);
-  const height = Math.max(0, rect.height);
+export function inverseCirclePath(rect, center, radius, bounds = rect) {
+  const left = bounds.left - rect.left;
+  const top = bounds.top - rect.top;
+  const right = left + Math.max(0, bounds.width);
+  const bottom = top + Math.max(0, bounds.height);
   const x = center.x - rect.left;
   const y = center.y - rect.top;
   const r = Math.max(0, radius);
   const opening = r ? ` M${number(x + r)} ${number(y)} a${number(r)} ${number(r)} 0 1 0 ${number(-2 * r)} 0 a${number(r)} ${number(r)} 0 1 0 ${number(2 * r)} 0 Z` : '';
-  return `M0 0 H${number(width)} V${number(height)} H0 Z${opening}`;
+  return `M${number(left)} ${number(top)} H${number(right)} V${number(bottom)} H${number(left)} Z${opening}`;
 }
 
 /** Compatibility helper for geometry consumers; animation uses stable clips. */
@@ -58,12 +60,13 @@ export function inverseCircleMask(rect, center, radius) {
 const remember = (element, properties) => ({ element, values: properties.map((name) => ({ name, value: element.style.getPropertyValue(name), priority: element.style.getPropertyPriority(name) })) });
 const restore = ({ element, values }) => values.forEach(({ name, value, priority }) => value ? element.style.setProperty(name, value, priority) : element.style.removeProperty(name));
 
-export function createVideoReveal({ hero, button, targets = [], reducedMotion = false, onStart, onComplete } = {}) {
+export function createVideoReveal({ hero, button, targets = [], overflowTargets = [], reducedMotion = false, onStart, onComplete } = {}) {
   if (!hero?.ownerDocument || !button) throw new TypeError('The hero and video button are required.');
   const doc = hero.ownerDocument;
   const win = doc.defaultView;
   const body = doc.body;
   const elements = [...new Set(Array.from(targets).filter(Boolean))];
+  const preservesOverflow = new Set(overflowTargets);
   let current = null;
   let destroyed = false;
 
@@ -87,15 +90,16 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
       const rect = record.element.getBoundingClientRect();
       if (record.rect && ['left', 'top', 'width', 'height'].every(key => rect[key] === record.rect[key])) continue;
       record.rect = rect;
-      record.reach = circleReach(rect, session.center);
+      record.bounds = preservesOverflow.has(record.element) ? session.viewport : rect;
+      record.reach = circleReach(record.bounds, session.center);
       record.radius = null;
     }
     for (const record of session.clips) {
-      const { rect, reach, clip } = record;
+      const { rect, bounds, reach, clip } = record;
       const radius = frame.radius >= reach.farthest ? -1 : frame.radius <= reach.nearest ? 0 : frame.radius;
       if (radius === record.radius) continue;
       record.radius = radius;
-      clip.update(radius < 0 ? [] : [{ path: inverseCirclePath(rect, session.center, radius), rule: 'evenodd' }]);
+      clip.update(radius < 0 ? [] : [{ path: inverseCirclePath(rect, session.center, radius, bounds), rule: 'evenodd' }]);
     }
     const discScale = number(frame.discScale);
     if (session.disc && discScale !== session.discScale) {
@@ -130,7 +134,7 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
       const session = {
         promise, resolve, disc, frame: 0, listeners: [], clips: [], resizeObserver: null, discScale: null,
         hadClass: body.classList.contains('watch-reveal-animating'),
-        saved: [...elements.map((element) => remember(element, REVEAL_PROPERTIES)), remember(hero, ['--video-reveal-clip']), ...(disc ? [remember(disc, ['transform'])] : [])],
+        saved: [...elements.map((element) => remember(element, preservesOverflow.has(element) ? CLIP_PROPERTIES : REVEAL_PROPERTIES)), remember(hero, ['--video-reveal-clip']), ...(disc ? [remember(disc, ['transform'])] : [])],
       };
       current = session;
       body.classList.add('watch-reveal-animating');
@@ -141,15 +145,15 @@ export function createVideoReveal({ hero, button, targets = [], reducedMotion = 
       try {
         const bounds = button.getBoundingClientRect();
         session.center = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
-        session.coverRadius = videoCoverRadius(session.center, { width: win.innerWidth, height: win.innerHeight });
+        session.viewport = { left: 0, top: 0, width: win.innerWidth, height: win.innerHeight };
+        session.coverRadius = videoCoverRadius(session.center, session.viewport);
         for (const element of elements) {
           const clip = createStableClip({ document: doc, prefix: 'video-target' });
           session.clips.push({ element, clip });
           for (const property of CLIP_PROPERTIES) element.style.setProperty(property, clip.url);
-          // The inverse circle also has geometry outside this rectangle. The old
-          // SVG image viewport clipped it; keep overflowing descendants bounded
-          // for this session without changing their normal page presentation.
-          element.style.setProperty('overflow', 'hidden', 'important');
+          // The exploration clovers are animated outside the copy box. Give
+          // that layer a viewport-sized clip and leave its overflow untouched.
+          if (!preservesOverflow.has(element)) element.style.setProperty('overflow', 'hidden', 'important');
         }
         const heroClip = createStableClip({ document: doc, prefix: 'video-hero' });
         session.clips.push({ element: hero, clip: heroClip });

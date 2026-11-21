@@ -772,9 +772,11 @@ albumScroll=createAlbumScroll({
     }
   },
 });
+const heroCopy = $('.hero-copy');
 videoReveal=createVideoReveal({
   hero:$('.hero'),button:$('#watch-toggle'),reducedMotion,
-  targets:[$('.hero-copy'),$('.topbar'),$('.model-control'),$('.scroll-cue'),$('.hero-coordinate')],
+  targets:[heroCopy,$('.topbar'),$('.model-control'),$('.scroll-cue'),$('.hero-coordinate')],
+  overflowTargets:[heroCopy],
   onStart(){finishIntro();ownerProfile.close();topbarDock?.refresh();heroInteractions?.refresh();userPaused=false;void player.resume();},
   onComplete(){setWatching(true);},
 });

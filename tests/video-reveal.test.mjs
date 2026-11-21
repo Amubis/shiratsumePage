@@ -176,6 +176,22 @@ test('fixed reveal geometry is reused until a target changes size', async () => 
   assert.equal(disconnected, true);
 });
 
+test('decorative overflow stays visible until the opening reaches it', async () => {
+  const env = environment();
+  const reveal = createVideoReveal({ ...env, overflowTargets: [env.target] });
+  const pending = reveal.enter();
+  const clip = clipFor(env, env.target.style.getPropertyValue('clip-path'));
+  assert.equal(env.target.style.getPropertyValue('overflow'), 'visible');
+  assert.equal(env.target.style.getPropertyValue('overflow-y'), 'auto');
+  assert.match(clip.children[0].getAttribute('d'), /^M-100 -90 H900 V710 H-100 Z M/);
+  env.step(450);
+  assert.match(clip.children[0].getAttribute('d'), /^M-100 -90 H900 V710 H-100 Z M/);
+  env.step(780);
+  assert.equal(await pending, true);
+  assert.equal(env.target.style.getPropertyValue('overflow'), 'visible');
+  assert.equal(env.target.style.getPropertyValue('clip-path'), 'url("#original-clip")');
+});
+
 test('completion commits watch mode under the opening before removing clips and transition lock', async () => {
   const env = environment();
   const reveal = createVideoReveal({ ...env, onComplete() {
