@@ -159,7 +159,7 @@ test('invalid journal translations leave both versions unchanged', async () => {
   assert.equal(f.writes, 0);
   const response = await f.request({ targetType: 'journal', targetId: 'note', patch: { body: { zh: '新的正文' } } });
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).content.journal[0].body, { zh: '新的正文', ja: '' });
+  assert.equal((await response.json()).content.journal[0].body, '新的正文', 'untranslated legacy text retains its public fallback without inventing a translation');
 });
 
 test('inline writes retain authentication, CSRF and narrow field validation', async () => {

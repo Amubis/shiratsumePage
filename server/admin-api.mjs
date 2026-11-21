@@ -130,6 +130,12 @@ function applyLiveText(record, locale, fields) {
   for (const [key, value] of Object.entries(fields)) {
     const previous = record[key];
     const legacyEdit = typeof value === 'string';
+    // A legacy string displays in both languages. Keep that fallback when
+    // only its source text changed and no separate translation was added.
+    if (typeof previous === 'string' && !legacyEdit && !Object.hasOwn(value, 'ja')) {
+      record[key] = value.zh;
+      continue;
+    }
     const existing = typeof previous === 'string'
       ? { zh: previous, ja: legacyEdit ? previous : '' }
       : previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : { zh: '', ja: '' };
