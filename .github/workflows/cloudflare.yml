@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      comment_email_enabled:
+        description: 'Send new comment notifications to the verified owner email'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -47,7 +52,7 @@ jobs:
       CLOUDFLARE_WORKERS_SUBDOMAIN: ${{ inputs.workers_subdomain }}
       CLOUDFLARE_INSPECT_CONTENT: ${{ inputs.inspect_content }}
       CLOUDFLARE_PUBLISH_EMAIL_CONTACT: ${{ inputs.publish_email_contact }}
-      CLOUDFLARE_COMMENT_EMAIL_ENABLED: ${{ vars.CLOUDFLARE_COMMENT_EMAIL_ENABLED }}
+      CLOUDFLARE_COMMENT_EMAIL_ENABLED: ${{ inputs.comment_email_enabled }}
       CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME || 'shiratsume-page' }}
       CLOUDFLARE_D1_NAME: ${{ vars.CLOUDFLARE_D1_NAME || 'shiratsume-comments' }}
       ADMIN_USERNAME: ${{ vars.ADMIN_USERNAME || 'Amubis' }}

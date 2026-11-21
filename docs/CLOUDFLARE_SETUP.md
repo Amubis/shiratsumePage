@@ -242,7 +242,7 @@ npm run cloud:deploy
 
 访客留言发送后直接公开，昵称选填。留言关联已公开的照片或碎碎念，管理页「消息中心」可按所有／未读和留言来源筛选，并可标为已读、回复或删除。管理员回复由服务端标记身份。历史未公开留言保留原有可见性。
 
-消息中心在登录、手动刷新或管理操作时更新未读数量。站长邮件可在 amubis.art 启用 Email Routing 并验证 `amubisxv@gmail.com` 后，将 GitHub Actions 仓库变量 `CLOUDFLARE_COMMENT_EMAIL_ENABLED` 设为 `true`，再运行部署。邮件绑定仅允许向该地址发送新访客留言。Cloudflare 对已验证目标地址的发送免费，也不计入每日限额。[Cloudflare 邮件限额](https://developers.cloudflare.com/email-service/platform/limits/#verified-destination-addresses)
+消息中心在登录、手动刷新或管理操作时更新未读数量。站长邮件依赖 amubis.art 的 Email Routing 与已验证的 `amubisxv@gmail.com`。部署工作流的 `comment_email_enabled` 选项控制邮件绑定，绑定只允许向该地址发送新访客留言。Cloudflare 对已验证目标地址的发送免费，也不计入每日限额。[Cloudflare 邮件限额](https://developers.cloudflare.com/email-service/platform/limits/#verified-destination-addresses)
 
 网站与 Worker 不同源时，评论提交允许已发布内容中“公开网站地址”的来源。若还需要额外允许预览站点，可以在 Worker **Settings → Variables and Secrets** 添加普通变量 `PUBLIC_SITE_ORIGINS`，填写逗号分隔的来源，例如 `https://amubis.github.io,https://garden.example.com`。来源只包含协议与域名，不带路径。管理 API 仍仅接受同源登录会话与 CSRF 校验；管理密码不写入公开运行配置。
 
