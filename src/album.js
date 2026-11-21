@@ -101,6 +101,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   let enabled = true;
   let destroyed = false;
   let inspection = null;
+  let chargingPrint = null;
   let pointerFrame = null;
   let pendingPointer = null;
   let keyboardFocus = false;
@@ -290,7 +291,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   }
   function clearInspection() {
     if (pointerFrame !== null) win.cancelAnimationFrame?.(pointerFrame);
-    pointerFrame = null; pendingPointer = null; inspection = null;
+    pointerFrame = null; pendingPointer = null; inspection = null; chargingPrint = null;
     cards.forEach((card, index) => {
       card.style.setProperty('--inspect-rx', '0deg'); card.style.setProperty('--inspect-ry', '0deg'); card.style.setProperty('--inspect-lift', '0px'); card.style.setProperty('--neighbor-x', '0px'); card.style.setProperty('--neighbor-y', '0px');
       wrappers[index].classList.remove('is-inspected');
@@ -316,7 +317,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     });
   }
   function inspect(index, event) {
-    if (!enabled || reducedMotion() || event?.pointerType === 'touch') return;
+    if (chargingPrint !== null || !enabled || reducedMotion() || event?.pointerType === 'touch') return;
     if (inspection !== index) updateInspectionNeighbors(index);
     inspection = index;
     if (!event || !Number.isFinite(event.clientX)) return;
@@ -333,7 +334,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     if (pending && !destroyed) inspect(pending.index, pending.event);
   }
   function queueInspection(index, event) {
-    if (event.pointerType === 'touch' || !enabled || reducedMotion()) return;
+    if (chargingPrint !== null || event.pointerType === 'touch' || !enabled || reducedMotion()) return;
     pendingPointer = { index, event: { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType } };
     if (pointerFrame === null) {
       if (win.requestAnimationFrame) pointerFrame = win.requestAnimationFrame(paintPointer);
@@ -492,22 +493,43 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       nodes.push(wrapper); wrappers.push(wrapper); cards.push(card);
       prints.push(null);
       wrapper.setAttribute('data-photo-id', item.id);
+      let pointerOver = false, likeButton = null;
+      function releaseInspection(focusTarget = doc.activeElement) {
+        const focused = keyboardFocus && (focusTarget === card || (likeButton && focusTarget === likeButton));
+        if (inspection === index && chargingPrint !== index && !pointerOver && !focused) clearInspection();
+      }
+      function onHoldChange(holding, pointerType) {
+        if (holding && pointerType !== 'touch') {
+          inspect(index);
+          if (inspection === index) chargingPrint = index;
+        } else if (!holding && chargingPrint === index) {
+          chargingPrint = null;
+          releaseInspection();
+        }
+      }
+      const onFocus = () => { if (keyboardFocus) inspect(index); };
+      const onBlur = event => releaseInspection(event.relatedTarget);
       if (likesService) {
-        const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion, isActive: canLikeFromPaper });
+        const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion, isActive: canLikeFromPaper, onHoldChange });
+        likeButton = like.element;
         const print = element('div', 'album-print'), footer = element('div', 'album-photo-footer');
         footer.append(label, like.element); print.append(card, footer); wrapper.append(print);
         prints[index] = print; syncPrintPose(index);
         cardBindings.push(() => like.destroy());
-        bind(like.element, 'pointerenter', event => inspect(index, event), cardBindings);
-        bind(wrapper, 'pointerleave', clearInspection, cardBindings);
-        bind(like.element, 'focus', () => { if (keyboardFocus) inspect(index); }, cardBindings);
-        bind(like.element, 'blur', clearInspection, cardBindings);
+        bind(likeButton, 'pointerdown', () => { keyboardFocus = false; }, cardBindings);
+        bind(likeButton, 'focus', onFocus, cardBindings);
+        bind(likeButton, 'blur', onBlur, cardBindings);
       }
-      bind(card, 'pointerenter', (event) => inspect(index, event), cardBindings);
-      bind(card, 'pointermove', (event) => queueInspection(index, event), cardBindings);
-      bind(card, 'pointerleave', clearInspection, cardBindings);
-      bind(card, 'focus', () => { if (keyboardFocus) inspect(index); }, cardBindings);
-      bind(card, 'blur', clearInspection, cardBindings);
+      // The image and footer are one hover area, including when capture retargets the pointer.
+      bind(wrapper, 'pointerenter', event => {
+        if (event.pointerType === 'touch') return;
+        pointerOver = true;
+        inspect(index, event);
+      }, cardBindings);
+      bind(wrapper, 'pointermove', event => queueInspection(index, event), cardBindings);
+      bind(wrapper, 'pointerleave', () => { pointerOver = false; releaseInspection(); }, cardBindings);
+      bind(card, 'focus', onFocus, cardBindings);
+      bind(card, 'blur', onBlur, cardBindings);
       bind(card, 'click', () => openPlayer(item.id), cardBindings);
     }
     grid.classList.add('is-layout-initializing');

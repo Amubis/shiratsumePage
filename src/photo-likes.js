@@ -1,6 +1,6 @@
 const PHOTO_LIKES_COPY = Object.freeze({
-  zh: { like: '点赞', unlike: '取消点赞', saving: '正在保存点赞…', retry: '点赞暂时无法保存，请重试', loading: '正在读取点赞…', mainSite: '请在主站点赞', count: '个赞', holdHint: '长按空格约三秒可送出五个赞', boosted: '已为这张照片送出五个赞' },
-  ja: { like: 'いいね', unlike: 'いいねを取り消す', saving: 'いいねを保存中…', retry: '保存できませんでした。もう一度お試しください', loading: 'いいねを読み込み中…', mainSite: 'いいねはメインサイトで利用できます', count: '件のいいね', holdHint: 'スペースキーを約3秒長押しすると、いいねを5件送れます', boosted: 'この写真にいいねを5件送りました' },
+  zh: { like: '点赞', unlike: '取消点赞', saving: '正在保存点赞…', retry: '点赞暂时无法保存，请重试', loading: '正在读取点赞…', mainSite: '请在主站点赞', count: '个赞', holdHint: '长按点赞按钮约三秒可送出五个赞', boosted: '已为这张照片送出五个赞' },
+  ja: { like: 'いいね', unlike: 'いいねを取り消す', saving: 'いいねを保存中…', retry: '保存できませんでした。もう一度お試しください', loading: 'いいねを読み込み中…', mainSite: 'いいねはメインサイトで利用できます', count: '件のいいね', holdHint: 'いいねボタンを約3秒長押しすると、いいねを5件送れます', boosted: 'この写真にいいねを5件送りました' },
 });
 const BOOST_WEIGHT = 5;
 const HOLD_MS = 2950;
@@ -137,7 +137,7 @@ export function createPhotoLikesService({ baseUrl = null, fetchImpl = globalThis
 }
 
 /** A sibling button avoids nesting interactive controls inside a photo button. */
-export function createPhotoLikeButton({ document: doc = globalThis.document, service = null, photoId = '', language = 'zh', reducedMotion = () => false, isActive = () => true } = {}) {
+export function createPhotoLikeButton({ document: doc = globalThis.document, service = null, photoId = '', language = 'zh', reducedMotion = () => false, isActive = () => true, onHoldChange = () => {} } = {}) {
   if (!doc?.createElement) throw new TypeError('A document is required.');
   let id = String(photoId), locale = language === 'ja' ? 'ja' : 'zh';
   let destroyed = false, pulse = null, hold = null, discardPointerClick = false;
@@ -181,10 +181,12 @@ export function createPhotoLikeButton({ document: doc = globalThis.document, ser
   }
   function stopHold(discardClick = false) {
     if (!hold) return;
+    const { pointerType } = hold;
     clearTimeout(hold.timer);
     if (discardClick && hold.kind === 'pointer') discardPointerClick = true;
     hold = null;
     setMotion('');
+    onHoldChange(false, pointerType);
   }
   function cancelInteraction() {
     stopHold(true);
@@ -249,6 +251,7 @@ export function createPhotoLikeButton({ document: doc = globalThis.document, ser
     hold = press;
     press.photoId = id;
     press.timer = setTimeout(() => void finishHold(press), HOLD_MS);
+    onHoldChange(true, press.pointerType);
     return true;
   }
   async function toggle() {
@@ -270,15 +273,18 @@ export function createPhotoLikeButton({ document: doc = globalThis.document, ser
     event.stopPropagation();
     if ((event.button ?? 0) !== 0 || event.isPrimary === false || hold) return;
     discardPointerClick = !interactive();
-    if (beginHold({ kind: 'pointer', pointer: event.pointerId, x: event.clientX, y: event.clientY })) {
+    if (beginHold({ kind: 'pointer', pointer: event.pointerId, pointerType: event.pointerType, x: event.clientX, y: event.clientY })) {
       try { element.setPointerCapture?.(event.pointerId); } catch { /* A pointer may have already been cancelled. */ }
     }
   });
   bind(element, 'pointermove', event => { if (pointerMatches(event) && moved(event)) stopHold(true); });
   bind(element, 'pointerup', event => { if (pointerMatches(event)) stopHold(moved(event)); });
-  for (const event of ['pointercancel', 'lostpointercapture', 'pointerleave']) {
+  for (const event of ['pointercancel', 'lostpointercapture']) {
     bind(element, event, pointer => { if (pointerMatches(pointer)) stopHold(true); });
   }
+  bind(element, 'pointerleave', event => {
+    if (pointerMatches(event) && !element.hasPointerCapture?.(event.pointerId)) stopHold(true);
+  });
   bind(element, 'contextmenu', event => {
     if (hold?.kind === 'pointer' || discardPointerClick) event.preventDefault();
   });

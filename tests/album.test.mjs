@@ -268,16 +268,16 @@ test('page changes clamp at boundaries and dispose old photo event listeners', (
 
 test('hover raises a card, pushes neighbors and clamps inspect tilt, then releases its frame', (t) => {
   const f = fixture(t); const cards = f.container.findAll('album-photo-card'); const wrappers = f.container.findAll('album-photo');
-  cards[1].emit('pointerenter', { pointerType: 'mouse', clientX: 1000, clientY: -1000 });
+  wrappers[1].emit('pointerenter', { pointerType: 'mouse', clientX: 1000, clientY: -1000 });
   assert.equal(wrappers[1].classList.contains('is-inspected'), true); assert.ok(parseFloat(cards[0].style.getPropertyValue('--neighbor-x')) < 0); assert.ok(cards.some((card, index) => index !== 1 && parseFloat(card.style.getPropertyValue('--neighbor-y')) !== 0));
   assert.equal(cards[1].style.getPropertyValue('--inspect-rx'), '5.00deg'); assert.equal(cards[1].style.getPropertyValue('--inspect-ry'), '5.00deg');
-  cards[1].emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 }); assert.equal(f.frames.size, 1);
-  cards[1].emit('pointerleave'); assert.equal(f.frames.size, 0); assert.equal(wrappers[1].classList.contains('is-inspected'), false); assert.equal(cards[0].style.getPropertyValue('--neighbor-x'), '0px'); assert.equal(cards[0].style.getPropertyValue('--neighbor-y'), '0px');
+  wrappers[1].emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 }); assert.equal(f.frames.size, 1);
+  wrappers[1].emit('pointerleave'); assert.equal(f.frames.size, 0); assert.equal(wrappers[1].classList.contains('is-inspected'), false); assert.equal(cards[0].style.getPropertyValue('--neighbor-x'), '0px'); assert.equal(cards[0].style.getPropertyValue('--neighbor-y'), '0px');
 });
 
 test('touch and reduced-motion avoid card tilt and neighbor displacement', (t) => {
-  const f = fixture(t, { reducedMotion: () => true }); const card = f.find('album-photo-card');
-  card.emit('pointerenter', { pointerType: 'mouse', clientX: 20, clientY: 30 }); card.emit('pointermove', { pointerType: 'touch', clientX: 20, clientY: 30 });
+  const f = fixture(t, { reducedMotion: () => true }); const wrapper = f.find('album-photo');
+  wrapper.emit('pointerenter', { pointerType: 'mouse', clientX: 20, clientY: 30 }); wrapper.emit('pointermove', { pointerType: 'touch', clientX: 20, clientY: 30 });
   assert.equal(f.frames.size, 0); assert.equal(f.find('album-photo').classList.contains('is-inspected'), false);
 });
 
@@ -520,10 +520,10 @@ test('liking a photo updates its card and open viewer without moving or replacin
   assert.equal(cardLike.parentElement.classList.contains('album-photo-footer'), true, 'like belongs in the reserved paper footer');
   assert.equal(cardLike.parentElement.parentElement === wrappers[0].find('album-photo-card').parentElement, true, 'the independent buttons share one transform surface');
   const card = wrappers[0].find('album-photo-card'), print = cardLike.parentElement.parentElement;
-  card.emit('pointerenter', { pointerType: 'mouse', clientX: 140, clientY: 70 });
+  wrappers[0].emit('pointerenter', { pointerType: 'mouse', clientX: 140, clientY: 70 });
   assert.equal(print.style.getPropertyValue('--inspect-rx'), card.style.getPropertyValue('--inspect-rx'), 'the complete paper tilts with its attached like control');
   assert.equal(print.style.getPropertyValue('--inspect-lift'), '-12px');
-  card.emit('pointerleave');
+  wrappers[0].emit('pointerleave');
   assert.equal(print.style.getPropertyValue('--inspect-lift'), '0px');
   assert.equal(cardLike.find('photo-like-count').textContent, '3');
   f.api.openPlayer('one');
@@ -542,6 +542,25 @@ test('liking a photo updates its card and open viewer without moving or replacin
   assert.equal(f.dialog.find('photo-like').title, 'いいねを取り消す');
   assert.equal(f.container.findAll('photo-like')[0].title, 'いいねを取り消す');
   f.api.destroy(); assert.equal(likesService.listeners.size, 0, 'card and viewer subscriptions are released');
+});
+
+test('a like hold keeps the photo raised and tilted until the press ends', t => {
+  const likesService = { ...albumLikesFixture(), boost: async () => {} };
+  const f = fixture(t, { likesService });
+  const wrapper = f.find('album-photo'), like = wrapper.find('photo-like'), print = wrapper.find('album-print');
+  const pointer = { pointerId: 1, pointerType: 'mouse', clientX: 160, clientY: 160 };
+  wrapper.emit('pointerenter', pointer);
+  const tilt = print.style.getPropertyValue('--inspect-rx');
+  wrapper.emit('pointermove', { ...pointer, clientY: 150 });
+  like.emit('pointerdown', pointer);
+  f.flush();
+  wrapper.emit('pointerleave', pointer);
+  assert.equal(wrapper.classList.contains('is-inspected'), true);
+  assert.equal(print.style.getPropertyValue('--inspect-rx'), tilt);
+  assert.equal(print.style.getPropertyValue('--inspect-lift'), '-12px');
+  like.emit('pointercancel', pointer);
+  assert.equal(wrapper.classList.contains('is-inspected'), false);
+  assert.equal(print.style.getPropertyValue('--inspect-lift'), '0px');
 });
 
 test('adaptive album pagination preserves every photograph, chronological order and month/year boundaries', () => {
