@@ -120,6 +120,13 @@ export function normalizeGardenContent(input, defaults = {}) {
       images: (Array.isArray(item.images) ? item.images : []).slice(0, 50).flatMap(image => { const source = typeof image === 'string' ? { url: image } : object(image), url = safeGardenURL(source.url); return url ? [{ url, alt: localized(source.alt) }] : []; }),
     })),
   };
+  // Old content owns its outfit order even when the bundled defaults already
+  // have a resolved selection. Never let that seed pin a legacy cloud list.
+  const requestedDefault = Object.hasOwn(object(raw.settings), 'defaultOutfitId') ? raw.settings.defaultOutfitId
+    : Array.isArray(raw.outfits) ? null : base.settings?.defaultOutfitId;
+  const defaultOutfit = id(requestedDefault, null);
+  result.settings.defaultOutfitId = result.outfits.find(item => item.front && item.id === defaultOutfit)?.id
+    || result.outfits.find(item => item.front)?.id || null;
   for(const [group,locale,key,before,after] of RETIRED_DISPLAY_COPY)if(result.texts[group][locale][key]===before)result.texts[group][locale][key]=after;
   return result;
 }

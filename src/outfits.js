@@ -1065,21 +1065,27 @@ function createEmptyOutfitShowcase({ container, language, copy }) {
 /** Replacing a configuration invalidates old image work while retaining selection and controls. */
 export function createOutfitShowcase(options = {}) {
   let records = normalizeOutfits(Object.hasOwn(options, 'outfits') ? options.outfits : OUTFITS);
+  const defaultId = value => typeof value === 'string' && value.trim() ? value.trim() : null;
+  let configuredDefault = defaultId(options.defaultOutfitId);
+  const defaultIndex = items => Math.max(0, items.findIndex(item => item.id === configuredDefault));
   let messages = normalizedCopy(options.copy);
   let locale = options.language === 'ja' ? 'ja' : 'zh';
   let enabled = true, hintActive = false, hintConsumed = false, destroyed = false;
   let preloadEnabled = options.preloadEnabled !== false;
-  let view = createOutfitShowcaseView({ ...options, outfits: records, language: locale, copy: messages });
+  let view = createOutfitShowcaseView({ ...options, ...(Object.hasOwn(options, 'defaultOutfitId') ? { initialIndex: defaultIndex(records) } : {}), outfits: records, language: locale, copy: messages });
   return {
     get index() { return view.index; }, get outfitId() { return view.outfitId; },
     goTo(...args) { return view.goTo(...args); }, next() { return view.next(); }, previous() { return view.previous(); },
-    setOutfits(input) {
+    setOutfits(input, settings = {}) {
       if (destroyed) return false;
       const next = normalizeOutfits(input);
-      if (JSON.stringify(records) === JSON.stringify(next)) return false;
-      const selectedId = view.outfitId, previousIndex = view.index;
+      const nextDefault = Object.hasOwn(settings, 'defaultOutfitId') ? defaultId(settings.defaultOutfitId) : configuredDefault;
+      const defaultChanged = nextDefault !== configuredDefault;
+      if (JSON.stringify(records) === JSON.stringify(next) && !defaultChanged) return false;
+      configuredDefault = nextDefault;
+      const selectedId = view.outfitId;
       const selected = next.findIndex(item => item.id === selectedId);
-      const initialIndex = selected >= 0 ? selected : Math.max(0, Math.min(previousIndex, next.length - 1));
+      const initialIndex = !defaultChanged && selected >= 0 ? selected : defaultIndex(next);
       hintConsumed ||= view.hintConsumed === true;
       view.destroy(); records = next;
       view = createOutfitShowcaseView({ ...options, outfits: records, initialIndex, language: locale, copy: messages, preloadEnabled, hintConsumed });

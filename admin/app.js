@@ -1,5 +1,5 @@
 import { extractPhotoMetadata } from '../src/photo-metadata.js';
-import { normalizeGardenContent, validateGardenContent, publicGardenContent } from '../src/garden-content.js';
+import { normalizeGardenContent, validateGardenContent, publicGardenContent, safeGardenURL } from '../src/garden-content.js';
 import { EDITOR_COPY_SECTIONS, editorCopySection, readEditorCopy, writeEditorCopy } from '../src/editor-copy-fields.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -540,12 +540,25 @@ function moveItem(list, index, offset) {
 function reorderButtons(list, index, label) {
   return node('div', { class: 'item-reorder' }, button('↑', () => moveItem(list, index, -1), 'secondary small', { disabled: !index, 'aria-label': `上移${label}` }), button('↓', () => moveItem(list, index, 1), 'secondary small', { disabled: index === list.length - 1, 'aria-label': `下移${label}` }));
 }
+function defaultOutfitId() {
+  const { outfits, settings } = state.content;
+  return outfits.find(item => item.id === settings?.defaultOutfitId && safeGardenURL(item.front))?.id
+    || outfits.find(item => safeGardenURL(item.front))?.id || null;
+}
+function setDefaultOutfit(id) {
+  if (!state.content.outfits.some(item => item.id === id && safeGardenURL(item.front))) return false;
+  state.content.settings ||= {};
+  if (state.content.settings.defaultOutfitId === id) return true;
+  state.content.settings.defaultOutfitId = id;
+  changed(); render(); return true;
+}
 function renderOutfits() {
   const outfits = state.content.outfits;
+  const initialOutfit = defaultOutfitId();
   const add = () => { const item = { id: identifier('outfit'), label: { zh: '新服装', ja: '新しい衣装' }, front: '', back: null, imageWidth: 1440, imageHeight: 2560 }; outfits.push(item); state.selectedOutfit = item.id; changed(); render(); };
   const current = outfits.find(item => item.id === state.selectedOutfit) || outfits[0];
   if (current) state.selectedOutfit = current.id;
-  const list = node('div', { class: 'item-list' }, ...outfits.map((item, index) => node('div', {}, node('button', { type: 'button', class: `item-button${item === current ? ' active' : ''}`, onclick: () => { state.selectedOutfit = item.id; render(); } }, image(item.front, '', ''), node('span', { class: 'item-label' }, node('strong', {}, localizedValue(item.label) || '未命名服装'), node('small', {}, `${index + 1} / ${outfits.length}`))), reorderButtons(outfits, index, '服装'))));
+  const list = node('div', { class: 'item-list' }, ...outfits.map((item, index) => node('div', {}, node('button', { type: 'button', class: `item-button${item === current ? ' active' : ''}`, onclick: () => { state.selectedOutfit = item.id; render(); } }, image(item.front, '', ''), node('span', { class: 'item-label' }, node('strong', {}, localizedValue(item.label) || '未命名服装'), node('small', {}, `${index + 1} / ${outfits.length}${item.id === initialOutfit ? ' · 默认展示' : ''}`))), reorderButtons(outfits, index, '服装'))));
   const result = [intro('每一套，都有不同的心情', '服装可以增删、重排和修改中日名称。上传透明 PNG / WebP 可保留透明背景。', button('＋ 添加服装', add, 'primary'))];
   if (!current) return [...result, empty('还没有服装', '添加服装后上传正面与背面图片。', button('添加第一套服装', add))];
   const sideEditor = side => {
@@ -568,10 +581,12 @@ function renderOutfits() {
   const backPreview = image(current.back, '背面校准预览', '');
   const updateCalibrationPreview = () => { backPreview.style.transform = `translate(${(calibration.offsetX / current.imageWidth) * 100}%, ${(calibration.offsetY / current.imageHeight) * 100}%) scale(${calibration.scale})`; };
   updateCalibrationPreview();
-  const details = panel(localizedFields('服装名称', current, 'label'), node('div', { class: 'outfit-images' }, sideEditor('front'), sideEditor('back')),
+  const details = panel(node('div', { class: 'row-actions' }, button(current.id === initialOutfit ? '默认展示立绘' : '设为默认展示立绘', () => setDefaultOutfit(current.id), 'secondary small', { disabled: current.id === initialOutfit || !safeGardenURL(current.front), 'aria-pressed': String(current.id === initialOutfit) })),
+    node('p', { class: 'small-note' }, '访客进入第二页时先展示默认立绘；列表排序单独控制切换顺序。保存草稿并发布后生效。'),
+    localizedFields('服装名称', current, 'label'), node('div', { class: 'outfit-images' }, sideEditor('front'), sideEditor('back')),
     node('div', { class: 'field-grid' }, field('原图宽度（像素）', current.imageWidth, value => { current.imageWidth = value || 1; updateCalibrationPreview(); }, { type: 'number', min: 1, max: 32768 }), field('原图高度（像素）', current.imageHeight, value => { current.imageHeight = value || 1; updateCalibrationPreview(); }, { type: 'number', min: 1, max: 32768 })),
     node('details', { class: 'calibration-panel' }, node('summary', {}, '裁切范围与背面校准'), node('div', { class: 'field-grid' }, boundsEditor('front'), boundsEditor('back')), node('div', { class: 'calibration-preview' }, image(current.front, '正面校准参考', ''), backPreview), node('div', { class: 'field-grid three' }, ...[['scale', '背面缩放', .1, 5, .01], ['offsetX', '横向偏移（像素）', -32768, 32768, 1], ['offsetY', '纵向偏移（像素）', -32768, 32768, 1]].map(([key, label, min, max, step]) => field(label, calibration[key], value => { calibration[key] = value ?? (key === 'scale' ? 1 : 0); current.backCalibration = calibration; updateCalibrationPreview(); }, { type: 'number', min, max, step }))), button('重置背面校准', () => { delete current.backCalibration; changed(); render(); }, 'secondary small')),
-    node('div', { class: 'row-actions' }, button('删除这套服装', async () => { if (!await confirmAction('删除这套服装？', `「${localizedValue(current.label)}」会从草稿移除，图片文件保留。`, '删除服装')) return; outfits.splice(outfits.indexOf(current), 1); state.selectedOutfit = null; changed(); render(); }, 'danger')));
+    node('div', { class: 'row-actions' }, button('删除这套服装', async () => { if (!await confirmAction('删除这套服装？', `「${localizedValue(current.label)}」会从草稿移除，图片文件保留。`, '删除服装')) return; outfits.splice(outfits.indexOf(current), 1); state.content.settings.defaultOutfitId = defaultOutfitId(); state.selectedOutfit = null; changed(); render(); }, 'danger')));
   return [...result, node('div', { class: 'collection-layout' }, list, details)];
 }
 function photoName(item) { return localizedValue(item.caption) || item.worldName || item.originalName || localizedValue(item.alt) || '未命名照片'; }

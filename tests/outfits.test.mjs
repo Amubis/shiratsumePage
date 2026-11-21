@@ -969,6 +969,59 @@ test('unchanged configuration is a no-op, while renaming and reordering retain s
   assert.equal(f.container.all(node => node.localName === 'img').length, 0);
 });
 
+test('the configured default portrait opens by stable ID regardless of its position or locale', t => {
+  const f = fixture(t, { defaultOutfitId: 'hoodie', initialIndex: 0, language: 'ja' });
+  assert.equal(f.api.outfitId, 'hoodie'); assert.equal(f.api.index, 2);
+  assert.equal(f.container.find('outfit-image').src, OUTFITS[2].front);
+  const dots = f.container.all(node => node.classList.contains('outfit-dot'));
+  assert.equal(dots[2].getAttribute('aria-pressed'), 'true');
+  f.api.setLanguage('zh'); assert.equal(f.api.outfitId, 'hoodie');
+});
+
+test('published defaults replace the bundled selection even when its old ID still exists', t => {
+  const f = fixture(t, { defaultOutfitId: 'sailor' });
+  const reordered = [OUTFITS[1], OUTFITS[0], OUTFITS[2], OUTFITS[3]];
+  assert.equal(f.api.setOutfits(reordered, { defaultOutfitId: 'lace' }), true);
+  assert.equal(f.api.outfitId, 'lace'); assert.equal(f.api.index, 0);
+  assert.equal(f.container.find('outfit-image').src, OUTFITS[1].front);
+});
+
+test('a default-only edit takes effect while unchanged defaults preserve a visitor choice', async t => {
+  const f = fixture(t, { defaultOutfitId: 'sailor' });
+  await f.api.goTo(2, { animate: false });
+  const stage = f.container.find('outfit-stage');
+  assert.equal(f.api.setOutfits(OUTFITS, { defaultOutfitId: 'sailor' }), false);
+  assert.equal(f.container.find('outfit-stage') === stage, true);
+  assert.equal(f.api.outfitId, 'hoodie');
+  assert.equal(f.api.setOutfits(OUTFITS, { defaultOutfitId: 'lace' }), true);
+  assert.equal(f.api.outfitId, 'lace'); assert.equal(f.api.index, 1);
+  const reordered = [OUTFITS[3], OUTFITS[2], OUTFITS[1], OUTFITS[0]];
+  await f.api.goTo(3, { animate: false });
+  f.api.setOutfits(reordered, { defaultOutfitId: 'lace' });
+  assert.equal(f.api.outfitId, 'gingham'); assert.equal(f.api.index, 0);
+});
+
+test('a removed current portrait returns to the configured default and missing defaults fall back safely', async t => {
+  const f = fixture(t, { defaultOutfitId: 'lace' });
+  await f.api.goTo(3, { animate: false });
+  f.api.setOutfits([OUTFITS[0], OUTFITS[1], OUTFITS[2]], { defaultOutfitId: 'lace' });
+  assert.equal(f.api.outfitId, 'lace'); assert.equal(f.api.index, 1);
+  f.api.setOutfits([OUTFITS[2], OUTFITS[0]], { defaultOutfitId: 'removed' });
+  assert.equal(f.api.outfitId, 'hoodie'); assert.equal(f.api.index, 0);
+  f.api.setOutfits([], { defaultOutfitId: null }); assert.equal(f.api.outfitId, null);
+});
+
+test('changing only the default invalidates a pending image turn before it can overwrite the selection', async t => {
+  let resolve;
+  const delayed = new Promise(done => { resolve = done; });
+  const f = fixture(t, { defaultOutfitId: 'sailor', docSetup: doc => doc.delayedImages.set(OUTFITS[2].front, delayed) });
+  const turn = f.api.goTo(2); await settle();
+  f.api.setOutfits(OUTFITS, { defaultOutfitId: 'lace' });
+  resolve(); assert.equal(await turn, false);
+  assert.equal(f.api.outfitId, 'lace');
+  assert.equal(f.container.find('outfit-image').src, OUTFITS[1].front);
+});
+
 test('configuration replacement ignores an obsolete image decode and its stale event handlers', async t => {
   let resolve;
   const delayed = new Promise(done => { resolve = done; });

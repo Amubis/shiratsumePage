@@ -4,6 +4,43 @@ import { normalizeGardenContent, publicGardenContent, resolveGardenMedia, safeGa
 
 const privateKey = `private/originals/${'a'.repeat(64)}.png`;
 
+const look = (id, front = `media/${id}.png`) => ({ id, front, label: { zh: id, ja: id } });
+test('legacy outfit order selects its own first usable portrait instead of a bundled default', () => {
+  const seed = normalizeGardenContent({ settings: { defaultOutfitId: 'sailor' }, outfits: [look('sailor'), look('lace')] });
+  const raw = { outfits: [look('empty', ''), look('lace'), look('sailor')] };
+  const result = normalizeGardenContent(raw, seed);
+  assert.equal(result.settings.defaultOutfitId, 'lace');
+  assert.equal(raw.settings, undefined, 'loading legacy data does not mutate the stored document');
+});
+
+test('an explicit default outfit is independent of list order and survives public media resolution', () => {
+  const original = normalizeGardenContent({ settings: { defaultOutfitId: 'lace' }, outfits: [look('sailor'), look('lace')] });
+  for (const outfits of [original.outfits, [...original.outfits].reverse()]) {
+    const content = normalizeGardenContent({ ...original, outfits });
+    assert.equal(content.settings.defaultOutfitId, 'lace');
+    assert.equal(publicGardenContent(content).settings.defaultOutfitId, 'lace');
+    const resolved = resolveGardenMedia(content, 'https://media.example/');
+    assert.equal(resolved.settings.defaultOutfitId, 'lace');
+    assert.equal(resolved.outfits.find(item => item.id === 'lace').front, 'https://media.example/media/lace.png');
+  }
+});
+
+test('removed or unusable default portraits fall back to the first valid front and empty lists use null', () => {
+  for (const defaultOutfitId of ['removed', 'empty', 'unsafe', null, { bad: true }]) {
+    const content = normalizeGardenContent({ settings: { defaultOutfitId }, outfits: [look('empty', ''), look('unsafe', 'javascript:alert(1)'), look('lace'), look('sailor')] });
+    assert.equal(content.settings.defaultOutfitId, 'lace');
+    assert.deepEqual(publicGardenContent(content).outfits.map(item => item.id), ['lace', 'sailor']);
+  }
+  assert.equal(normalizeGardenContent({ settings: { defaultOutfitId: 'removed' }, outfits: [] }).settings.defaultOutfitId, null);
+});
+
+test('partial documents inherit an explicit default only when they do not supply their own outfit list', () => {
+  const seed = normalizeGardenContent({ settings: { defaultOutfitId: 'lace' }, outfits: [look('sailor'), look('lace')] });
+  assert.equal(normalizeGardenContent({ settings: { publicSiteUrl: 'https://example.test/' } }, seed).settings.defaultOutfitId, 'lace');
+  assert.equal(normalizeGardenContent({ outfits: [] }, seed).settings.defaultOutfitId, null);
+  assert.equal(normalizeGardenContent({ settings: { defaultOutfitId: 'sailor' } }, seed).settings.defaultOutfitId, 'sailor');
+});
+
 test('photo model choices normalize known names and treat the old None placeholder as unclassified', () => {
   const input = { media: [
     { id: 'unclassified', url: 'media/a.webp', modelIds: ['None', ' none ', ''] },

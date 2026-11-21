@@ -145,7 +145,7 @@ function syncOutfitGround(outfit=selectedOutfit()){
 
 function ensureOutfitShowcase(){
   if(!outfitShowcase){
-    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,copy:activeGarden.texts.outfits,preloadEnabled:publicSceneStarted,onChange(_index,outfit){syncOutfitGround(outfit);}});
+    outfitShowcase=createOutfitShowcase({container:$('#outfit-showcase'),language,reducedMotion,outfits:activeGarden.outfits,defaultOutfitId:activeGarden.settings.defaultOutfitId,copy:activeGarden.texts.outfits,preloadEnabled:publicSceneStarted,onChange(_index,outfit){syncOutfitGround(outfit);}});
     syncOutfitGround();
     if(typeof ResizeObserver==='function'){
       outfitGroundObserver=new ResizeObserver(()=>syncOutfitGround());
@@ -793,7 +793,7 @@ function applyGardenContent(next,{inline=false}={}) {
   if(changedCopy('owner'))ownerProfile.setCopy(activeGarden.texts.owner);
   if(changedCopy('personal'))personalPage.setCopy(activeGarden.texts.personal);
   if(changed('journal'))personalPage.setPosts(activeGarden.journal);
-  if(changed('outfits') && outfitShowcase?.setOutfits(activeGarden.outfits)){syncOutfitGround();introEntrance.refresh();}
+  if((changed('outfits') || previous.settings.defaultOutfitId !== activeGarden.settings.defaultOutfitId) && outfitShowcase?.setOutfits(activeGarden.outfits,{defaultOutfitId:activeGarden.settings.defaultOutfitId})){syncOutfitGround();introEntrance.refresh();}
   if(changedCopy('outfits'))outfitShowcase?.setCopy(activeGarden.texts.outfits);
   if(changedCopy('album'))album.setCopy(activeGarden.texts.album);
   if(changed('media')){if(inline)album.setMedia(activeGarden.media,{preservePlayer:true});else{pendingAlbumMedia=activeGarden.media;flushAlbumMedia();}}
