@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const locks = new Map();
 const blank = () => ({ schemaVersion: 1, likes: [], rates: {} });
+const voteWeight = vote => vote?.weight === 5 ? 5 : 1;
 
 /** Independent local state mirrors the D1 contract and survives editor restarts. */
 export function createLocalPhotoLikesStore(dataDir) {
@@ -33,16 +34,19 @@ export function createLocalPhotoLikesStore(dataDir) {
   };
   const resultFor = (state, photoId, visitorHash) => {
     const likes = state.likes.filter(like => like.photoId === photoId);
-    return { photoId, count: likes.length, liked: Boolean(visitorHash && likes.some(like => like.visitorHash === visitorHash)) };
+    const own = visitorHash && likes.find(like => like.visitorHash === visitorHash);
+    const weight = own ? voteWeight(own) : 0;
+    return { photoId, count: likes.reduce((count, like) => count + voteWeight(like), 0), liked: weight > 0, weight };
   };
   return {
     async list(ids, visitorHash = '') {
       const state = await read();
       return [...new Set(ids)].map(id => resultFor(state, id, visitorHash));
     },
-    set: (photoId, visitorHash, liked, createdAt) => mutate(state => {
+    set: (photoId, visitorHash, liked, createdAt, weight = 1) => mutate(state => {
       const index = state.likes.findIndex(like => like.photoId === photoId && like.visitorHash === visitorHash);
-      if (liked && index === -1) state.likes.push({ photoId, visitorHash, createdAt });
+      if (liked && index === -1) state.likes.push({ photoId, visitorHash, createdAt, weight });
+      if (liked && index !== -1 && weight > voteWeight(state.likes[index])) state.likes[index].weight = weight;
       if (!liked && index !== -1) state.likes.splice(index, 1);
       return resultFor(state, photoId, visitorHash);
     }),

@@ -183,10 +183,12 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
   playerFigure.append(playerImage, playerDescription, playerCaption); playerStage.append(playerFigure); playerContent.append(playerStage, playerComments); dialog.append(playerClose, playerContent, playerPrevious, playerNext); doc.body.append(dialog);
   const commentPanel = createAnonymousComments({ container: playerComments, service: commentsService, targetType: 'photo', language: locale, copy: commentsCopy, active: false });
   const playerMotion = createAlbumPlayerMotion({dialog,reducedMotion,onRequestClose:()=>closePlayer()});
-  const pageMotion = createAlbumPageMotion({root,reducedMotion,isActive(){
-    const section=root.closest?.('.page-section');
+  const section = root.closest?.('.page-section');
+  function albumIsCurrent() {
     return Boolean(section?.classList.contains('is-current') && !['album-entry-prepared','album-entry-playing','album-exit-playing','album-boundary-seeking'].some(name=>section.classList.contains(name)));
-  }});
+  }
+  const pageMotion = createAlbumPageMotion({ root, reducedMotion, isActive: albumIsCurrent });
+  const canLikeFromPaper = () => enabled && !dialog.open && !pageMotion.busy && (!section || albumIsCurrent());
 
   function measurePackingSpace() {
     // client sizes exclude the entrance's transient transforms. A narrow page
@@ -356,7 +358,8 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     playerDescription.textContent = caption; playerDescription.hidden = !caption;
     if (likesService) {
       if (!playerLike) {
-        playerLike = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion });
+        playerLike = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion,
+          isActive: () => dialog.open && !playerMotion.busy });
         playerLike.element.classList.add('album-player-like'); playerFigure.append(playerLike.element);
       } else { playerLike.setPhotoId(item.id); playerLike.setLanguage(locale); }
     }
@@ -365,12 +368,14 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
     commentPanel.setTarget('photo', item.id);
   }
   function restorePlayerFocus() {
+    playerLike?.cancelInteraction();
     commentPanel.setActive(false);
     if (!doc.querySelector?.('dialog[open]')) doc.body.classList.remove('modal-open');
     if (returnFocus?.isConnected !== false) returnFocus?.focus?.({ preventScroll: true });
     returnFocus = null;
   }
   function closePlayer(immediate = false) {
+    playerLike?.cancelInteraction();
     commentPanel.setActive(false);
     const hide = () => { if(dialog.open)dialog.close();else restorePlayerFocus(); };
     if (immediate === true) { playerMotion.cancel({hide}); return; }
@@ -488,7 +493,7 @@ export function createAlbum({ container, language = 'zh', modelId = 'shiratsume'
       prints.push(null);
       wrapper.setAttribute('data-photo-id', item.id);
       if (likesService) {
-        const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion });
+        const like = createPhotoLikeButton({ document: doc, service: likesService, photoId: item.id, language: locale, reducedMotion, isActive: canLikeFromPaper });
         const print = element('div', 'album-print'), footer = element('div', 'album-photo-footer');
         footer.append(label, like.element); print.append(card, footer); wrapper.append(print);
         prints[index] = print; syncPrintPose(index);

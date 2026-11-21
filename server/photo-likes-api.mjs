@@ -76,13 +76,17 @@ export function createPhotoLikesApi({ store, getPublishedContent, mode = 'cloud'
       }
       const body = await readBody(request);
       if (typeof body.photoId !== 'string' || !body.photoId || body.photoId.length > 120 || typeof body.liked !== 'boolean') fail(422, 'Provide a photo ID and liked: true or false.');
+      const weight = body.weight === undefined ? 1 : body.weight;
+      if (body.weight !== undefined && (!body.liked || ![1, 5].includes(weight))) {
+        fail(422, 'A liked photo may contribute one or five likes.');
+      }
       if (!ids.includes(body.photoId)) fail(404, 'This published photo could not be found.');
       const rate = await store.consumeRateLimit(visitorHash, now(), { windowMs: 10 * 60 * 1000, max: 120 });
       if (!rate.allowed) {
         headers['Retry-After'] = String(rate.retryAfter);
         fail(429, 'Too many likes. Please try again later.', { retryAfter: rate.retryAfter });
       }
-      return json(await store.set(body.photoId, visitorHash, body.liked, new Date(now()).toISOString()), 200, headers);
+      return json(await store.set(body.photoId, visitorHash, body.liked, new Date(now()).toISOString(), weight), 200, headers);
     } catch (error) {
       const status = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : 500;
       if (status >= 500 && status !== 503) onError(error);

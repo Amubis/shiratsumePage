@@ -16,7 +16,7 @@ test('likes read is explicit and sends same-origin cookies, with numeric snapsho
   assert.equal(calls[0].url, 'https://amubis.art/api/photo-likes');
   assert.equal(calls[0].credentials, 'same-origin'); assert.equal(calls[0].cache, 'no-store');
   assert.deepEqual(service.snapshot(), { one: 7 });
-  assert.deepEqual(service.get('one'), { photoId: 'one', count: 7, liked: true, pending: false, error: '', loaded: true, canLike: true });
+  assert.deepEqual(service.get('one'), { photoId: 'one', count: 7, liked: true, weight: 1, pending: false, error: '', loaded: true, canLike: true });
 });
 
 test('concurrent first likes await one cookie bootstrap and repeated same-photo clicks share one write', async t => {
@@ -101,6 +101,7 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   addEventListener(type, listener) { this.events.set(type, listener); }
   removeEventListener(type, listener) { if (this.events.get(type) === listener) this.events.delete(type); }
+  emit(type, fields) { return this.events.get(type)?.({ preventDefault() {}, stopPropagation() {}, ...fields }); }
   remove() { this.removed = true; }
 }
 const doc = { createElement: tag => new Element(tag) };
@@ -128,4 +129,62 @@ test('cross-origin buttons retain counts with a clear main-site hint and no fake
   t.after(() => service.destroy()); await service.refresh();
   const button = createPhotoLikeButton({ document: doc, service, photoId: 'one' }); t.after(() => button.destroy());
   assert.equal(button.element.disabled, true); assert.equal(button.element.title, '请在主站点赞'); assert.equal(button.element.children[1].textContent, '5');
+});
+
+test('a completed pointer hold sends one five-like vote and consumes its release click', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const payloads = [];
+  const service = createPhotoLikesService(options(async (url, init) => {
+    if (init.method === 'GET') return response({ likes: [{ photoId: 'one', count: 0, liked: false, weight: 0 }] });
+    const body = JSON.parse(init.body); payloads.push(body);
+    const weight = body.liked ? body.weight ?? 1 : 0;
+    return response({ photoId: 'one', count: weight, liked: body.liked, weight });
+  }));
+  t.after(() => service.destroy()); await service.refresh();
+  const card = createPhotoLikeButton({ document: doc, service, photoId: 'one' });
+  const viewer = createPhotoLikeButton({ document: doc, service, photoId: 'one' });
+  t.after(() => { card.destroy(); viewer.destroy(); });
+  const pointer = { pointerId: 1, button: 0, detail: 1, clientX: 20, clientY: 20 };
+  card.element.emit('pointerdown', pointer);
+  t.mock.timers.tick(2949);
+  assert.equal(payloads.length, 0);
+  assert.equal(card.element.getAttribute('data-like-motion'), 'charging');
+  t.mock.timers.tick(1); await tick();
+  card.element.emit('pointerup', pointer);
+  await card.element.emit('click', pointer);
+  assert.deepEqual(payloads, [{ photoId: 'one', liked: true, weight: 5 }]);
+  assert.equal(card.element.children[1].textContent, '5');
+  assert.equal(viewer.element.children[1].textContent, '5');
+  assert.equal(card.element.getAttribute('data-like-motion'), 'celebrating');
+  assert.equal(viewer.element.classes.has('is-boosted'), true);
+  card.element.emit('pointerdown', pointer); card.element.emit('pointerup', pointer);
+  await card.element.emit('click', pointer);
+  assert.deepEqual(payloads.at(-1), { photoId: 'one', liked: false });
+  assert.equal(viewer.element.children[1].textContent, '0');
+});
+
+test('movement, deactivation and photo changes cancel an unfinished hold, and Space works with reduced motion', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const votes = [];
+  let active = true;
+  const service = {
+    get: () => ({ count: 0, liked: false, loaded: true, canLike: true }),
+    toggle: async id => votes.push(['toggle', id]),
+    boost: async id => votes.push(['boost', id]),
+  };
+  const { element, setPhotoId, destroy } = createPhotoLikeButton({ document: doc, service, photoId: 'one', reducedMotion: () => true, isActive: () => active });
+  t.after(destroy);
+  const pointer = { pointerId: 1, button: 0, detail: 1, clientX: 20, clientY: 20 };
+  element.emit('pointerdown', pointer);
+  element.emit('pointermove', { ...pointer, clientX: 50 });
+  t.mock.timers.tick(3000);
+  await element.emit('click', pointer);
+  element.emit('pointerdown', pointer); setPhotoId('two'); t.mock.timers.tick(3000);
+  element.emit('pointerdown', pointer); active = false; t.mock.timers.tick(3000); active = true;
+  assert.deepEqual(votes, []);
+  element.emit('keydown', { key: ' ' }); t.mock.timers.tick(90);
+  await element.emit('keyup', { key: ' ' });
+  element.emit('keydown', { key: ' ' }); t.mock.timers.tick(2950); await tick();
+  await element.emit('keyup', { key: ' ' });
+  assert.deepEqual(votes, [['toggle', 'two'], ['boost', 'two']]);
 });

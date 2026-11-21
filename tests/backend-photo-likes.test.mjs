@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPhotoLikesApi } from '../server/photo-likes-api.mjs';
@@ -34,15 +34,15 @@ test('anonymous likes bootstrap securely, survive a store/API restart and are id
   const f = await fixture(t);
   assert.match(f.first.headers.get('set-cookie'), /^__Host-photo_visitor=[a-f0-9]{64}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=31536000$/);
   assert.equal(f.first.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(await f.first.json(), { available: true, likes: content.media.map(item => ({ photoId: item.id, count: 0, liked: false })) });
+  assert.deepEqual(await f.first.json(), { available: true, likes: content.media.map(item => ({ photoId: item.id, count: 0, liked: false, weight: 0 })) });
   const post = liked => f.handle(request('POST', { photoId: 'photo-one', liked }, { Cookie: f.cookie }));
-  assert.deepEqual(await result(await post(true)), { photoId: 'photo-one', count: 1, liked: true });
-  assert.deepEqual(await result(await post(true)), { photoId: 'photo-one', count: 1, liked: true });
+  assert.deepEqual(await result(await post(true)), { photoId: 'photo-one', count: 1, liked: true, weight: 1 });
+  assert.deepEqual(await result(await post(true)), { photoId: 'photo-one', count: 1, liked: true, weight: 1 });
   const restarted = createPhotoLikesApi({ store: createLocalPhotoLikesStore(f.directory), getPublishedContent: async () => content, identitySecret: 'stable-test-secret' });
   const retained = await result(await restarted(request('GET', undefined, { Cookie: f.cookie })));
-  assert.deepEqual(retained.likes[0], { photoId: 'photo-one', count: 1, liked: true });
-  assert.deepEqual(await result(await post(false)), { photoId: 'photo-one', count: 0, liked: false });
-  assert.deepEqual(await result(await post(false)), { photoId: 'photo-one', count: 0, liked: false });
+  assert.deepEqual(retained.likes[0], { photoId: 'photo-one', count: 1, liked: true, weight: 1 });
+  assert.deepEqual(await result(await post(false)), { photoId: 'photo-one', count: 0, liked: false, weight: 0 });
+  assert.deepEqual(await result(await post(false)), { photoId: 'photo-one', count: 0, liked: false, weight: 0 });
   const persisted = await readFile(join(f.directory, 'photo-likes.json'), 'utf8');
   assert.equal(persisted.includes(f.cookie.split('=')[1]), false, 'raw cookie tokens are never stored');
   assert.equal(persisted.includes('127.0.0.1'), false);
@@ -53,10 +53,30 @@ test('distinct browsers add independently and one browser cannot remove another 
   const second = (await f.handle(request())).headers.get('set-cookie').split(';', 1)[0];
   const post = (cookie, liked) => f.handle(request('POST', { photoId: 'photo-one', liked }, { Cookie: cookie }));
   await result(await post(f.cookie, true));
-  assert.deepEqual(await result(await post(second, true)), { photoId: 'photo-one', count: 2, liked: true });
-  assert.deepEqual(await result(await post(f.cookie, false)), { photoId: 'photo-one', count: 1, liked: false });
+  assert.deepEqual(await result(await post(second, true)), { photoId: 'photo-one', count: 2, liked: true, weight: 1 });
+  assert.deepEqual(await result(await post(f.cookie, false)), { photoId: 'photo-one', count: 1, liked: false, weight: 0 });
   const states = await result(await f.handle(request('GET', undefined, { Cookie: second })));
   assert.equal(states.likes[0].liked, true);
+});
+
+test('five likes upgrade a legacy vote once, survive a reload, and can be removed together', async t => {
+  const f = await fixture(t);
+  const post = (liked, weight) => f.handle(request('POST', { photoId: 'photo-one', liked, weight }, { Cookie: f.cookie }));
+  await result(await post(true));
+  const path = join(f.directory, 'photo-likes.json');
+  const legacy = JSON.parse(await readFile(path, 'utf8'));
+  delete legacy.likes[0].weight;
+  await writeFile(path, JSON.stringify(legacy));
+  await f.store.set('photo-one', 'other-browser', true, '2026-11-20T00:00:00Z');
+  const boosted = { photoId: 'photo-one', count: 6, liked: true, weight: 5 };
+  assert.deepEqual(await result(await post(true, 5)), boosted);
+  assert.deepEqual(await result(await post(true, 5)), boosted);
+  assert.deepEqual(await result(await post(true)), boosted);
+  const retained = await result(await f.handle(request('GET', undefined, { Cookie: f.cookie })));
+  assert.deepEqual(retained.likes[0], boosted);
+  const mirror = await result(await f.handle(request('GET', undefined, { Origin: 'https://amubis.github.io', Cookie: f.cookie })));
+  assert.deepEqual(mirror.likes[0], { photoId: 'photo-one', count: 6, liked: false, weight: 0 });
+  assert.deepEqual(await result(await post(false)), { photoId: 'photo-one', count: 1, liked: false, weight: 0 });
 });
 
 test('cross-origin mirrors receive public totals without identity and cannot write through third-party cookies', async t => {
@@ -78,6 +98,8 @@ test('only published photos are exposed and target/body errors cannot mutate cou
   assert.equal(list.likes.some(item => item.photoId === 'private-photo'), false);
   for (const body of [{ photoId: 'private-photo', liked: true }, { photoId: 'missing', liked: false }]) await result(await f.handle(request('POST', body, { Cookie: f.cookie })), 404);
   for (const body of [{ photoId: 'photo-one', liked: 'true' }, { photoId: '', liked: true }, { liked: true }, []]) await result(await f.handle(request('POST', body, { Cookie: f.cookie })), Array.isArray(body) ? 400 : 422);
+  for (const weight of [0, 2, 10, '5', null]) await result(await f.handle(request('POST', { photoId: 'photo-one', liked: true, weight }, { Cookie: f.cookie })), 422);
+  await result(await f.handle(request('POST', { photoId: 'photo-one', liked: false, weight: 5 }, { Cookie: f.cookie })), 422);
   await result(await f.handle(request('POST', '{invalid', { Cookie: f.cookie })), 400);
   await result(await f.handle(request('POST', '{}', { Cookie: f.cookie, 'Content-Type': 'text/plain' })), 415);
   await result(await f.handle(request('POST', ' '.repeat(1100), { Cookie: f.cookie })), 413);
@@ -88,7 +110,7 @@ test('local adapter serializes concurrent writes across independent instances wi
   const f = await fixture(t);
   const second = createLocalPhotoLikesStore(f.directory);
   await Promise.all(Array.from({ length: 20 }, (_, index) => (index % 2 ? second : f.store).set('photo-one', `browser-${index % 5}`, true, '2026-11-20T00:00:00Z')));
-  assert.deepEqual((await f.store.list(['photo-one'], 'browser-1'))[0], { photoId: 'photo-one', count: 5, liked: true });
+  assert.deepEqual((await f.store.list(['photo-one'], 'browser-1'))[0], { photoId: 'photo-one', count: 5, liked: true, weight: 1 });
   await Promise.all(Array.from({ length: 10 }, () => second.set('photo-one', 'browser-1', false, '2026-11-20T00:00:00Z')));
   assert.equal((await f.store.list(['photo-one']))[0].count, 4);
 });

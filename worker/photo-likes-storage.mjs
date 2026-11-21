@@ -1,4 +1,8 @@
-const record = (photoId, row) => ({ photoId, count: Number(row?.count || 0), liked: Boolean(row?.liked) });
+const voteTotals = 'SUM(weight) AS count, MAX(CASE WHEN visitor_hash = ? THEN weight ELSE 0 END) AS weight';
+const record = (photoId, row) => {
+  const weight = Number(row?.weight || 0);
+  return { photoId, count: Number(row?.count || 0), liked: weight > 0, weight };
+};
 
 /** Each visitor contributes at most one row; there is no mutable count to drift. */
 export function createD1PhotoLikesStore(db) {
@@ -10,18 +14,20 @@ export function createD1PhotoLikesStore(db) {
       // Leave room for the visitor parameter within D1's 100-bind limit.
       for (let index = 0; index < ids.length; index += 90) {
         const group = ids.slice(index, index + 90);
-        const result = await db.prepare(`SELECT photo_id, COUNT(*) AS count, MAX(CASE WHEN visitor_hash = ? THEN 1 ELSE 0 END) AS liked FROM photo_likes WHERE photo_id IN (${group.map(() => '?').join(',')}) GROUP BY photo_id`).bind(visitorHash, ...group).all();
+        const result = await db.prepare(`SELECT photo_id, ${voteTotals} FROM photo_likes WHERE photo_id IN (${group.map(() => '?').join(',')}) GROUP BY photo_id`).bind(visitorHash, ...group).all();
         for (const row of result.results || []) counts.set(row.photo_id, row);
       }
       return ids.map(id => record(id, counts.get(id)));
     },
-    async set(photoId, visitorHash, liked, createdAt) {
+    async set(photoId, visitorHash, liked, createdAt, weight = 1) {
       // D1 batch is transactional, so the returned state follows this exact
       // write even with simultaneous requests from different visitors.
       const change = liked
-        ? db.prepare('INSERT INTO photo_likes (photo_id, visitor_hash, created_at) VALUES (?, ?, ?) ON CONFLICT(photo_id, visitor_hash) DO NOTHING').bind(photoId, visitorHash, createdAt)
+        ? db.prepare(`INSERT INTO photo_likes (photo_id, visitor_hash, created_at, weight) VALUES (?, ?, ?, ?)
+          ON CONFLICT(photo_id, visitor_hash) DO UPDATE SET weight = excluded.weight
+          WHERE excluded.weight > photo_likes.weight`).bind(photoId, visitorHash, createdAt, weight)
         : db.prepare('DELETE FROM photo_likes WHERE photo_id = ? AND visitor_hash = ?').bind(photoId, visitorHash);
-      const read = db.prepare('SELECT COUNT(*) AS count, MAX(CASE WHEN visitor_hash = ? THEN 1 ELSE 0 END) AS liked FROM photo_likes WHERE photo_id = ?').bind(visitorHash, photoId);
+      const read = db.prepare(`SELECT ${voteTotals} FROM photo_likes WHERE photo_id = ?`).bind(visitorHash, photoId);
       const results = await db.batch([change, read]);
       return record(photoId, results[1]?.results?.[0]);
     },
