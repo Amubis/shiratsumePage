@@ -147,16 +147,16 @@ export function createPhotoLikeButton({ document: doc = globalThis.document, ser
   const element = doc.createElement('button'); element.type = 'button'; element.className = 'photo-like';
   element.style?.setProperty('--like-hold-duration', `${HOLD_MS}ms`);
   const heart = doc.createElement('span'); heart.className = 'photo-like-heart'; heart.setAttribute('aria-hidden', 'true');
+  const shape = doc.createElement('span'); shape.className = 'photo-like-heart-shape';
   const gradient = `photo-like-gold-${++heartSerial}`;
-  heart.innerHTML = `<span class="photo-like-heart-shape">
-    <svg class="photo-like-outline" viewBox="0 0 24 24" fill="none"><path d="${HEART_PATH}"/></svg>
+  shape.innerHTML = `<svg class="photo-like-outline" viewBox="0 0 24 24" fill="none"><path d="${HEART_PATH}"/></svg>
     <span class="photo-like-energy">
       <svg viewBox="0 0 24 24">
         <defs><linearGradient id="${gradient}" x2="0%" y2="100%"><stop stop-color="#ffdb83"/><stop offset="1" stop-color="#e18b22"/></linearGradient></defs>
         <path d="${HEART_PATH}" fill="url(#${gradient})" stroke="#a96721"/>
       </svg>
-    </span>
-  </span>`;
+    </span>`;
+  heart.append(shape);
   const count = doc.createElement('span'); count.className = 'photo-like-count'; count.setAttribute('aria-hidden', 'true');
   const label = doc.createElement('span'); label.className = 'photo-like-label'; label.setAttribute('data-language-text', '');
   const status = doc.createElement('span'); status.className = 'photo-like-status'; status.setAttribute('data-language-text', ''); status.setAttribute('aria-live', 'polite');
@@ -177,7 +177,7 @@ export function createPhotoLikeButton({ document: doc = globalThis.document, ser
       spark.style?.setProperty('--like-burst-delay', `${index % 3 * 16}ms`);
       sparks.append(spark);
     }
-    heart.append(sparks);
+    shape.append(sparks);
   }
   function stopHold(discardClick = false) {
     if (!hold) return;

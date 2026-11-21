@@ -20,7 +20,7 @@
 .photo-like[data-like-motion]:not([data-like-motion=""]) { scale:1; }
 .photo-like[data-like-motion="charging"] .photo-like-heart-shape {
   animation:photo-like-squeeze var(--like-hold-duration,2950ms) cubic-bezier(.25,.65,.4,1) both,
-    photo-like-tremble .39s ease-in-out .14s infinite;
+    photo-like-tremble .79s cubic-bezier(.28,.58,.47,1) .14s infinite;
 }
 .photo-like[data-like-motion="charging"] .photo-like-energy {
   animation:photo-like-fill var(--like-hold-duration,2950ms) cubic-bezier(.35,.07,.65,.93) both;
@@ -35,9 +35,22 @@
   100% { scale:.8; }
 }
 @keyframes photo-like-tremble {
-  0%,100% { transform:translateX(0) rotate(0); }
-  25% { transform:translate(-.6px,.2px) rotate(-6deg); }
-  70% { transform:translate(.55px,-.15px) rotate(5deg); }
+  0%,100% { transform:translate(0,0); }
+  5% { transform:translate(-.58px,.36px); }
+  11% { transform:translate(.2px,-.68px); }
+  19% { transform:translate(.73px,.12px); }
+  23% { transform:translate(-.48px,-.53px); }
+  31% { transform:translate(-.17px,.76px); }
+  39% { transform:translate(.3px,.55px); }
+  44% { transform:translate(-.69px,.04px); }
+  53% { transform:translate(.19px,-.8px); }
+  58% { transform:translate(.78px,-.21px); }
+  64% { transform:translate(-.42px,.29px); }
+  71% { transform:translate(.58px,.72px); }
+  76% { transform:translate(.12px,-.32px); }
+  83% { transform:translate(-.73px,-.14px); }
+  89% { transform:translate(.4px,.27px); }
+  95% { transform:translate(-.16px,-.61px); }
 }
 @keyframes photo-like-fill {
   0%,23% { clip-path:inset(100% 0 0); }
@@ -51,10 +64,12 @@
   100% { transform:translateY(0) scale(1); }
 }
 
-.photo-like-sparks { position:absolute;inset:0; }
-.photo-like-spark { position:absolute;left:50%;top:50%;transform:rotate(var(--like-angle)); }
+/* Every ray pivots around a zero-size anchor inside the moving heart outline. */
+.photo-like-sparks { position:absolute;left:50%;top:48%;width:0;height:0; }
+.photo-like-spark { position:absolute;inset:0;transform-origin:0 0;transform:rotate(var(--like-angle)); }
 .photo-like-spark::before {
-  content:"";display:block;width:7px;height:1.5px;border-radius:2px;opacity:0;
+  content:"";position:absolute;top:0;left:0;width:7px;height:1.5px;border-radius:2px;opacity:0;
+  transform-origin:left center;
   background:linear-gradient(90deg,#f5aa31,var(--theme-dark));
 }
 .photo-like-spark:nth-child(3n+2)::before { width:5px;height:2px; }
@@ -80,7 +95,8 @@
   0% { translate:var(--like-travel) -50%;scale:.5 1;opacity:0; }
   20% { opacity:.95; }
   67% { scale:1 1; }
-  100% { translate:2px -50%;scale:.35 .7;opacity:0; }
+  80% { opacity:.82; }
+  100% { translate:0 -50%;scale:.35 .7;opacity:0; }
 }
 @keyframes photo-like-confetti {
   0% { translate:4px -50%;scale:.4;opacity:0; }
